@@ -3,6 +3,7 @@ import Foundation
 enum MediaAttachmentKind: String, Hashable {
     case photo
     case video
+    case videoMessage
     case audio
     case contact
     case location
@@ -21,6 +22,8 @@ enum MediaAttachmentKind: String, Hashable {
             return "Photo attachment"
         case .video:
             return "Video attachment"
+        case .videoMessage:
+            return "Video message"
         case .audio:
             return "Audio attachment"
         case .contact:

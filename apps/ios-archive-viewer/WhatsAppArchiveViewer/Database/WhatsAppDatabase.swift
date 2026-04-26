@@ -37,6 +37,7 @@ private struct MediaClassificationInput {
     let vCardString: String?
     let latitude: Double?
     let longitude: Double?
+    let durationSeconds: Double?
 }
 
 private struct ChatSummaryRow {
@@ -516,12 +517,16 @@ final class WhatsAppDatabase {
 
     private func videoMediaSQL() -> String {
         let path = "lower(COALESCE(mi.ZMEDIALOCALPATH, mi.ZMEDIAURL, mi.ZTITLE, ''))"
-        return """
-        (m.ZMESSAGETYPE = 2
-        OR \(path) LIKE '%.mp4'
-        OR \(path) LIKE '%.mov'
-        OR \(path) LIKE '%.m4v')
-        """
+        var predicates = [
+            "m.ZMESSAGETYPE = 2",
+            "\(path) LIKE '%.mp4'",
+            "\(path) LIKE '%.mov'",
+            "\(path) LIKE '%.m4v'"
+        ]
+        if mediaSchema?.columns.contains("ZMOVIEDURATION") == true {
+            predicates.append("(m.ZMESSAGETYPE = 4 AND mi.ZMOVIEDURATION IS NOT NULL AND mi.ZMOVIEDURATION > 0)")
+        }
+        return "(\(predicates.joined(separator: "\n        OR ")))"
     }
 
     private func audioMediaSQL() -> String {
@@ -847,7 +852,7 @@ final class WhatsAppDatabase {
         case .photos:
             return media.source != .statusStory && media.kind == .photo
         case .videos:
-            return media.source != .statusStory && media.kind == .video
+            return media.source != .statusStory && (media.kind == .video || media.kind == .videoMessage)
         case .statusStories:
             return media.source == .statusStory && isMediaLibraryDisplayable(media.kind)
         }
@@ -855,7 +860,7 @@ final class WhatsAppDatabase {
 
     private func isMediaLibraryDisplayable(_ kind: MediaAttachmentKind) -> Bool {
         switch kind {
-        case .photo, .video, .audio, .sticker, .document:
+        case .photo, .video, .videoMessage, .audio, .sticker, .document:
             return true
         case .contact, .location, .linkPreview, .call, .callOrSystem, .system, .deleted, .media:
             return false
@@ -899,12 +904,13 @@ final class WhatsAppDatabase {
             displayedRows: displayedItems.count,
             rowsWithLocalPath: displayedItems.filter { $0.media.localPath?.isEmpty == false }.count,
             photoRows: displayedItems.filter { $0.media.kind == .photo || $0.media.kind == .sticker }.count,
-            videoRows: displayedItems.filter { $0.media.kind == .video }.count,
+            videoRows: displayedItems.filter { $0.media.kind == .video || $0.media.kind == .videoMessage }.count,
             audioRows: displayedItems.filter { $0.media.kind == .audio }.count,
             otherRows: displayedItems.filter { item in
                 item.media.kind != .photo
                     && item.media.kind != .sticker
                     && item.media.kind != .video
+                    && item.media.kind != .videoMessage
                     && item.media.kind != .audio
             }.count,
             resolvedFileURLRows: displayedItems.filter { $0.media.fileURL != nil }.count,
@@ -1318,7 +1324,8 @@ final class WhatsAppDatabase {
                 vCardName: vCardName,
                 vCardString: vCardString,
                 latitude: latitude,
-                longitude: longitude
+                longitude: longitude,
+                durationSeconds: durationSeconds
             ),
             mimeType: mimeType,
             fileName: fileName
@@ -1434,6 +1441,15 @@ final class WhatsAppDatabase {
         if input.messageType == 12 {
             return .deleted
         }
+        if input.messageType == 4 {
+            if hasVideoEvidence(input: input, mimeType: mimeType, fileName: fileName) {
+                return .videoMessage
+            }
+            if hasReliableVCard(name: input.vCardName, string: input.vCardString, messageType: input.messageType) {
+                return .contact
+            }
+            return .media
+        }
         if input.messageType == 1 {
             return .photo
         }
@@ -1442,9 +1458,6 @@ final class WhatsAppDatabase {
         }
         if input.messageType == 3 {
             return .audio
-        }
-        if input.messageType == 4 {
-            return .contact
         }
         if input.messageType == 5 {
             return .location
@@ -1458,7 +1471,7 @@ final class WhatsAppDatabase {
         if input.messageType == 8 {
             return .document
         }
-        if hasVCard(name: input.vCardName, string: input.vCardString) {
+        if hasReliableVCard(name: input.vCardName, string: input.vCardString, messageType: input.messageType) {
             return .contact
         }
         if hasNonzeroLocation(latitude: input.latitude, longitude: input.longitude) {
@@ -1498,10 +1511,36 @@ final class WhatsAppDatabase {
         }
     }
 
-    private func hasVCard(name: String?, string: String?) -> Bool {
-        [name, string].contains { value in
-            value?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
+    private func hasReliableVCard(name: String?, string: String?, messageType: Int?) -> Bool {
+        if let string = string?.trimmingCharacters(in: .whitespacesAndNewlines), !string.isEmpty {
+            let uppercasedString = string.uppercased()
+            if uppercasedString.contains("BEGIN:VCARD")
+                || uppercasedString.contains("END:VCARD")
+                || uppercasedString.contains("\nFN:")
+                || uppercasedString.hasPrefix("FN:")
+                || uppercasedString.contains("\nTEL")
+                || uppercasedString.hasPrefix("TEL") {
+                return true
+            }
         }
+
+        guard messageType == 4 else { return false }
+        return name?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
+    }
+
+    private func hasVideoEvidence(
+        input: MediaClassificationInput,
+        mimeType: String?,
+        fileName: String?
+    ) -> Bool {
+        if mimeType?.hasPrefix("video/") == true {
+            return true
+        }
+        if let fileExtension = fileExtension(fileName: fileName, localPath: input.localPath, mediaURL: input.mediaURL)?.lowercased(),
+           ["mp4", "mov", "m4v"].contains(fileExtension) {
+            return true
+        }
+        return input.messageType == 4 && (input.durationSeconds ?? 0) > 0
     }
 
     private func hasNonzeroLocation(latitude: Double?, longitude: Double?) -> Bool {

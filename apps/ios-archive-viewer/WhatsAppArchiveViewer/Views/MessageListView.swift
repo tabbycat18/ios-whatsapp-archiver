@@ -432,7 +432,7 @@ private struct ChatInfoMediaTile: View {
         switch item.media.kind {
         case .photo:
             return "photo"
-        case .video:
+        case .video, .videoMessage:
             return "video"
         case .audio:
             return "waveform"
@@ -448,7 +448,7 @@ private struct ChatInfoMediaTile: View {
         switch item.media.kind {
         case .photo, .sticker:
             photoPreviewItem = PhotoPreviewItem(url: url)
-        case .video:
+        case .video, .videoMessage:
             playbackController.load(url: url, restart: true)
             isVideoPresented = true
         default:
@@ -467,7 +467,7 @@ private struct ChatInfoMediaTile: View {
             loadedThumbnail = await Task.detached(priority: .utility) {
                 downsampleImage(at: url, maxPixelSize: 360)
             }.value
-        case .video:
+        case .video, .videoMessage:
             loadedThumbnail = await videoThumbnail(at: url, maxPixelSize: 360)
         default:
             loadedThumbnail = nil
@@ -724,7 +724,7 @@ private struct MessageContentView: View {
 
     private func shouldShowAttachment(for media: MediaMetadata) -> Bool {
         switch media.kind {
-        case .photo, .video, .audio, .linkPreview:
+        case .photo, .video, .videoMessage, .audio, .linkPreview:
             return true
         case .contact, .location, .sticker, .document, .call, .callOrSystem, .system, .deleted, .media:
             return displayText == nil
@@ -736,7 +736,7 @@ private struct MessageContentView: View {
         switch media.kind {
         case .photo:
             PhotoAttachmentView(media: media)
-        case .video:
+        case .video, .videoMessage:
             VideoAttachmentView(media: media)
         case .audio:
             AudioAttachmentView(messageID: message.id, media: media)
@@ -1176,7 +1176,7 @@ private struct VideoAttachmentView: View {
     var body: some View {
         Group {
             if !media.isFileAvailableInArchive || media.fileURL == nil {
-                AttachmentPlaceholderView(title: "Video unavailable", systemImage: "video")
+                AttachmentPlaceholderView(title: unavailableTitle, systemImage: "video")
             } else {
                 Button {
                     if let url = media.fileURL {
@@ -1205,9 +1205,9 @@ private struct VideoAttachmentView: View {
                                 .offset(y: 46)
                         }
                     }
-                    .frame(width: 260, height: 160)
-                    .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-                    .accessibilityLabel("Video attachment")
+                    .frame(width: previewSize.width, height: previewSize.height)
+                    .clipShape(previewShape)
+                    .accessibilityLabel(accessibilityLabel)
                 }
                 .buttonStyle(.plain)
                 .task(id: media.fileURL) {
@@ -1236,6 +1236,27 @@ private struct VideoAttachmentView: View {
         }
     }
 
+    private var isVideoMessage: Bool {
+        media.kind == .videoMessage
+    }
+
+    private var previewSize: CGSize {
+        isVideoMessage ? CGSize(width: 184, height: 184) : CGSize(width: 260, height: 160)
+    }
+
+    private var previewShape: AnyShape {
+        isVideoMessage
+            ? AnyShape(Circle())
+            : AnyShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+    }
+
+    private var accessibilityLabel: String {
+        isVideoMessage ? "Video message" : "Video attachment"
+    }
+
+    private var unavailableTitle: String {
+        isVideoMessage ? "Video message unavailable" : "Video unavailable"
+    }
 }
 
 private struct VideoPlayerSheet: View {

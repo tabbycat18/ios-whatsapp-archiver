@@ -133,6 +133,7 @@ group-event type, and media metadata:
 
 - available photos are rendered inline after downsampling;
 - available videos are shown as tap-to-play attachments with lazy thumbnails when thumbnail generation succeeds;
+- instant video/video-message rows are treated as video media when file, MIME, duration, or message-type evidence supports it;
 - available audio and voice rows get a simple play/pause control;
 - reliably detected status/story media is marked as status/story media and kept
   separate from normal direct-chat rows;
@@ -180,7 +181,9 @@ Git and full local paths are not shown in the normal UI.
 
 The viewer does not scan or preload all media globally. Missing or unavailable
 media stays as a placeholder, while unsupported metadata-only rows are kept out
-of the Chat Info media grid. The Chat Info media view queries media for the
+of the Chat Info media grid. Contact cards require reliable vCard metadata; rows
+with video evidence are classified as video media before contact-card fallback.
+The Chat Info media view queries media for the
 selected chat and related merged session IDs directly from SQLite, applies
 filters for all renderable media, photos, videos, and reliably detected Stories
 / Status, prioritizes rows with local files, and caps each fetch so it does not

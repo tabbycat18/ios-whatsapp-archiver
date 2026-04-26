@@ -94,6 +94,7 @@ The app does not load every message at once because large WhatsApp chats can con
 - Media path resolution checks several archive-root-relative layouts, including `Media/` and `Message/Media/`. The normal UI does not print full private media paths.
 - Chat wallpaper resolution checks generic archive-root files named `current_wallpaper.jpg` and `current_wallpaper_dark.jpg`.
 - Media rendering is lazy. Images are downsampled before display, video thumbnails are generated only for visible video rows, and audio playback starts only after the user taps play.
+- Contact-card rendering requires reliable vCard metadata. Rows with video media evidence, including instant video notes, are treated as playable video media rather than contact cards.
 - The Chat Info media view queries media for the selected chat/session directly from SQLite, includes related merged session IDs, prioritizes locally available renderable media, and caps each filtered fetch. It is not a full archive-wide media library.
 
 ## Development Data
@@ -127,6 +128,7 @@ The app also has an Open Archive action that can select either an extracted arch
 - Confirm photo preview pinch-to-zoom works.
 - Confirm photo and video preview sharing opens the system share sheet.
 - Confirm available videos open in the video preview only after tapping.
+- Confirm instant video/video-message rows are not shown as contact cards and can be opened from the chat row.
 - Confirm available audio or voice rows can play and pause.
 - Confirm the chat wallpaper appears behind messages when `current_wallpaper.jpg` is present in the selected archive folder.
 - Confirm missing or unreadable media remains a clean placeholder.
