@@ -129,6 +129,7 @@ private final class AudioPlaybackController: ObservableObject {
         }
 
         stop()
+        prepareMediaPlaybackSession()
         let item = AVPlayerItem(url: url)
         let player = AVPlayer(playerItem: item)
         self.player = player
@@ -320,8 +321,7 @@ private struct VideoAttachmentView: View {
     let media: MediaMetadata
     @State private var thumbnail: CGImage?
     @State private var didFailThumbnail = false
-    @State private var isPlayerPresented = false
-    @State private var player: AVPlayer?
+    @State private var playbackItem: VideoPlaybackItem?
 
     var body: some View {
         Group {
@@ -330,8 +330,7 @@ private struct VideoAttachmentView: View {
             } else {
                 Button {
                     if let url = media.fileURL {
-                        player = AVPlayer(url: url)
-                        isPlayerPresented = true
+                        playbackItem = VideoPlaybackItem(url: url)
                     }
                 } label: {
                     ZStack {
@@ -363,14 +362,8 @@ private struct VideoAttachmentView: View {
                 .task(id: media.fileURL) {
                     await loadThumbnailIfNeeded()
                 }
-                .sheet(isPresented: $isPlayerPresented, onDismiss: stopPlayer) {
-                    if let player {
-                        VideoPlayer(player: player)
-                            .ignoresSafeArea()
-                    } else {
-                        AttachmentPlaceholderView(title: "Video unavailable", systemImage: "video")
-                            .padding()
-                    }
+                .sheet(item: $playbackItem) { item in
+                    VideoPlayerSheet(url: item.url)
                 }
             }
         }
@@ -390,9 +383,37 @@ private struct VideoAttachmentView: View {
         }
     }
 
-    private func stopPlayer() {
-        player?.pause()
-        player = nil
+}
+
+private struct VideoPlaybackItem: Identifiable {
+    let id = UUID()
+    let url: URL
+}
+
+private struct VideoPlayerSheet: View {
+    let url: URL
+    @State private var player: AVPlayer?
+
+    var body: some View {
+        Group {
+            if let player {
+                VideoPlayer(player: player)
+                    .ignoresSafeArea()
+            } else {
+                AttachmentPlaceholderView(title: "Video unavailable", systemImage: "video")
+                    .padding()
+            }
+        }
+        .onAppear {
+            prepareMediaPlaybackSession()
+            let player = AVPlayer(url: url)
+            self.player = player
+            player.play()
+        }
+        .onDisappear {
+            player?.pause()
+            player = nil
+        }
     }
 }
 
@@ -480,4 +501,11 @@ private func videoThumbnail(at url: URL, maxPixelSize: CGFloat) async -> CGImage
     generator.appliesPreferredTrackTransform = true
     generator.maximumSize = CGSize(width: maxPixelSize, height: maxPixelSize)
     return try? await generator.image(at: .zero).image
+}
+
+private func prepareMediaPlaybackSession() {
+    #if os(iOS)
+    try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .default)
+    try? AVAudioSession.sharedInstance().setActive(true)
+    #endif
 }
