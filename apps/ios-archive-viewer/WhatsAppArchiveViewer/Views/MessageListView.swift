@@ -442,9 +442,10 @@ private struct PhotoPreviewView: View {
 
 private struct VideoAttachmentView: View {
     let media: MediaMetadata
+    @StateObject private var playbackController = VideoPlaybackController()
     @State private var thumbnail: CGImage?
     @State private var didFailThumbnail = false
-    @State private var playbackItem: VideoPlaybackItem?
+    @State private var isPlayerPresented = false
 
     var body: some View {
         Group {
@@ -453,7 +454,8 @@ private struct VideoAttachmentView: View {
             } else {
                 Button {
                     if let url = media.fileURL {
-                        playbackItem = VideoPlaybackItem(url: url)
+                        playbackController.load(url: url, restart: true)
+                        isPlayerPresented = true
                     }
                 } label: {
                     ZStack {
@@ -485,8 +487,8 @@ private struct VideoAttachmentView: View {
                 .task(id: media.fileURL) {
                     await loadThumbnailIfNeeded()
                 }
-                .sheet(item: $playbackItem) { item in
-                    VideoPlayerSheet(url: item.url)
+                .sheet(isPresented: $isPlayerPresented) {
+                    VideoPlayerSheet(controller: playbackController)
                 }
             }
         }
@@ -508,17 +510,8 @@ private struct VideoAttachmentView: View {
 
 }
 
-private struct VideoPlaybackItem: Identifiable {
-    let id = UUID()
-    let url: URL
-}
-
 private struct VideoPlayerSheet: View {
-    @StateObject private var controller: VideoPlaybackController
-
-    init(url: URL) {
-        _controller = StateObject(wrappedValue: VideoPlaybackController(url: url))
-    }
+    @ObservedObject var controller: VideoPlaybackController
 
     var body: some View {
         VideoPlayer(player: controller.player)
@@ -534,13 +527,24 @@ private struct VideoPlayerSheet: View {
 
 @MainActor
 private final class VideoPlaybackController: ObservableObject {
-    let player: AVPlayer
+    private(set) var player = AVPlayer()
+    private var loadedURL: URL?
 
-    init(url: URL) {
-        self.player = AVPlayer(url: url)
+    func load(url: URL, restart: Bool) {
+        guard loadedURL != url else {
+            if restart {
+                player.seek(to: .zero)
+            }
+            return
+        }
+
+        player.pause()
+        player = AVPlayer(url: url)
+        loadedURL = url
     }
 
     func play() {
+        guard loadedURL != nil else { return }
         prepareMediaPlaybackSession()
         player.play()
     }
