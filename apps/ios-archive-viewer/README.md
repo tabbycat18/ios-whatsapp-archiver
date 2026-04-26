@@ -48,14 +48,13 @@ The app does not render photos, videos, audio, thumbnails, or binary media yet.
 ### Milestone 2.5 Full-History Pagination
 
 - Opens a selected chat with only the latest 500 messages loaded initially.
-- Adds a top-of-list "Load older messages" control.
-- Loads older messages in additional batches.
+- Loads older messages automatically in additional batches when scrolling upward.
 - Uses stable keyset pagination by message date and primary key instead of `OFFSET`.
 - Prepends older batches while keeping the UI ordered oldest-to-newest.
 - Keeps initial auto-scroll to the latest message, but does not jump back to the bottom after loading older messages.
 - Keeps media metadata and path discovery populated for older loaded messages.
 
-The app does not load every message at once because large WhatsApp chats can contain many thousands of rows. Incremental loading keeps memory use and UI updates bounded while still allowing full-history reading.
+The app does not load every message at once because large WhatsApp chats can contain many thousands of rows. Incremental loading keeps memory use and UI updates bounded while still allowing full-history reading. Scrolling upward loads older history as needed.
 
 ## Development Data
 
@@ -78,7 +77,7 @@ The app also has an Open Archive action that can select either an extracted arch
 ## Testing Notes
 
 - Test with a large chat and confirm the latest 500 messages appear first.
-- Tap "Load older messages" and confirm older rows prepend above the current messages.
+- Scroll upward and confirm older rows load automatically near the top.
 - Confirm ordering remains oldest-to-newest.
 - Confirm sender direction and dates remain correct.
 - Confirm media placeholders still appear.
