@@ -25,6 +25,18 @@ private struct MediaPathResolution {
     let existsInArchive: Bool
 }
 
+private struct MediaClassificationInput {
+    let messageType: Int?
+    let groupEventType: Int?
+    let localPath: String?
+    let title: String?
+    let mediaURL: String?
+    let vCardName: String?
+    let vCardString: String?
+    let latitude: Double?
+    let longitude: Double?
+}
+
 enum WhatsAppDatabaseError: LocalizedError {
     case missingDatabase(URL)
     case invalidSchema(String)
@@ -117,17 +129,20 @@ final class WhatsAppDatabase {
                     ELSE NULL
                 END AS sanitized_last_message_date,
                 COUNT(m.Z_PK) AS message_count,
-                MAX(m.ZMESSAGEDATE) AS latest_message_date
+                MAX(m.ZMESSAGEDATE) AS latest_message_date,
+                lm.ZMESSAGEDATE AS last_message_pointer_date
             FROM ZWACHATSESSION c
             LEFT JOIN ZWAMESSAGE m ON m.ZCHATSESSION = c.Z_PK
+            LEFT JOIN ZWAMESSAGE lm ON lm.Z_PK = c.ZLASTMESSAGE
             GROUP BY
                 c.Z_PK,
                 c.ZCONTACTJID,
                 c.ZCONTACTIDENTIFIER,
                 c.ZPARTNERNAME,
                 c.ZLASTMESSAGEDATE,
-                c.ZMESSAGECOUNTER
-            ORDER BY COALESCE(latest_message_date, sanitized_last_message_date, 0) DESC, c.Z_PK ASC
+                c.ZMESSAGECOUNTER,
+                lm.ZMESSAGEDATE
+            ORDER BY COALESCE(last_message_pointer_date, latest_message_date, sanitized_last_message_date, 0) DESC, c.Z_PK ASC
             """
 
         let statement = try prepare(sql)
@@ -140,11 +155,11 @@ final class WhatsAppDatabase {
             let contactJID = string(statement, 1)
             let contactIdentifier = string(statement, 2)
             let partnerName = string(statement, 3)
-            let title = friendlyDisplayName(partnerName)
-                ?? friendlyDisplayName(contactIdentifier)
+            let title = DisplayNameSanitizer.friendlyName(partnerName)
+                ?? DisplayNameSanitizer.friendlyName(contactIdentifier)
                 ?? (isGroupJID(contactJID) ? "Group chat" : "Unknown chat")
+            let latestMessageDate = date(statement, 9) ?? date(statement, 8) ?? date(statement, 6)
 
-            let latestMessageDate = date(statement, 8) ?? date(statement, 6)
             chats.append(
                 ChatSummary(
                     id: id,
@@ -153,7 +168,8 @@ final class WhatsAppDatabase {
                     partnerName: partnerName,
                     title: title,
                     messageCount: Int(sqlite3_column_int64(statement, 7)),
-                    latestMessageDate: latestMessageDate
+                    latestMessageDate: latestMessageDate,
+                    searchableTitle: title
                 )
             )
             stepResult = sqlite3_step(statement)
@@ -163,32 +179,8 @@ final class WhatsAppDatabase {
         return chats
     }
 
-    private func friendlyDisplayName(_ value: String?) -> String? {
-        guard let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines), !trimmed.isEmpty else {
-            return nil
-        }
-        guard !looksLikeRawIdentifier(trimmed) else {
-            return nil
-        }
-        return trimmed
-    }
-
     private func isGroupJID(_ value: String?) -> Bool {
         value?.contains("@g.us") == true
-    }
-
-    private func looksLikeRawIdentifier(_ value: String) -> Bool {
-        if value.contains("@") {
-            return true
-        }
-        if value.range(of: #"^[+0-9 ()-]{6,}$"#, options: .regularExpression) != nil {
-            return true
-        }
-        if value.count >= 16,
-           value.range(of: #"^[A-Za-z0-9+/=_-]+$"#, options: .regularExpression) != nil {
-            return true
-        }
-        return false
     }
 
     func fetchMessages(chatID: Int64, limit: Int = 500) throws -> [MessageRow] {
@@ -198,6 +190,7 @@ final class WhatsAppDatabase {
                 \(messageRowSelectSQL())
                 FROM ZWAMESSAGE m
                 \(mediaJoinSQL())
+                \(groupMemberJoinSQL())
                 WHERE m.ZCHATSESSION = ?
                 ORDER BY m.ZMESSAGEDATE DESC, m.Z_PK DESC
                 LIMIT ?
@@ -222,6 +215,7 @@ final class WhatsAppDatabase {
             \(messageRowSelectSQL())
             FROM ZWAMESSAGE m
             \(mediaJoinSQL())
+            \(groupMemberJoinSQL())
             WHERE m.ZCHATSESSION = ?
               AND (
                 m.ZMESSAGEDATE < ?
@@ -251,9 +245,12 @@ final class WhatsAppDatabase {
             m.ZISFROMME,
             m.ZFROMJID,
             m.ZPUSHNAME,
+            gm.ZCONTACTNAME AS group_member_contact_name,
+            gm.ZFIRSTNAME AS group_member_first_name,
             m.ZTEXT,
             m.ZMESSAGEDATE,
             \(messageTypeSelectSQL()) AS message_type,
+            \(groupEventTypeSelectSQL()) AS group_event_type,
             \(mediaSelectSQL())
         """
     }
@@ -262,16 +259,26 @@ final class WhatsAppDatabase {
         var messages: [MessageRow] = []
         var stepResult = sqlite3_step(statement)
         while stepResult == SQLITE_ROW {
-            let media = mediaMetadata(from: statement, startingAt: 7)
+            let messageType = int(statement, 8)
+            let groupEventType = int(statement, 9)
+            let media = mediaMetadata(
+                from: statement,
+                startingAt: 10,
+                messageType: messageType,
+                groupEventType: groupEventType
+            )
             messages.append(
                 MessageRow(
                     id: sqlite3_column_int64(statement, 0),
                     isFromMe: sqlite3_column_int(statement, 1) != 0,
                     senderJID: string(statement, 2),
                     pushName: string(statement, 3),
-                    text: string(statement, 4),
-                    messageDate: date(statement, 5),
-                    messageType: int(statement, 6),
+                    groupMemberContactName: string(statement, 4),
+                    groupMemberFirstName: string(statement, 5),
+                    text: string(statement, 6),
+                    messageDate: date(statement, 7),
+                    messageType: messageType,
+                    groupEventType: groupEventType,
                     media: media
                 )
             )
@@ -332,6 +339,13 @@ final class WhatsAppDatabase {
         return "NULL"
     }
 
+    private func groupEventTypeSelectSQL() -> String {
+        if messageColumns.contains("ZGROUPEVENTTYPE") {
+            return "m.ZGROUPEVENTTYPE"
+        }
+        return "NULL"
+    }
+
     private func mediaSelectSQL() -> String {
         guard let mediaSchema, mediaSchema.canJoinMessages else {
             return [
@@ -339,7 +353,11 @@ final class WhatsAppDatabase {
                 "NULL AS media_local_path",
                 "NULL AS media_title",
                 "NULL AS media_file_size",
-                "NULL AS media_url"
+                "NULL AS media_url",
+                "NULL AS media_vcard_name",
+                "NULL AS media_vcard_string",
+                "NULL AS media_latitude",
+                "NULL AS media_longitude"
             ].joined(separator: ",\n                    ")
         }
 
@@ -348,7 +366,11 @@ final class WhatsAppDatabase {
             mediaSchema.select("ZMEDIALOCALPATH", as: "media_local_path"),
             mediaSchema.select("ZTITLE", as: "media_title"),
             mediaSchema.select("ZFILESIZE", as: "media_file_size"),
-            mediaSchema.select("ZMEDIAURL", as: "media_url")
+            mediaSchema.select("ZMEDIAURL", as: "media_url"),
+            mediaSchema.select("ZVCARDNAME", as: "media_vcard_name"),
+            mediaSchema.select("ZVCARDSTRING", as: "media_vcard_string"),
+            mediaSchema.select("ZLATITUDE", as: "media_latitude"),
+            mediaSchema.select("ZLONGITUDE", as: "media_longitude")
         ].joined(separator: ",\n                    ")
     }
 
@@ -359,21 +381,48 @@ final class WhatsAppDatabase {
         return "LEFT JOIN ZWAMEDIAITEM mi ON mi.ZMESSAGE = m.Z_PK"
     }
 
-    private func mediaMetadata(from statement: OpaquePointer, startingAt index: Int32) -> MediaMetadata? {
+    private func groupMemberJoinSQL() -> String {
+        "LEFT JOIN ZWAGROUPMEMBER gm ON gm.Z_PK = m.ZGROUPMEMBER"
+    }
+
+    private func mediaMetadata(
+        from statement: OpaquePointer,
+        startingAt index: Int32,
+        messageType: Int?,
+        groupEventType: Int?
+    ) -> MediaMetadata? {
         let itemID = int64(statement, index)
         let localPath = string(statement, index + 1)
         let title = string(statement, index + 2)
         let fileSize = int64(statement, index + 3)
         let mediaURL = string(statement, index + 4)
+        let vCardName = string(statement, index + 5)
+        let vCardString = string(statement, index + 6)
+        let latitude = double(statement, index + 7)
+        let longitude = double(statement, index + 8)
 
-        guard itemID != nil || localPath != nil || title != nil || fileSize != nil || mediaURL != nil else {
+        guard itemID != nil || localPath != nil || title != nil || fileSize != nil || mediaURL != nil || vCardName != nil || vCardString != nil || latitude != nil || longitude != nil else {
             return nil
         }
 
         let resolution = resolveMediaPath(localPath)
         let fileName = resolution.fileName ?? fileName(from: mediaURL) ?? title
         let mimeType = inferMimeType(fileName: fileName, localPath: localPath, mediaURL: mediaURL)
-        let kind = inferMediaKind(mimeType: mimeType, fileName: fileName, localPath: localPath, mediaURL: mediaURL)
+        let kind = inferMediaKind(
+            input: MediaClassificationInput(
+                messageType: messageType,
+                groupEventType: groupEventType,
+                localPath: localPath,
+                title: title,
+                mediaURL: mediaURL,
+                vCardName: vCardName,
+                vCardString: vCardString,
+                latitude: latitude,
+                longitude: longitude
+            ),
+            mimeType: mimeType,
+            fileName: fileName
+        )
 
         return MediaMetadata(
             itemID: itemID,
@@ -450,11 +499,44 @@ final class WhatsAppDatabase {
     }
 
     private func inferMediaKind(
+        input: MediaClassificationInput,
         mimeType: String?,
-        fileName: String?,
-        localPath: String?,
-        mediaURL: String?
+        fileName: String?
     ) -> MediaAttachmentKind {
+        if input.messageType == 10 || input.messageType == 6 {
+            return .system
+        }
+        if input.messageType == 1 {
+            return .photo
+        }
+        if input.messageType == 2 {
+            return .video
+        }
+        if input.messageType == 3 {
+            return .audio
+        }
+        if input.messageType == 4 {
+            return .contact
+        }
+        if input.messageType == 5 {
+            return .location
+        }
+        if input.messageType == 15 {
+            return .sticker
+        }
+        if input.messageType == 7 {
+            return .linkPreview
+        }
+        if input.messageType == 8 {
+            return .document
+        }
+        if hasVCard(name: input.vCardName, string: input.vCardString) {
+            return .contact
+        }
+        if hasNonzeroLocation(latitude: input.latitude, longitude: input.longitude) {
+            return .location
+        }
+
         if let mimeType {
             if mimeType.hasPrefix("image/") {
                 return .photo
@@ -467,20 +549,38 @@ final class WhatsAppDatabase {
             }
         }
 
-        guard let fileExtension = fileExtension(fileName: fileName, localPath: localPath, mediaURL: mediaURL) else {
+        guard let fileExtension = fileExtension(fileName: fileName, localPath: input.localPath, mediaURL: input.mediaURL) else {
+            if input.messageType == 0 {
+                return .callOrSystem
+            }
             return .media
         }
 
         switch fileExtension.lowercased() {
         case "jpg", "jpeg", "png", "gif", "heic", "webp":
-            return .photo
+            return input.messageType == 15 ? .sticker : .photo
         case "mp4", "mov", "m4v":
             return .video
         case "aac", "caf", "m4a", "mp3", "ogg", "opus", "wav":
             return .audio
+        case "pdf", "doc", "docx", "xls", "xlsx", "ppt", "pptx", "txt", "rtf", "zip":
+            return .document
         default:
-            return .media
+            return input.messageType == 0 ? .callOrSystem : .media
         }
+    }
+
+    private func hasVCard(name: String?, string: String?) -> Bool {
+        [name, string].contains { value in
+            value?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
+        }
+    }
+
+    private func hasNonzeroLocation(latitude: Double?, longitude: Double?) -> Bool {
+        guard let latitude, let longitude else {
+            return false
+        }
+        return latitude != 0 || longitude != 0
     }
 
     private func fileExtension(fileName: String?, localPath: String?, mediaURL: String?) -> String? {
@@ -581,6 +681,13 @@ final class WhatsAppDatabase {
             return nil
         }
         return sqlite3_column_int64(statement, index)
+    }
+
+    private func double(_ statement: OpaquePointer, _ index: Int32) -> Double? {
+        guard sqlite3_column_type(statement, index) != SQLITE_NULL else {
+            return nil
+        }
+        return sqlite3_column_double(statement, index)
     }
 
     private func date(_ statement: OpaquePointer, _ index: Int32) -> Date? {

@@ -35,15 +35,15 @@ Not every archive has every SQLite sidecar. Media folder layout can vary by What
 The viewer uses fields needed for:
 
 - chat title;
-- contact JID or identifier fallback;
+- friendly contact or chat title fallback;
 - message count;
 - latest message date;
 - sender direction;
-- sender label;
+- sanitized sender label;
 - message text;
 - message date;
-- message type when available;
-- media local path, title, size, URL, and inferred attachment kind when available.
+- message and group-event type when available;
+- media local path, title, size, URL, vCard, location, and inferred attachment kind when available.
 
 ## Ordering and Pagination
 
@@ -53,6 +53,12 @@ Messages are displayed oldest-to-newest. The initial load fetches the latest 500
 - `Z_PK`
 
 Using the primary key as a tie-breaker keeps pagination stable when multiple messages have the same timestamp.
+
+The chat list uses the chat session's last-message pointer date when available,
+then falls back to the maximum `ZWAMESSAGE.ZMESSAGEDATE` for that chat and then a
+sanitized `ZWACHATSESSION.ZLASTMESSAGEDATE`. This approximates WhatsApp ordering
+but may differ where WhatsApp applies private ranking or filtering logic not yet
+mapped by this project.
 
 ## Media State
 

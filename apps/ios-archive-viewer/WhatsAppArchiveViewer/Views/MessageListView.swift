@@ -143,7 +143,7 @@ private struct MessageBubbleView: View {
             return "You"
         }
         if isGroupChat {
-            return friendlySenderName(message.pushName) ?? "Unknown sender"
+            return message.friendlySenderName ?? "Unknown sender"
         }
         return nil
     }
@@ -156,30 +156,6 @@ private struct MessageBubbleView: View {
             return "Message not supported yet"
         }
         return text
-    }
-
-    private func friendlySenderName(_ value: String?) -> String? {
-        guard let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines), !trimmed.isEmpty else {
-            return nil
-        }
-        guard !looksLikeRawIdentifier(trimmed) else {
-            return nil
-        }
-        return trimmed
-    }
-
-    private func looksLikeRawIdentifier(_ value: String) -> Bool {
-        if value.contains("@") {
-            return true
-        }
-        if value.range(of: #"^[+0-9 ()-]{6,}$"#, options: .regularExpression) != nil {
-            return true
-        }
-        if value.count >= 16,
-           value.range(of: #"^[A-Za-z0-9+/=_-]+$"#, options: .regularExpression) != nil {
-            return true
-        }
-        return false
     }
 
     private static let dateFormatter: DateFormatter = {

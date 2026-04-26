@@ -21,9 +21,10 @@ Build and run with full Xcode on an iOS simulator or device. Command Line Tools 
 - Opens SQLite with `SQLITE_OPEN_READONLY`.
 - Sets `PRAGMA query_only = ON`.
 - Loads chat sessions from `ZWACHATSESSION`.
+- Searches loaded chat titles in memory.
 - Loads messages for the selected chat from `ZWAMESSAGE`.
 - Discovers `ZWAMEDIAITEM` metadata when the table and columns are available.
-- Shows text messages and media placeholders.
+- Shows text messages and conservative media/system placeholders.
 - Checks whether referenced media files appear available under the selected archive root.
 - Avoids showing raw JIDs or internal sender identifiers in the normal message UI.
 
@@ -57,6 +58,14 @@ The app does not render photos, videos, audio, thumbnails, or binary media yet.
 
 The app does not load every message at once because large WhatsApp chats can contain many thousands of rows. Incremental loading keeps memory use and UI updates bounded while still allowing full-history reading. Scrolling upward loads older history as needed.
 
+### Current UI Policies
+
+- Chat search filters loaded chat titles only. It does not search message contents.
+- Raw JIDs and internal sender identifiers are hidden in the normal UI.
+- Group sender names use friendly names when the archive provides one; otherwise the UI shows "Unknown sender".
+- Message classification is conservative. Unknown mappings stay generic instead of guessing unsupported WhatsApp internals.
+- Chat sorting uses the chat's last-message pointer date when available, then falls back to the maximum message date and a sanitized session date. This may still differ from WhatsApp where the app uses private ranking logic that has not been mapped.
+
 ## Development Data
 
 For simulator development, a local development copy of `ChatStorage.sqlite` can be placed in the app container's Documents folder as:
@@ -78,6 +87,7 @@ The app also has an Open Archive action that can select either an extracted arch
 ## Testing Notes
 
 - Test with a large chat and confirm the latest 500 messages appear first.
+- Search for a known chat title, then clear search and confirm all chats return.
 - Scroll upward and confirm older rows load automatically near the top.
 - Confirm ordering remains oldest-to-newest.
 - Confirm sender direction and dates remain correct.

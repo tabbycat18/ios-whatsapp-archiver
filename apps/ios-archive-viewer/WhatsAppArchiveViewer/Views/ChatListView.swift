@@ -4,6 +4,17 @@ import UniformTypeIdentifiers
 struct ChatListView: View {
     @EnvironmentObject private var store: ArchiveStore
     @State private var isImporterPresented = false
+    @State private var searchText = ""
+
+    private var filteredChats: [ChatSummary] {
+        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !query.isEmpty else {
+            return store.chats
+        }
+        return store.chats.filter { chat in
+            chat.searchableTitle.localizedStandardContains(query)
+        }
+    }
 
     var body: some View {
         NavigationSplitView {
@@ -20,7 +31,7 @@ struct ChatListView: View {
                     }
                 } else {
                     List(selection: $store.selectedChat) {
-                        ForEach(store.chats) { chat in
+                        ForEach(filteredChats) { chat in
                             NavigationLink(value: chat) {
                                 ChatRowView(chat: chat)
                             }
@@ -29,6 +40,7 @@ struct ChatListView: View {
                 }
             }
             .navigationTitle(store.archiveName)
+            .searchable(text: $searchText, placement: .sidebar, prompt: "Search chats")
             .toolbar {
                 ToolbarItem(placement: .primaryAction) {
                     Button {
