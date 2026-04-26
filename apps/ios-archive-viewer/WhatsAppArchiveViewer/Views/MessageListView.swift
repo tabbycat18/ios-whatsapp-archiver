@@ -324,18 +324,26 @@ private struct PhotoAttachmentView: View {
     let media: MediaMetadata
     @State private var image: CGImage?
     @State private var didFail = false
+    @State private var previewItem: PhotoPreviewItem?
 
     var body: some View {
         Group {
             if !media.isFileAvailableInArchive || media.fileURL == nil {
                 AttachmentPlaceholderView(title: "Photo unavailable", systemImage: "photo")
             } else if let image {
-                Image(decorative: image, scale: 1, orientation: .up)
-                    .resizable()
-                    .scaledToFit()
-                    .frame(maxWidth: 260, maxHeight: 320)
-                    .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-                    .accessibilityLabel("Photo attachment")
+                Button {
+                    if let url = media.fileURL {
+                        previewItem = PhotoPreviewItem(url: url)
+                    }
+                } label: {
+                    Image(decorative: image, scale: 1, orientation: .up)
+                        .resizable()
+                        .scaledToFit()
+                        .frame(maxWidth: 260, maxHeight: 320)
+                        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Open photo attachment")
             } else if didFail {
                 AttachmentPlaceholderView(title: "Photo unavailable", systemImage: "photo")
             } else {
@@ -344,6 +352,9 @@ private struct PhotoAttachmentView: View {
         }
         .task(id: media.fileURL) {
             await loadImageIfNeeded()
+        }
+        .sheet(item: $previewItem) { item in
+            PhotoPreviewView(url: item.url)
         }
     }
 
@@ -354,6 +365,71 @@ private struct PhotoAttachmentView: View {
 
         let loadedImage = await Task.detached(priority: .utility) {
             downsampleImage(at: url, maxPixelSize: 900)
+        }.value
+
+        if let loadedImage {
+            image = loadedImage
+        } else {
+            didFail = true
+        }
+    }
+}
+
+private struct PhotoPreviewItem: Identifiable {
+    let id = UUID()
+    let url: URL
+}
+
+private struct PhotoPreviewView: View {
+    let url: URL
+    @Environment(\.dismiss) private var dismiss
+    @State private var image: CGImage?
+    @State private var didFail = false
+
+    var body: some View {
+        ZStack(alignment: .topTrailing) {
+            Color.black
+                .ignoresSafeArea()
+
+            Group {
+                if let image {
+                    Image(decorative: image, scale: 1, orientation: .up)
+                        .resizable()
+                        .scaledToFit()
+                        .padding()
+                        .accessibilityLabel("Photo attachment")
+                } else if didFail {
+                    AttachmentPlaceholderView(title: "Photo unavailable", systemImage: "photo")
+                        .padding()
+                } else {
+                    ProgressView()
+                        .tint(.white)
+                }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+            Button {
+                dismiss()
+            } label: {
+                Image(systemName: "xmark.circle.fill")
+                    .font(.system(size: 32))
+                    .foregroundStyle(.white, .black.opacity(0.35))
+                    .padding()
+            }
+            .accessibilityLabel("Close photo")
+        }
+        .task {
+            await loadPreviewImage()
+        }
+    }
+
+    private func loadPreviewImage() async {
+        guard image == nil, !didFail else {
+            return
+        }
+
+        let loadedImage = await Task.detached(priority: .utility) {
+            downsampleImage(at: url, maxPixelSize: 2400)
         }.value
 
         if let loadedImage {
