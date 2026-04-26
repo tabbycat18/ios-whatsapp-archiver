@@ -90,16 +90,16 @@ Messages are displayed oldest-to-newest. The initial load fetches the latest 500
 
 Using the primary key as a tie-breaker keeps pagination stable when multiple messages have the same timestamp.
 
-The chat list prefers the latest relevant user-visible message date for each
-chat. Relevant rows are currently text rows, media rows, and likely call rows.
+The chat list uses the latest relevant user-visible direct message date for
+normal chats. Relevant rows are currently text rows, media rows, and likely call
+rows.
 Known system-notice message types are excluded from that primary latest date so
 notices such as security-code changes do not make a chat appear newer than the
 last real conversation row. The app does not use the raw chat-session
 `ZLASTMESSAGE` pointer as the normal-chat sort date when that pointer references
-a system/security notice. If no relevant message date is available, visible
-uncertain archive entries may fall back to archive activity dates, but
-system-only and tiny no-visible-message fragments are hidden from normal
-browsing.
+a system/security notice. Sessions with no relevant direct-visible rows,
+including system-only and other technical archive fragments, are hidden from
+normal browsing.
 
 This approximates WhatsApp ordering but may differ where WhatsApp applies
 private ranking or filtering logic not yet mapped by this project.
@@ -119,9 +119,8 @@ after strong-identity merging:
 - sessions with user-visible text, media, or call rows remain visible as
   separate conversations;
 - duplicate/system-only sessions are treated as system-only archive fragments;
-- tiny sessions with no clear user-visible rows are treated as archive
+- sessions with no clear user-visible rows are treated as archive
   fragments;
-- uncertain larger entries remain visible with a cautious archive-entry label.
 
 Hidden fragments are omitted from the default chat list and title search. They
 are not merged into another chat and their rows are not deleted; they are only

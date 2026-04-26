@@ -19,7 +19,9 @@ struct ChatListView: View {
     }
 
     private var filteredNormalChats: [ChatSummary] {
-        filteredChats.filter { $0.classification != .statusStoryFragment }
+        filteredChats.filter { chat in
+            chat.classification == .normalConversation || chat.classification == .separateConversation
+        }
     }
 
     private var filteredStatusStoryChats: [ChatSummary] {
@@ -218,7 +220,7 @@ private struct ArchiveLibraryView: View {
                     .listRowBackground(Color.clear)
                 }
             }
-            .navigationTitle("WhatsApp Archiver")
+            .navigationTitle("WA Archiver")
             .toolbar {
                 ToolbarItem(placement: .primaryAction) {
                     Button {
@@ -645,7 +647,7 @@ private struct ArchiveInstructionsView: View {
                         "Make an encrypted local iPhone backup on your Mac.",
                         "Run the extractor script on the Mac.",
                         "Copy the extracted archive to your iPhone.",
-                        "Open WhatsApp Archiver and add WhatsApp or WhatsApp Business.",
+                        "Open WA Archiver and add WhatsApp or WhatsApp Business.",
                         "Browse chats and media locally."
                     ]
                 )

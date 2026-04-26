@@ -12,7 +12,7 @@
 - Media metadata and path discovery merged on `main`.
 - Full-history pagination branch with latest 500 messages initially and older batches loaded on demand.
 - Chat title search, compact message UI, conservative system/call labels, and safer group sender fallbacks on the pagination branch.
-- Duplicate-title archive entries are classified so real separate conversations stay visible while system-only or tiny no-visible-message fragments are hidden from normal browsing.
+- Duplicate-title archive entries are classified so real separate conversations stay visible while system-only or no-visible-message fragments are hidden from normal browsing.
 - First chat media rendering path with inline photos, tap-to-play video previews, and simple audio playback.
 - Chat wallpaper rendering from generic archive-root `current_wallpaper.jpg` and `current_wallpaper_dark.jpg` files.
 - Conservative WhatsApp Status/Stories detection from `status@broadcast` schema/session evidence, with status/story-only fragments separated from normal chats.
