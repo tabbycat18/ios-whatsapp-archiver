@@ -1019,19 +1019,23 @@ private struct MessageBubbleView: View {
             }
 
             VStack(alignment: message.isFromMe ? .trailing : .leading, spacing: 2) {
-                if let senderLabel {
-                    Text(senderLabel)
-                        .font(.caption)
-                        .foregroundStyle(bubblePalette.metadataText)
-                }
+                VStack(alignment: message.isFromMe ? .trailing : .leading, spacing: 5) {
+                    if let senderLabel {
+                        Text(senderLabel)
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(senderNameColor)
+                            .lineLimit(1)
+                            .textSelection(.enabled)
+                    }
 
-                MessageContentView(message: message)
-                    .foregroundStyle(bubblePalette.primaryText)
-                    .tint(bubblePalette.linkText)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 8)
-                    .background(bubblePalette.background, in: bubbleShape)
-                    .textSelection(.enabled)
+                    MessageContentView(message: message)
+                        .foregroundStyle(bubblePalette.primaryText)
+                        .tint(bubblePalette.linkText)
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+                .background(bubblePalette.background, in: bubbleShape)
+                .textSelection(.enabled)
 
                 if let messageDate = message.messageDate {
                     Text(Self.dateFormatter.string(from: messageDate))
@@ -1053,7 +1057,7 @@ private struct MessageBubbleView: View {
     }
 
     private var senderLabel: String? {
-        if message.isFromMe {
+        if message.isFromMe, isGroupChat {
             return "You"
         }
         if isGroupChat {
@@ -1063,6 +1067,15 @@ private struct MessageBubbleView: View {
             return message.safeSenderPhoneNumber ?? "Unknown sender"
         }
         return nil
+    }
+
+    private var senderNameColor: Color {
+        if message.isFromMe {
+            return bubblePalette.sentSenderNameText
+        }
+
+        let seed = message.senderJID ?? message.friendlySenderName ?? message.safeSenderPhoneNumber ?? "unknown"
+        return bubblePalette.groupSenderNameText(seed: seed)
     }
 
     private var bubblePalette: ChatBubblePalette {
@@ -1115,8 +1128,41 @@ private struct ChatBubblePalette {
         colorScheme == .dark ? Color.white.opacity(0.62) : Color.secondary
     }
 
+    var sentSenderNameText: Color {
+        colorScheme == .dark
+            ? Color(red: 0.77, green: 1.00, blue: 0.76)
+            : Color(red: 0.10, green: 0.44, blue: 0.15)
+    }
+
     var linkText: Color {
         colorScheme == .dark ? Color(red: 0.49, green: 0.79, blue: 1.00) : Color.accentColor
+    }
+
+    func groupSenderNameText(seed: String) -> Color {
+        let palette: [Color]
+        if colorScheme == .dark {
+            palette = [
+                Color(red: 0.49, green: 0.79, blue: 1.00),
+                Color(red: 1.00, green: 0.74, blue: 0.42),
+                Color(red: 0.96, green: 0.62, blue: 0.84),
+                Color(red: 0.59, green: 0.88, blue: 0.70),
+                Color(red: 0.82, green: 0.73, blue: 1.00)
+            ]
+        } else {
+            palette = [
+                Color(red: 0.02, green: 0.37, blue: 0.73),
+                Color(red: 0.64, green: 0.25, blue: 0.00),
+                Color(red: 0.62, green: 0.18, blue: 0.47),
+                Color(red: 0.08, green: 0.42, blue: 0.25),
+                Color(red: 0.42, green: 0.28, blue: 0.75)
+            ]
+        }
+
+        let hash = seed.unicodeScalars.reduce(UInt64(5381)) { partialHash, scalar in
+            ((partialHash << 5) &+ partialHash) &+ UInt64(scalar.value)
+        }
+        let index = Int(hash % UInt64(palette.count))
+        return palette[index]
     }
 
     static func attachmentBackground(for colorScheme: ColorScheme) -> Color {
