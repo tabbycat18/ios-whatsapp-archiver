@@ -155,11 +155,17 @@ private struct ChatWallpaperBackgroundView: View {
 @MainActor
 private final class AudioPlaybackController: ObservableObject {
     @Published private(set) var playingMessageID: Int64?
+    @Published private(set) var currentTimeSeconds: Double = 0
+    @Published private(set) var durationSeconds: Double?
 
     private var player: AVPlayer?
     private var endObserver: NSObjectProtocol?
+    private var timeObserver: Any?
 
     deinit {
+        if let player, let timeObserver {
+            player.removeTimeObserver(timeObserver)
+        }
         if let endObserver {
             NotificationCenter.default.removeObserver(endObserver)
         }
@@ -181,6 +187,8 @@ private final class AudioPlaybackController: ObservableObject {
         let player = AVPlayer(playerItem: item)
         self.player = player
         playingMessageID = messageID
+        durationSeconds = nil
+        currentTimeSeconds = 0
         endObserver = NotificationCenter.default.addObserver(
             forName: .AVPlayerItemDidPlayToEndTime,
             object: item,
@@ -190,16 +198,48 @@ private final class AudioPlaybackController: ObservableObject {
                 self?.stop()
             }
         }
+        timeObserver = player.addPeriodicTimeObserver(
+            forInterval: CMTime(seconds: 0.25, preferredTimescale: 600),
+            queue: .main
+        ) { [weak self, weak item] time in
+            Task { @MainActor in
+                self?.updateProgress(currentTime: time.seconds, item: item)
+            }
+        }
         player.play()
     }
 
+    func seek(messageID: Int64, to seconds: Double) {
+        guard playingMessageID == messageID, let player else { return }
+        let clampedSeconds = max(0, min(seconds, durationSeconds ?? seconds))
+        currentTimeSeconds = clampedSeconds
+        player.seek(to: CMTime(seconds: clampedSeconds, preferredTimescale: 600))
+    }
+
     func stop() {
+        if let player, let timeObserver {
+            player.removeTimeObserver(timeObserver)
+            self.timeObserver = nil
+        }
         player?.pause()
         player = nil
         playingMessageID = nil
+        currentTimeSeconds = 0
+        durationSeconds = nil
         if let endObserver {
             NotificationCenter.default.removeObserver(endObserver)
             self.endObserver = nil
+        }
+    }
+
+    private func updateProgress(currentTime: Double, item: AVPlayerItem?) {
+        guard currentTime.isFinite else { return }
+        currentTimeSeconds = max(0, currentTime)
+
+        guard let item else { return }
+        let duration = item.duration.seconds
+        if duration.isFinite, duration > 0 {
+            durationSeconds = duration
         }
     }
 }
@@ -558,45 +598,97 @@ private struct AudioAttachmentView: View {
     let messageID: Int64
     let media: MediaMetadata
     @EnvironmentObject private var audioPlayback: AudioPlaybackController
+    @State private var scrubberValue: Double = 0
+    @State private var isScrubbing = false
 
     var body: some View {
         if !media.isFileAvailableInArchive || media.fileURL == nil {
             AttachmentPlaceholderView(title: "Audio unavailable", systemImage: "waveform")
         } else {
-            Button {
-                if let url = media.fileURL {
-                    audioPlayback.toggle(messageID: messageID, url: url)
-                }
-            } label: {
-                HStack(spacing: 10) {
-                    Image(systemName: audioPlayback.isPlaying(messageID) ? "pause.circle.fill" : "play.circle.fill")
-                        .font(.title2)
+            VStack(alignment: .leading, spacing: 6) {
+                Button {
+                    if let url = media.fileURL {
+                        audioPlayback.toggle(messageID: messageID, url: url)
+                    }
+                } label: {
+                    HStack(spacing: 10) {
+                        Image(systemName: audioPlayback.isPlaying(messageID) ? "pause.circle.fill" : "play.circle.fill")
+                            .font(.title2)
 
-                    VStack(alignment: .leading, spacing: 2) {
                         Text("Audio")
                             .font(.subheadline)
-                        if let durationText {
-                            Text(durationText)
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-                    }
 
-                    Spacer(minLength: 0)
+                        Spacer(minLength: 0)
+                    }
+                    .contentShape(Rectangle())
                 }
-                .frame(width: 220)
-                .contentShape(Rectangle())
+                .buttonStyle(.plain)
+                .accessibilityLabel("Audio attachment")
+
+                Slider(
+                    value: Binding(
+                        get: { scrubberDisplayValue },
+                        set: { scrubberValue = $0 }
+                    ),
+                    in: 0...max(scrubberDuration, 1),
+                    onEditingChanged: handleScrubEditingChanged
+                )
+
+                HStack {
+                    Text(Self.timeFormatter(currentTimeSeconds))
+                    Spacer(minLength: 0)
+                    Text(Self.timeFormatter(scrubberDuration))
+                }
+                .font(.caption2)
+                .foregroundStyle(.secondary)
             }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Audio attachment")
+            .frame(width: 230)
+            .onChange(of: audioPlayback.currentTimeSeconds) { _, newValue in
+                guard audioPlayback.isPlaying(messageID), !isScrubbing else { return }
+                scrubberValue = newValue
+            }
+            .onChange(of: audioPlayback.playingMessageID) { _, playingMessageID in
+                guard playingMessageID != messageID else { return }
+                scrubberValue = 0
+                isScrubbing = false
+            }
         }
     }
 
-    private var durationText: String? {
-        guard let durationSeconds = media.durationSeconds, durationSeconds > 0 else {
-            return nil
+    private var currentTimeSeconds: Double {
+        guard audioPlayback.isPlaying(messageID) else {
+            return 0
         }
-        let seconds = Int(durationSeconds.rounded())
+        return audioPlayback.currentTimeSeconds
+    }
+
+    private var scrubberDuration: Double {
+        audioPlayback.isPlaying(messageID)
+            ? (audioPlayback.durationSeconds ?? media.durationSeconds ?? 0)
+            : (media.durationSeconds ?? 0)
+    }
+
+    private var scrubberDisplayValue: Double {
+        if isScrubbing {
+            return scrubberValue
+        }
+        return audioPlayback.isPlaying(messageID) ? audioPlayback.currentTimeSeconds : 0
+    }
+
+    private func handleScrubEditingChanged(_ editing: Bool) {
+        isScrubbing = editing
+        guard !editing else { return }
+        if let url = media.fileURL, !audioPlayback.isPlaying(messageID) {
+            audioPlayback.toggle(messageID: messageID, url: url)
+        }
+        audioPlayback.seek(messageID: messageID, to: scrubberValue)
+    }
+
+    private static func timeFormatter(_ value: Double) -> String {
+        guard value.isFinite, value > 0 else {
+            return "0:00"
+        }
+        let seconds = Int(value.rounded())
         return String(format: "%d:%02d", seconds / 60, seconds % 60)
     }
 }
