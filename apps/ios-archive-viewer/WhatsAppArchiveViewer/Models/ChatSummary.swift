@@ -14,6 +14,7 @@ struct ChatSummary: Identifiable, Hashable {
     let sessionIDs: [Int64]
     let contactJID: String?
     let contactIdentifier: String?
+    let profilePhotoIdentifiers: [String]
     let partnerName: String?
     let title: String
     let detailText: String
@@ -21,7 +22,7 @@ struct ChatSummary: Identifiable, Hashable {
     let latestMessageDate: Date?
     let searchableTitle: String
     let classification: ChatSessionClassification
-    let profilePhotoURL: URL?
+    var profilePhotoURL: URL?
 
     var isGroupChat: Bool {
         contactJID?.contains("@g.us") == true

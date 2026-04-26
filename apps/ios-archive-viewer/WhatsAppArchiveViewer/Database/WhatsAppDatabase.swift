@@ -46,6 +46,7 @@ private struct ChatSummaryRow {
     let identityKey: String
     let contactJID: String?
     let contactIdentifier: String?
+    let profilePhotoIdentifiers: [String]
     let partnerName: String?
     let title: String
     let profilePhotoURL: URL?
@@ -61,6 +62,7 @@ private struct ChatSummaryRow {
 private struct ContactIdentity {
     let key: String
     let displayName: String?
+    let profilePhotoIdentifiers: [String]
 }
 
 private struct ChatActivityMetrics {
@@ -83,6 +85,7 @@ private struct ChatSummaryDraft {
     let sessionIDs: [Int64]
     let contactJID: String?
     let contactIdentifier: String?
+    let profilePhotoIdentifiers: [String]
     let partnerName: String?
     let title: String
     let profilePhotoURL: URL?
@@ -106,8 +109,12 @@ private final class ProfilePhotoResolver {
         self.fileManager = fileManager
     }
 
-    func profilePhotoURL(contactJID: String?, contactIdentifier: String?) -> URL? {
-        let candidateFileNames = candidateFileNames(contactJID: contactJID, contactIdentifier: contactIdentifier)
+    func profilePhotoURL(contactJID: String?, contactIdentifier: String?, additionalIdentifiers: [String] = []) -> URL? {
+        let candidateFileNames = candidateFileNames(
+            contactJID: contactJID,
+            contactIdentifier: contactIdentifier,
+            additionalIdentifiers: additionalIdentifiers
+        )
         guard !candidateFileNames.isEmpty else { return nil }
 
         let cacheKey = candidateFileNames.joined(separator: "|")
@@ -225,7 +232,7 @@ private final class ProfilePhotoResolver {
         return true
     }
 
-    private func candidateFileNames(contactJID: String?, contactIdentifier: String?) -> [String] {
+    private func candidateFileNames(contactJID: String?, contactIdentifier: String?, additionalIdentifiers: [String]) -> [String] {
         var names: [String] = []
 
         if let jid = contactJID?.trimmingCharacters(in: .whitespacesAndNewlines), !jid.isEmpty {
@@ -249,6 +256,19 @@ private final class ProfilePhotoResolver {
             let identifierDigits = identifier.filter(\.isNumber)
             if identifierDigits.count >= 7 {
                 names.append(String(identifierDigits))
+            }
+        }
+
+        for additionalIdentifier in additionalIdentifiers {
+            let trimmedIdentifier = additionalIdentifier.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmedIdentifier.isEmpty else { continue }
+            names.append(trimmedIdentifier)
+            names.append(fileSystemSafeToken(trimmedIdentifier))
+            names.append(normalizedToken(trimmedIdentifier))
+            let identifierDigits = trimmedIdentifier.filter(\.isNumber)
+            if identifierDigits.count >= 7 {
+                names.append(String(identifierDigits))
+                names.append("\(identifierDigits)@s.whatsapp.net")
             }
         }
 
@@ -371,6 +391,16 @@ private final class ContactsV2Resolver {
         var candidatesByJID: [String: [ContactIdentity]] = [:]
         var stepResult = sqlite3_step(statement)
         while stepResult == SQLITE_ROW {
+            let profilePhotoIdentifiers = [
+                string(statement, 1),
+                string(statement, 2),
+                string(statement, 3),
+                string(statement, 4),
+                string(statement, 5)
+            ].compactMap { value -> String? in
+                let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines)
+                return trimmed?.isEmpty == false ? trimmed : nil
+            }
             let identity = ContactIdentity(
                 key: "contactsV2:\(sqlite3_column_int64(statement, 0))",
                 displayName: displayName(
@@ -380,16 +410,11 @@ private final class ContactsV2Resolver {
                     businessName: string(statement, 9),
                     highlightedName: string(statement, 10),
                     username: string(statement, 11)
-                )
+                ),
+                profilePhotoIdentifiers: profilePhotoIdentifiers
             )
 
-            for jid in [
-                string(statement, 1),
-                string(statement, 2),
-                string(statement, 3),
-                string(statement, 4),
-                string(statement, 5)
-            ].compactMap(normalizedJID) {
+            for jid in profilePhotoIdentifiers.compactMap(normalizedJID) {
                 candidatesByJID[jid, default: []].append(identity)
             }
             stepResult = sqlite3_step(statement)
@@ -543,7 +568,6 @@ final class WhatsAppDatabase {
     private var mediaSchema: MediaSchema?
     private var canJoinProfilePushNames = false
     private var contactsResolver: ContactsV2Resolver?
-    private lazy var profilePhotoResolver = ProfilePhotoResolver(archiveRootURL: archiveRootURL)
 
     init(databaseURL: URL, archiveRootURL: URL? = nil, securityScopedURL: URL? = nil) throws {
         self.databaseURL = databaseURL
@@ -596,11 +620,6 @@ final class WhatsAppDatabase {
     }
 
     func fetchChats() throws -> [ChatSummary] {
-        let userVisibleMessageSQL = userVisibleMessageSQL(messageAlias: "m", chatAlias: "c")
-        let mediaEvidenceSQL = mediaEvidenceSQL(alias: "m")
-        let systemMessageSQL = systemMessageSQL(alias: "m")
-        let statusStoryMessageSQL = statusStoryMessageSQL(messageAlias: "m", chatAlias: "c")
-
         let sql = """
             SELECT
                 c.Z_PK,
@@ -614,28 +633,10 @@ final class WhatsAppDatabase {
                     THEN c.ZLASTMESSAGEDATE
                     ELSE NULL
                 END AS sanitized_last_message_date,
-                COUNT(m.Z_PK) AS message_count,
-                SUM(CASE WHEN \(userVisibleMessageSQL) THEN 1 ELSE 0 END) AS user_visible_message_count,
-                SUM(CASE WHEN \(textMessageSQL(alias: "m")) THEN 1 ELSE 0 END) AS text_message_count,
-                SUM(CASE WHEN \(mediaEvidenceSQL) THEN 1 ELSE 0 END) AS media_message_count,
-                SUM(CASE WHEN \(callMessageSQL(alias: "m")) THEN 1 ELSE 0 END) AS call_message_count,
-                SUM(CASE WHEN \(systemMessageSQL) THEN 1 ELSE 0 END) AS system_message_count,
-                SUM(CASE WHEN \(statusStoryMessageSQL) THEN 1 ELSE 0 END) AS status_story_message_count,
-                MAX(CASE WHEN \(userVisibleMessageSQL) THEN m.ZMESSAGEDATE ELSE NULL END) AS latest_user_visible_message_date,
-                MAX(m.ZMESSAGEDATE) AS latest_any_message_date,
                 lm.ZMESSAGEDATE AS last_message_pointer_date
             FROM ZWACHATSESSION c
-            LEFT JOIN ZWAMESSAGE m ON m.ZCHATSESSION = c.Z_PK
             LEFT JOIN ZWAMESSAGE lm ON lm.Z_PK = c.ZLASTMESSAGE
-            GROUP BY
-                c.Z_PK,
-                c.ZCONTACTJID,
-                c.ZCONTACTIDENTIFIER,
-                c.ZPARTNERNAME,
-                c.ZLASTMESSAGEDATE,
-                c.ZMESSAGECOUNTER,
-                lm.ZMESSAGEDATE
-            ORDER BY COALESCE(latest_user_visible_message_date, last_message_pointer_date, latest_any_message_date, sanitized_last_message_date, 0) DESC, c.Z_PK ASC
+            ORDER BY COALESCE(last_message_pointer_date, sanitized_last_message_date, 0) DESC, c.Z_PK ASC
             """
 
         let statement = try prepare(sql)
@@ -653,17 +654,11 @@ final class WhatsAppDatabase {
                 ?? DisplayNameSanitizer.friendlyName(partnerName)
                 ?? DisplayNameSanitizer.friendlyName(contactIdentifier)
                 ?? (isGroupJID(contactJID) ? "Group chat" : "Unknown chat")
-            let messageCount = Int(sqlite3_column_int64(statement, 7))
-            let statusStoryMessageCount = Int(sqlite3_column_int64(statement, 13))
-            let profilePhotoURL = statusStoryMessageCount == messageCount && messageCount > 0
-                ? nil
-                : profilePhotoResolver.profilePhotoURL(
-                    contactJID: contactJID,
-                    contactIdentifier: contactIdentifier
-                )
-            let latestUserVisibleMessageDate = date(statement, 14)
-            let latestAnyMessageDate = date(statement, 15)
-            let fallbackMessageDate = latestUserVisibleMessageDate ?? date(statement, 16) ?? latestAnyMessageDate ?? date(statement, 6)
+            let messageCount = max(Int(sqlite3_column_int64(statement, 5)), 0)
+            let isStatusStorySession = contactJID?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == "status@broadcast"
+            let statusStoryMessageCount = isStatusStorySession ? max(messageCount, 1) : 0
+            let latestAnyMessageDate = date(statement, 7)
+            let fallbackMessageDate = latestAnyMessageDate ?? date(statement, 6)
 
             rows.append(
                 ChatSummaryRow(
@@ -673,14 +668,15 @@ final class WhatsAppDatabase {
                         : chatIdentityKey(id: id, contactJID: contactJID, contactIdentity: contactIdentity),
                     contactJID: contactJID,
                     contactIdentifier: contactIdentifier,
+                    profilePhotoIdentifiers: contactIdentity?.profilePhotoIdentifiers ?? [],
                     partnerName: partnerName,
                     title: title,
-                    profilePhotoURL: profilePhotoURL,
-                    messageCount: messageCount,
-                    userVisibleMessageCount: Int(sqlite3_column_int64(statement, 8)),
-                    systemMessageCount: Int(sqlite3_column_int64(statement, 12)),
+                    profilePhotoURL: nil,
+                    messageCount: isStatusStorySession ? max(messageCount, 1) : messageCount,
+                    userVisibleMessageCount: isStatusStorySession ? 0 : messageCount,
+                    systemMessageCount: 0,
                     statusStoryMessageCount: statusStoryMessageCount,
-                    latestUserVisibleMessageDate: latestUserVisibleMessageDate,
+                    latestUserVisibleMessageDate: isStatusStorySession ? nil : latestAnyMessageDate,
                     latestAnyMessageDate: latestAnyMessageDate,
                     fallbackMessageDate: fallbackMessageDate
                 )
@@ -690,6 +686,26 @@ final class WhatsAppDatabase {
 
         try throwIfStatementFailed(stepResult)
         return mergedChatSummaries(from: rows)
+    }
+
+    static func resolveProfilePhotoURLs(for chats: [ChatSummary], archiveRootURL: URL) -> [Int64: URL] {
+        let resolver = ProfilePhotoResolver(archiveRootURL: archiveRootURL)
+        var urlsByChatID: [Int64: URL] = [:]
+
+        for chat in chats where chat.classification != .statusStoryFragment {
+            if Task.isCancelled {
+                break
+            }
+            if let profilePhotoURL = resolver.profilePhotoURL(
+                contactJID: chat.contactJID,
+                contactIdentifier: chat.contactIdentifier,
+                additionalIdentifiers: chat.profilePhotoIdentifiers
+            ) {
+                urlsByChatID[chat.id] = profilePhotoURL
+            }
+        }
+
+        return urlsByChatID
     }
 
     private func chatIdentityKey(id: Int64, contactJID: String?, contactIdentity: ContactIdentity?) -> String {
@@ -1197,6 +1213,7 @@ final class WhatsAppDatabase {
                 sessionIDs: sessionIDs,
                 contactJID: primary.contactJID,
                 contactIdentifier: primary.contactIdentifier,
+                profilePhotoIdentifiers: Array(Set(sortedGroup.flatMap(\.profilePhotoIdentifiers))).sorted(),
                 partnerName: primary.partnerName,
                 title: statusStoryMessageCount == messageCount && messageCount > 0 ? "Stories" : primary.title,
                 profilePhotoURL: statusStoryMessageCount == messageCount && messageCount > 0
@@ -1241,6 +1258,7 @@ final class WhatsAppDatabase {
                 sessionIDs: draft.sessionIDs,
                 contactJID: draft.contactJID,
                 contactIdentifier: draft.contactIdentifier,
+                profilePhotoIdentifiers: draft.profilePhotoIdentifiers,
                 partnerName: draft.partnerName,
                 title: draft.title,
                 detailText: detailText(for: draft, classification: classification),

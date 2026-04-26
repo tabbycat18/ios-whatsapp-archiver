@@ -271,6 +271,7 @@ final class ArchiveStore: ObservableObject {
     private let libraryStore = ArchiveLibraryStore()
     private var database: WhatsAppDatabase?
     private var archiveAccess: ArchiveAccess?
+    private var profilePhotoLoadTask: Task<Void, Never>?
 
     init() {
         let loadedArchives = libraryStore.load().sorted(by: Self.archiveSort)
@@ -501,6 +502,8 @@ final class ArchiveStore: ObservableObject {
     }
 
     func closeArchive() {
+        profilePhotoLoadTask?.cancel()
+        profilePhotoLoadTask = nil
         database = nil
         archiveAccess = nil
         currentArchiveID = nil
@@ -622,6 +625,7 @@ final class ArchiveStore: ObservableObject {
             archiveName = savedArchive.displayName
             wallpaperURL = Self.wallpaperURL(in: access.archiveRootURL)
             errorMessage = nil
+            loadProfilePhotos(for: loadedChats, archiveID: savedArchive.id, archiveRootURL: access.archiveRootURL)
 
             savedArchive.lastOpenedAt = Date()
             savedArchive.chatCount = loadedChats.count
@@ -639,6 +643,35 @@ final class ArchiveStore: ObservableObject {
             archiveName = "No Archive"
             wallpaperURL = nil
             errorMessage = error.localizedDescription
+        }
+    }
+
+    private func loadProfilePhotos(for loadedChats: [ChatSummary], archiveID: UUID, archiveRootURL: URL) {
+        profilePhotoLoadTask?.cancel()
+        profilePhotoLoadTask = Task.detached(priority: .utility) { [weak self, loadedChats, archiveRootURL] in
+            let profilePhotoURLs = WhatsAppDatabase.resolveProfilePhotoURLs(
+                for: loadedChats,
+                archiveRootURL: archiveRootURL
+            )
+            guard !Task.isCancelled, !profilePhotoURLs.isEmpty else { return }
+
+            await MainActor.run { [weak self] in
+                guard let self, self.currentArchiveID == archiveID else { return }
+                self.chats = self.chats.map { chat in
+                    var updatedChat = chat
+                    if let profilePhotoURL = profilePhotoURLs[chat.id] {
+                        updatedChat.profilePhotoURL = profilePhotoURL
+                    }
+                    return updatedChat
+                }
+
+                if let selectedChat = self.selectedChat,
+                   let profilePhotoURL = profilePhotoURLs[selectedChat.id] {
+                    var updatedSelectedChat = selectedChat
+                    updatedSelectedChat.profilePhotoURL = profilePhotoURL
+                    self.selectedChat = updatedSelectedChat
+                }
+            }
         }
     }
 
