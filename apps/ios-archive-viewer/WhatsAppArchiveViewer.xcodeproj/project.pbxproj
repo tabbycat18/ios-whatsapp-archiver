@@ -14,6 +14,7 @@
 		6D3F20132C10000100A1B001 /* ChatListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6D3F20122C10000100A1B001 /* ChatListView.swift */; };
 		6D3F20152C10000100A1B001 /* MessageListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6D3F20142C10000100A1B001 /* MessageListView.swift */; };
 		6D3F20172C10000100A1B001 /* libsqlite3.tbd in Frameworks */ = {isa = PBXBuildFile; fileRef = 6D3F20162C10000100A1B001 /* libsqlite3.tbd */; };
+		6D3F20222C10000100A1B001 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 6D3F20212C10000100A1B001 /* Assets.xcassets */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -25,6 +26,7 @@
 		6D3F20122C10000100A1B001 /* ChatListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatListView.swift; sourceTree = "<group>"; };
 		6D3F20142C10000100A1B001 /* MessageListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MessageListView.swift; sourceTree = "<group>"; };
 		6D3F20162C10000100A1B001 /* libsqlite3.tbd */ = {isa = PBXFileReference; lastKnownFileType = "sourcecode.text-based-dylib-definition"; name = libsqlite3.tbd; path = usr/lib/libsqlite3.tbd; sourceTree = SDKROOT; };
+		6D3F20212C10000100A1B001 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -60,6 +62,7 @@
 			isa = PBXGroup;
 			children = (
 				6D3F200A2C10000100A1B001 /* WhatsAppArchiveApp.swift */,
+				6D3F20212C10000100A1B001 /* Assets.xcassets */,
 				6D3F20092C10000100A1B001 /* Models */,
 				6D3F20192C10000100A1B001 /* Database */,
 				6D3F201A2C10000100A1B001 /* Views */,
@@ -110,6 +113,7 @@
 			buildPhases = (
 				6D3F20032C10000100A1B001 /* Sources */,
 				6D3F20042C10000100A1B001 /* Frameworks */,
+				6D3F20232C10000100A1B001 /* Resources */,
 			);
 			buildRules = (
 			);
@@ -152,6 +156,17 @@
 			);
 		};
 /* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		6D3F20232C10000100A1B001 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				6D3F20222C10000100A1B001 /* Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
 		6D3F20032C10000100A1B001 /* Sources */ = {
@@ -289,6 +304,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_ASSET_PATHS = "";
@@ -317,6 +333,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_ASSET_PATHS = "";
