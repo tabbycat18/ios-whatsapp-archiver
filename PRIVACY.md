@@ -5,6 +5,11 @@ ios-whatsapp-archiver is designed for local, read-only inspection of an iPhone W
 - No cloud upload is required.
 - No server is included.
 - The SwiftUI viewer opens `ChatStorage.sqlite` read-only and sets `PRAGMA query_only = ON`.
+- iPhone Contacts access is optional. If enabled by the user, Contacts are read
+  locally and used only to match saved display names to phone-based WhatsApp
+  identifiers. Contacts are not uploaded and the full contact list is not
+  persisted.
+- The app continues to work when Contacts permission is denied or restricted.
 - Extraction and export tools run on local files selected by the user.
 - Data stays local unless you manually transfer it somewhere else.
 - iCloud Drive or another Files provider can be used as an optional user-managed transfer method, but that is outside this project's local privacy model.
@@ -20,6 +25,7 @@ The following files and directories can contain private messages, contacts, atta
 
 - `ChatStorage.sqlite*`
 - `ContactsV2.sqlite*`
+- device Contacts, when optional matching is enabled
 - `Media/`
 - `Message/`
 - iPhone backup folders

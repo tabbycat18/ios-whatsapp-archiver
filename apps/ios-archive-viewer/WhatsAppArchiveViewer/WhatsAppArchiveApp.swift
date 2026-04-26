@@ -1,5 +1,6 @@
 import SwiftUI
 import UniformTypeIdentifiers
+import Combine
 
 enum ArchiveImportError: LocalizedError {
     case missingApplicationSupportDirectory
@@ -298,6 +299,8 @@ final class ArchiveStore: ObservableObject {
     @Published var wallpaperURL: URL?
     @Published var currentArchiveID: UUID?
 
+    let contactNameResolver = ContactNameResolver()
+
     var isArchiveOpen: Bool {
         database != nil
     }
@@ -316,10 +319,18 @@ final class ArchiveStore: ObservableObject {
     private var archiveAccess: ArchiveAccess?
     private var profilePhotoService: ProfilePhotoService?
     private let profileAvatarCache = ProfileAvatarCache()
+    private var baseChats: [ChatSummary] = []
+    private var baseMessages: [MessageRow] = []
+    private var contactNameResolverCancellable: AnyCancellable?
 
     init() {
         let loadedArchives = libraryStore.load().sorted(by: Self.archiveSort)
         savedArchives = loadedArchives
+        contactNameResolverCancellable = contactNameResolver.$changeToken.sink { [weak self] _ in
+            Task { @MainActor [weak self] in
+                self?.refreshContactEnrichment()
+            }
+        }
         if libraryStore.didTrimArchivesDuringLastLoad {
             errorMessage = "Only the WhatsApp and WhatsApp Business slots are kept. Extra saved archive records were removed from this app, but archive files were not deleted."
         }
@@ -550,6 +561,8 @@ final class ArchiveStore: ObservableObject {
         archiveAccess = nil
         profilePhotoService = nil
         currentArchiveID = nil
+        baseChats = []
+        baseMessages = []
         openingArchiveID = nil
         chats = []
         selectedChat = nil
@@ -568,7 +581,8 @@ final class ArchiveStore: ObservableObject {
                 includeStatusStoryMessages: chat.classification == .statusStoryFragment
             )
             hasMoreOlderMessages = loadedMessages.count > messageLimit
-            messages = hasMoreOlderMessages ? Array(loadedMessages.dropFirst()) : loadedMessages
+            baseMessages = hasMoreOlderMessages ? Array(loadedMessages.dropFirst()) : loadedMessages
+            messages = enrichedMessages(baseMessages)
             olderMessagesErrorMessage = nil
             isLoadingOlder = false
             initialMessageLoadGeneration += 1
@@ -607,7 +621,8 @@ final class ArchiveStore: ObservableObject {
                 guard self.selectedChat?.id == chatID else { return }
                 self.hasMoreOlderMessages = olderMessages.count > self.messageLimit
                 let visibleOlderMessages = self.hasMoreOlderMessages ? Array(olderMessages.dropFirst()) : olderMessages
-                self.messages.insert(contentsOf: visibleOlderMessages, at: 0)
+                self.baseMessages.insert(contentsOf: visibleOlderMessages, at: 0)
+                self.messages = self.enrichedMessages(self.baseMessages)
                 self.olderMessagesErrorMessage = nil
                 self.errorMessage = nil
             } catch {
@@ -662,7 +677,9 @@ final class ArchiveStore: ObservableObject {
             archiveAccess = access
             profilePhotoService = ProfilePhotoService(archiveRootURL: access.archiveRootURL)
             currentArchiveID = savedArchive.id
-            chats = loadedChats
+            baseChats = loadedChats
+            baseMessages = []
+            chats = enrichedChats(loadedChats)
             selectedChat = nil
             messages = []
             resetPaginationState()
@@ -680,6 +697,8 @@ final class ArchiveStore: ObservableObject {
             archiveAccess = nil
             profilePhotoService = nil
             currentArchiveID = nil
+            baseChats = []
+            baseMessages = []
             chats = []
             selectedChat = nil
             messages = []
@@ -730,6 +749,84 @@ final class ArchiveStore: ObservableObject {
         return candidates
             .map { archiveRootURL.appendingPathComponent($0).standardizedFileURL }
             .first { FileManager.default.fileExists(atPath: $0.path) }
+    }
+
+    private func refreshContactEnrichment() {
+        chats = enrichedChats(baseChats)
+        if let selectedChat,
+           let refreshedSelection = chats.first(where: { $0.id == selectedChat.id }) {
+            self.selectedChat = refreshedSelection
+        }
+        messages = enrichedMessages(baseMessages)
+    }
+
+    private func enrichedChats(_ chats: [ChatSummary]) -> [ChatSummary] {
+        chats.map(enrichedChat)
+    }
+
+    private func enrichedChat(_ chat: ChatSummary) -> ChatSummary {
+        guard shouldUseDeviceContactName(for: chat),
+              let deviceContactName = contactNameResolver.displayName(for: [
+                chat.contactJID,
+                chat.contactIdentifier
+              ]) else {
+            return chat
+        }
+
+        return ChatSummary(
+            id: chat.id,
+            sessionIDs: chat.sessionIDs,
+            contactJID: chat.contactJID,
+            contactIdentifier: chat.contactIdentifier,
+            profilePhotoIdentifiers: chat.profilePhotoIdentifiers,
+            partnerName: chat.partnerName,
+            title: deviceContactName,
+            detailText: chat.detailText,
+            messageCount: chat.messageCount,
+            latestMessageDate: chat.latestMessageDate,
+            searchableTitle: deviceContactName,
+            classification: chat.classification,
+            profilePhotoURL: chat.profilePhotoURL
+        )
+    }
+
+    private func shouldUseDeviceContactName(for chat: ChatSummary) -> Bool {
+        guard !chat.isGroupChat else { return false }
+        guard chat.classification == .normalConversation || chat.classification == .separateConversation else {
+            return false
+        }
+        let title = chat.title.trimmingCharacters(in: .whitespacesAndNewlines)
+        return title.isEmpty
+            || title == "Unknown chat"
+            || title == "Chat"
+            || DisplayNameSanitizer.isRawIdentifierLike(title)
+    }
+
+    private func enrichedMessages(_ messages: [MessageRow]) -> [MessageRow] {
+        messages.map { message in
+            let deviceContactsDisplayName = contactNameResolver.displayName(for: [
+                message.groupMemberJID,
+                message.senderJID
+            ])
+            return MessageRow(
+                id: message.id,
+                isFromMe: message.isFromMe,
+                senderJID: message.senderJID,
+                pushName: message.pushName,
+                groupMemberContactName: message.groupMemberContactName,
+                groupMemberFirstName: message.groupMemberFirstName,
+                groupMemberJID: message.groupMemberJID,
+                profilePushName: message.profilePushName,
+                contactsDisplayName: message.contactsDisplayName,
+                deviceContactsDisplayName: deviceContactsDisplayName,
+                text: message.text,
+                messageDate: message.messageDate,
+                messageType: message.messageType,
+                groupEventType: message.groupEventType,
+                isStatusStory: message.isStatusStory,
+                media: message.media
+            )
+        }
     }
 
     private static func bundledDemoArchiveURL() throws -> URL {

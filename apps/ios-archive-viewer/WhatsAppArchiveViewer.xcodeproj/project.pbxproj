@@ -17,6 +17,9 @@
 		6D3F20222C10000100A1B001 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 6D3F20212C10000100A1B001 /* Assets.xcassets */; };
 		6D3F20252C10000100A1B001 /* AppIcon.icon in Resources */ = {isa = PBXBuildFile; fileRef = 6D3F20242C10000100A1B001 /* AppIcon.icon */; };
 		6D3F20272C10000100A1B001 /* DemoArchive in Resources */ = {isa = PBXBuildFile; fileRef = 6D3F20262C10000100A1B001 /* DemoArchive */; };
+		6D3F20292C10000100A1B001 /* PhoneNumberNormalizer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6D3F20282C10000100A1B001 /* PhoneNumberNormalizer.swift */; };
+		6D3F202B2C10000100A1B001 /* DeviceContactsResolver.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6D3F202A2C10000100A1B001 /* DeviceContactsResolver.swift */; };
+		6D3F202D2C10000100A1B001 /* ContactNameResolver.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6D3F202C2C10000100A1B001 /* ContactNameResolver.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -31,6 +34,9 @@
 		6D3F20212C10000100A1B001 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		6D3F20242C10000100A1B001 /* AppIcon.icon */ = {isa = PBXFileReference; lastKnownFileType = folder.iconcomposer.icon; path = AppIcon.icon; sourceTree = "<group>"; };
 		6D3F20262C10000100A1B001 /* DemoArchive */ = {isa = PBXFileReference; lastKnownFileType = folder; name = DemoArchive; path = "../../test-fixtures/demo-archive"; sourceTree = SOURCE_ROOT; };
+		6D3F20282C10000100A1B001 /* PhoneNumberNormalizer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhoneNumberNormalizer.swift; sourceTree = "<group>"; };
+		6D3F202A2C10000100A1B001 /* DeviceContactsResolver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeviceContactsResolver.swift; sourceTree = "<group>"; };
+		6D3F202C2C10000100A1B001 /* ContactNameResolver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContactNameResolver.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -69,6 +75,7 @@
 				6D3F20212C10000100A1B001 /* Assets.xcassets */,
 				6D3F20242C10000100A1B001 /* AppIcon.icon */,
 				6D3F20262C10000100A1B001 /* DemoArchive */,
+				6D3F202E2C10000100A1B001 /* Contacts */,
 				6D3F20092C10000100A1B001 /* Models */,
 				6D3F20192C10000100A1B001 /* Database */,
 				6D3F201A2C10000100A1B001 /* Views */,
@@ -108,6 +115,16 @@
 				6D3F20142C10000100A1B001 /* MessageListView.swift */,
 			);
 			path = Views;
+			sourceTree = "<group>";
+		};
+		6D3F202E2C10000100A1B001 /* Contacts */ = {
+			isa = PBXGroup;
+			children = (
+				6D3F202C2C10000100A1B001 /* ContactNameResolver.swift */,
+				6D3F202A2C10000100A1B001 /* DeviceContactsResolver.swift */,
+				6D3F20282C10000100A1B001 /* PhoneNumberNormalizer.swift */,
+			);
+			path = Contacts;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -185,6 +202,9 @@
 				6D3F200D2C10000100A1B001 /* ChatSummary.swift in Sources */,
 				6D3F200F2C10000100A1B001 /* MessageRow.swift in Sources */,
 				6D3F20112C10000100A1B001 /* WhatsAppDatabase.swift in Sources */,
+				6D3F202D2C10000100A1B001 /* ContactNameResolver.swift in Sources */,
+				6D3F202B2C10000100A1B001 /* DeviceContactsResolver.swift in Sources */,
+				6D3F20292C10000100A1B001 /* PhoneNumberNormalizer.swift in Sources */,
 				6D3F20132C10000100A1B001 /* ChatListView.swift in Sources */,
 				6D3F20152C10000100A1B001 /* MessageListView.swift in Sources */,
 			);
@@ -321,6 +341,7 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = "WA Archiver";
 				INFOPLIST_KEY_CFBundleName = "WA Archiver";
+				INFOPLIST_KEY_NSContactsUsageDescription = "iOS WhatsApp Archiver can use your contacts locally to show saved names for archived chat participants.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -353,6 +374,7 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = "WA Archiver";
 				INFOPLIST_KEY_CFBundleName = "WA Archiver";
+				INFOPLIST_KEY_NSContactsUsageDescription = "iOS WhatsApp Archiver can use your contacts locally to show saved names for archived chat participants.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;

@@ -27,6 +27,9 @@
 - Bundled fully synthetic demo archive entry on the archive home screen.
 - Polished archive home actions with explicit Open, Add, Relink, and More controls.
 - Offline in-app Help / Instructions for backup, extraction, transfer, privacy, demo usage, and installation status.
+- Optional iPhone Contacts matching for phone-based WhatsApp participants, with
+  explicit permission flow, in-memory local matching, and denied-permission
+  fallback.
 
 ## Next
 
@@ -39,8 +42,10 @@
 - Add packaged archive import support.
 - Replace the lightweight Chat Info media grid with a fuller per-chat media library.
 - Expand media rendering for contact cards, locations, stickers, and link previews where safe.
-- Add `ContactsV2.sqlite` enrichment for better names and contact metadata.
-- Expand group sender enrichment where ChatStorage push names are unavailable.
+- Continue expanding safe contact enrichment where `ContactsV2.sqlite`, iPhone
+  Contacts, or future public fixtures expose reliable phone mappings.
+- Expand group sender enrichment where ChatStorage push names are unavailable
+  without guessing from `@lid` or opaque identifiers.
 - Add a non-Xcode distribution path.
 - Continue improving first-run guidance and release packaging for non-developer users.
 - Improve performance for very large archives and media-heavy chats.

@@ -1439,6 +1439,7 @@ final class WhatsAppDatabase {
                     profilePushName: string(statement, 7),
                     contactsDisplayName: contactsResolver?.identity(for: string(statement, 6))?.displayName
                         ?? contactsResolver?.identity(for: string(statement, 2))?.displayName,
+                    deviceContactsDisplayName: nil,
                     text: string(statement, 8),
                     messageDate: date(statement, 9),
                     messageType: messageType,

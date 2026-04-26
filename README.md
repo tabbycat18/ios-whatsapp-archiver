@@ -23,6 +23,9 @@ the viewer.
 - The extractor reads a local iPhone backup and writes a local extracted archive.
 - The viewer opens local SQLite files read-only.
 - The viewer can remember selected local archives using app-local bookmark metadata.
+- The viewer can optionally use iPhone Contacts locally to show saved names for
+  phone-based archived chat participants. Contacts are not uploaded and the app
+  still works if permission is denied.
 - Removing a saved archive from the viewer does not delete the archive files.
 - Any iCloud Drive, AirDrop, SwissTransfer, external-drive, or other transfer
   workflow is optional and user-managed.
@@ -59,6 +62,9 @@ Working now:
 - Show conservative system/call placeholders without exposing raw sender IDs.
 - Keep security-code/system notices from driving normal chat-list recency.
 - Use `ContactsV2.sqlite` when available for conservative contact-name and split-session resolution.
+- Optionally match phone-based WhatsApp JIDs to iPhone Contacts after the user
+  enables Contacts access from the app. Matching is local, read-only, and
+  in-memory for the app session.
 - Keep real duplicate-title conversations separate while hiding technical system-only or no-visible-message archive fragments from normal browsing.
 - Detect whether referenced media files appear available in the selected archive.
 
@@ -66,6 +72,7 @@ Not implemented yet:
 
 - Full per-chat media library browsing beyond the first lightweight filtered view.
 - Complete `ContactsV2.sqlite` enrichment for every historical contact edge case.
+- Resolve more opaque `@lid` sender cases only when a safe phone mapping exists.
 - Direct zip/package import.
 - Non-Xcode installation or distribution.
 

@@ -29,6 +29,9 @@ Build and run with full Xcode on an iOS simulator or device. Command Line Tools 
 - Searches loaded chat titles in memory.
 - Loads messages for the selected chat from `ZWAMESSAGE`.
 - Uses `ContactsV2.sqlite` when available to improve contact names and link phone-JID/`@lid` sessions only when they map to the same contact row.
+- Can optionally use iPhone Contacts after the user enables it from the chat
+  list More menu. Contacts permission is not requested on first launch or while
+  opening archives.
 - Merges duplicate chat sessions only when they share a strong identifier, such as the same `ZCONTACTJID` or the same unambiguous ContactsV2 identity.
 - Classifies unresolved duplicate-title entries conservatively so real separate conversations stay visible while technical archive fragments do not clutter normal browsing.
 - Classifies likely WhatsApp Status/Stories rows only when reliable message/session evidence is present, currently `status@broadcast`.
@@ -48,6 +51,13 @@ and keeps missing or unresolved files as placeholders. Photo, video, and
 document preview sharing uses local file URLs through the system share sheet.
 Saved archive records are local bookmark metadata only; no archive content is
 uploaded.
+
+iPhone Contacts matching is optional and read-only. When enabled, the app asks
+for Contacts permission with an explanation that contacts are used locally to
+show saved names for archived chat participants. It builds an in-memory phone
+key to display-name index for the app session and does not upload contacts or
+persist the full contact list. If permission is denied or restricted, archives
+still open and existing archive names or "Unknown sender" remain in use.
 
 ## Current State
 
@@ -96,7 +106,13 @@ The app does not load every message at once because large WhatsApp chats can con
 
 - Chat search filters loaded chat titles only. In-chat search filters loaded message text, including media captions stored on the message row.
 - Raw JIDs and internal sender identifiers are hidden in the normal UI.
-- Group sender names use friendly names when the archive provides one, including profile push names stored in `ChatStorage.sqlite` and optional ContactsV2 names. Unsaved senders may show a safely extracted phone number only from classic phone-based WhatsApp JIDs. `@lid` identifiers and unresolved sender tokens are treated as opaque, so the UI shows "Unknown sender" rather than risk showing a wrong name or number.
+- Group sender names use friendly names when the archive provides one,
+  including group member names, profile push names stored in `ChatStorage.sqlite`,
+  optional ContactsV2 names, and optional iPhone Contacts matches. Unsaved
+  senders may show a safely extracted phone number only from classic
+  phone-based WhatsApp JIDs. `@lid` identifiers and unresolved sender tokens are
+  treated as opaque, so the UI shows "Unknown sender" rather than risk showing a
+  wrong name or number.
 - Message classification is conservative. Known media placeholders, likely voice call rows, deleted rows, and system notices are labeled without exposing raw database identifiers. Location placeholders require reliable location metadata, and instant video/video-message rows are treated as playable video media when file, MIME, duration, or other video evidence exists. Unknown mappings stay generic instead of guessing unsupported WhatsApp internals.
 - Chat sorting uses the latest real user-visible direct conversation row for normal chats and excludes known system-notice message types from the primary latest-date calculation. Security-code/system notices do not make a normal chat appear newer than its last real conversation row.
 - Split sessions can exist in old archives. The viewer merges sessions with strong identity evidence, but does not merge rows by title alone because that can combine unrelated people with the same display name.
@@ -206,6 +222,14 @@ does not currently provide a packaged non-Xcode install path for normal users.
 - Confirm the viewer does not auto-scroll back to newest after loading older messages.
 - Confirm raw/debug identifiers are not shown in the normal message UI.
 - Confirm unresolved group senders show "Unknown sender" instead of raw opaque tokens.
+- Confirm the app does not request Contacts permission on first launch or when
+  opening an archive.
+- From an open chat list, use More -> Use iPhone Contacts, grant permission, and
+  confirm matching phone-based chat titles or group sender labels improve while
+  the app stays responsive.
+- Deny Contacts permission on another test install if possible, then confirm the
+  app still opens archives and the menu explains that Contacts can be enabled in
+  iOS Settings.
 - Confirm chat list dates for duplicate-title conversations come from user-visible text, media, or call rows rather than security/system-only fragments.
 - Confirm security-code/system notices do not push a normal chat to the top of the chat list.
 - Confirm media rendering does not break automatic older-message loading.

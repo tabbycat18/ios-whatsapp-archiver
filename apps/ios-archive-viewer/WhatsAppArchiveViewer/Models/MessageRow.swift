@@ -212,6 +212,7 @@ struct MessageRow: Identifiable, Hashable {
     let groupMemberJID: String?
     let profilePushName: String?
     let contactsDisplayName: String?
+    let deviceContactsDisplayName: String?
     let text: String?
     let messageDate: Date?
     let messageType: Int?
@@ -227,14 +228,15 @@ struct MessageRow: Identifiable, Hashable {
     var friendlySenderName: String? {
         DisplayNameSanitizer.friendlyName(groupMemberContactName)
             ?? DisplayNameSanitizer.friendlyName(groupMemberFirstName)
-            ?? DisplayNameSanitizer.friendlyName(contactsDisplayName)
             ?? DisplayNameSanitizer.friendlyName(pushName)
             ?? DisplayNameSanitizer.friendlyName(profilePushName)
+            ?? DisplayNameSanitizer.friendlyName(contactsDisplayName)
+            ?? DisplayNameSanitizer.friendlyName(deviceContactsDisplayName)
     }
 
     var safeSenderPhoneNumber: String? {
-        DisplayNameSanitizer.safePhoneNumber(from: groupMemberJID)
-            ?? DisplayNameSanitizer.safePhoneNumber(from: senderJID)
+        PhoneNumberNormalizer.safeDisplayPhoneNumber(from: groupMemberJID)
+            ?? PhoneNumberNormalizer.safeDisplayPhoneNumber(from: senderJID)
     }
 
     var displayText: String? {

@@ -31,8 +31,7 @@ The viewer currently focuses on:
 - relative media paths under `Media/` and `Message/`
 
 `ContactsV2.sqlite` is preserved by extraction and used conservatively by the
-viewer when identifiers map unambiguously. Broader contact enrichment remains
-future work.
+viewer when identifiers map unambiguously.
 
 ## SwiftUI Viewer
 
@@ -65,6 +64,34 @@ app sandbox and are not loaded into memory. Removing a saved archive record only
 removes the app's metadata; it does not delete archive files.
 
 The app does not currently open zip files or packaged archives directly. If a user transfers a packaged archive today, it must be unpacked first and the unpacked folder containing `ChatStorage.sqlite` must be selected.
+
+## Optional iPhone Contacts Matching
+
+The viewer can optionally use the iOS Contacts framework to improve display
+names for phone-based WhatsApp participants. The app does not ask for Contacts
+permission on first launch or while opening an archive. The user must enable it
+from the chat list More menu.
+
+Contacts access is read-only. When authorized, the app loads contacts in the
+background and builds an in-memory mapping from conservative phone keys to
+display names. Duplicate phone keys are used only when they map to one
+unambiguous display name. The full contact list is not written to disk and is
+not uploaded.
+
+Phone normalization accepts classic phone WhatsApp JIDs such as
+`41791234567@s.whatsapp.net` and contact phone numbers with common formatting.
+It rejects `@lid`, `@g.us`, opaque tokens, base64-like values, and uncertain
+local numbers. Swiss local numbers with a leading zero are normalized to `41...`
+only when the current locale is Switzerland and the shape is otherwise clear.
+
+Display-name priority remains conservative:
+
+- one-to-one chat titles keep existing archive or ContactsV2 friendly names
+  before using an iPhone Contacts match;
+- group sender labels prefer archive-provided group member or push names,
+  ContactsV2 names, then optional iPhone Contacts matches;
+- safe phone fallbacks are shown only for classic phone JIDs;
+- unresolved opaque senders stay "Unknown sender".
 
 ## Data Loading
 
@@ -102,5 +129,6 @@ Packaged archive import is a likely future design direction. One archive file co
 ## Future Work
 
 - Experiment with packaged archive import.
-- Expand sender/contact enrichment from `ContactsV2.sqlite`.
+- Expand sender/contact enrichment from `ContactsV2.sqlite` and safe phone
+  mappings that can bridge opaque identifiers without guessing.
 - Add synthetic public fixtures for repeatable tests without private data.

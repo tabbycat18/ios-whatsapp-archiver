@@ -1,6 +1,7 @@
 import SwiftUI
 import UniformTypeIdentifiers
 import ImageIO
+import UIKit
 
 struct ChatListView: View {
     @EnvironmentObject private var store: ArchiveStore
@@ -68,10 +69,9 @@ struct ChatListView: View {
         } message: {
             Text(store.errorMessage ?? "")
         }
-        .onChange(of: store.selectedChat) { _, chat in
-            if let chat {
-                store.loadMessages(for: chat)
-            }
+        .onChange(of: store.selectedChat?.id) { _, _ in
+            guard let chat = store.selectedChat else { return }
+            store.loadMessages(for: chat)
         }
     }
 
@@ -120,6 +120,10 @@ struct ChatListView: View {
                         Label("Archives", systemImage: "archivebox")
                     }
                 }
+
+                ToolbarItem(placement: .secondaryAction) {
+                    ContactNameToolbarMenu(resolver: store.contactNameResolver)
+                }
             }
         } detail: {
             if let chat = store.selectedChat {
@@ -153,6 +157,62 @@ struct ChatListView: View {
 private enum ArchiveImportMode {
     case add(ArchiveKind)
     case relink(UUID)
+}
+
+private struct ContactNameToolbarMenu: View {
+    @ObservedObject var resolver: ContactNameResolver
+    @Environment(\.openURL) private var openURL
+
+    var body: some View {
+        Menu {
+            Section {
+                Label(resolver.status.displayText, systemImage: statusImageName)
+                Text(resolver.status.explanation)
+            }
+
+            Section {
+                if resolver.status == .enabled || resolver.status == .loading {
+                    Button(role: .destructive) {
+                        resolver.disableContactMatching()
+                    } label: {
+                        Label("Stop Using iPhone Contacts", systemImage: "person.crop.circle.badge.xmark")
+                    }
+                } else {
+                    Button {
+                        resolver.enableContactMatching()
+                    } label: {
+                        Label("Use iPhone Contacts", systemImage: "person.crop.circle.badge.checkmark")
+                    }
+                    .disabled(resolver.status == .restricted)
+                }
+
+                if resolver.status == .permissionDenied {
+                    Button {
+                        if let settingsURL = URL(string: UIApplication.openSettingsURLString) {
+                            openURL(settingsURL)
+                        }
+                    } label: {
+                        Label("Open iOS Settings", systemImage: "gear")
+                    }
+                }
+            }
+        } label: {
+            Label("More", systemImage: "ellipsis.circle")
+        }
+    }
+
+    private var statusImageName: String {
+        switch resolver.status {
+        case .notEnabled:
+            return "person.crop.circle.badge.questionmark"
+        case .loading:
+            return "person.crop.circle.badge.clock"
+        case .enabled:
+            return "person.crop.circle.badge.checkmark"
+        case .permissionDenied, .restricted:
+            return "person.crop.circle.badge.exclamationmark"
+        }
+    }
 }
 
 private struct ArchiveLibraryView: View {
