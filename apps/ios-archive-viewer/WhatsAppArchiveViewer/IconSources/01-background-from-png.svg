@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg-main" x1="512" y1="0" x2="512" y2="1024" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#43E95E"/>
+      <stop offset="0.46" stop-color="#18C93A"/>
+      <stop offset="1" stop-color="#08AA2D"/>
+    </linearGradient>
+    <radialGradient id="bg-glow" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(356 132) rotate(58) scale(760 650)">
+      <stop offset="0" stop-color="#82F38A" stop-opacity="0.7"/>
+      <stop offset="0.55" stop-color="#2DD84A" stop-opacity="0.2"/>
+      <stop offset="1" stop-color="#0BAC2E" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <g id="background">
+    <rect width="1024" height="1024" rx="218" fill="url(#bg-main)"/>
+    <rect width="1024" height="1024" rx="218" fill="url(#bg-glow)"/>
+  </g>
+</svg>

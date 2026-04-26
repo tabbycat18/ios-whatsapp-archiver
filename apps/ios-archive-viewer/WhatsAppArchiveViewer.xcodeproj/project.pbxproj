@@ -15,6 +15,7 @@
 		6D3F20152C10000100A1B001 /* MessageListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6D3F20142C10000100A1B001 /* MessageListView.swift */; };
 		6D3F20172C10000100A1B001 /* libsqlite3.tbd in Frameworks */ = {isa = PBXBuildFile; fileRef = 6D3F20162C10000100A1B001 /* libsqlite3.tbd */; };
 		6D3F20222C10000100A1B001 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 6D3F20212C10000100A1B001 /* Assets.xcassets */; };
+		6D3F20252C10000100A1B001 /* AppIcon.icon in Resources */ = {isa = PBXBuildFile; fileRef = 6D3F20242C10000100A1B001 /* AppIcon.icon */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -27,6 +28,7 @@
 		6D3F20142C10000100A1B001 /* MessageListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MessageListView.swift; sourceTree = "<group>"; };
 		6D3F20162C10000100A1B001 /* libsqlite3.tbd */ = {isa = PBXFileReference; lastKnownFileType = "sourcecode.text-based-dylib-definition"; name = libsqlite3.tbd; path = usr/lib/libsqlite3.tbd; sourceTree = SDKROOT; };
 		6D3F20212C10000100A1B001 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		6D3F20242C10000100A1B001 /* AppIcon.icon */ = {isa = PBXFileReference; lastKnownFileType = folder.iconcomposer.icon; path = AppIcon.icon; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -63,6 +65,7 @@
 			children = (
 				6D3F200A2C10000100A1B001 /* WhatsAppArchiveApp.swift */,
 				6D3F20212C10000100A1B001 /* Assets.xcassets */,
+				6D3F20242C10000100A1B001 /* AppIcon.icon */,
 				6D3F20092C10000100A1B001 /* Models */,
 				6D3F20192C10000100A1B001 /* Database */,
 				6D3F201A2C10000100A1B001 /* Views */,
@@ -163,6 +166,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				6D3F20222C10000100A1B001 /* Assets.xcassets in Resources */,
+				6D3F20252C10000100A1B001 /* AppIcon.icon in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -310,6 +314,8 @@
 				DEVELOPMENT_ASSET_PATHS = "";
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = "WA Archiver";
+				INFOPLIST_KEY_CFBundleName = "WA Archiver";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -339,6 +345,8 @@
 				DEVELOPMENT_ASSET_PATHS = "";
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = "WA Archiver";
+				INFOPLIST_KEY_CFBundleName = "WA Archiver";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;

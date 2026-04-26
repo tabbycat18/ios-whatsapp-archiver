@@ -11,6 +11,11 @@ AppDomainGroup-group.net.whatsapp.WhatsApp.shared/
 ```
 
 The viewer should be pointed at the folder that contains `ChatStorage.sqlite`.
+Once selected, the app can remember that archive as a local saved record. The
+record stores bookmark metadata and display labels, not archive contents.
+Removing the record from the app does not delete this folder or database.
+External folders may need relinking if they are moved or iOS marks the saved
+security-scoped bookmark stale.
 
 Common files and folders:
 
@@ -51,6 +56,11 @@ The viewer uses fields needed for:
 - status/story evidence from message/session identifiers such as
   `status@broadcast`;
 - media local path, title, size, URL, vCard, location, duration, resolved availability, and inferred attachment kind when available.
+
+For media rows, non-empty `ZWAMESSAGE.ZTEXT` is treated as the message caption.
+Photo, video, audio, and document captions are shown under the attachment in the
+same message bubble and remain searchable through the existing loaded-message
+text search.
 
 The viewer also looks for generic chat wallpaper files at the selected archive
 root:
@@ -134,9 +144,9 @@ group-event type, and media metadata:
 - available photos are rendered inline after downsampling;
 - available videos are shown as tap-to-play attachments with lazy thumbnails when thumbnail generation succeeds;
 - instant video/video-message rows are treated as video media when file, MIME, duration, or message-type evidence supports it;
-- available audio and voice rows get a simple play/pause control;
+- available audio and voice rows get a simple play/pause control and a direct share action;
 - available documents, including PDFs and common office/text/archive files, are shown as document rows with safe title, type, size, system preview, and sharing when the local file resolves;
-- media captions are rendered under the attachment in the same message bubble when available, including for missing media placeholders;
+- non-empty captions on photo, video, audio, and document rows are rendered directly under the media in the same bubble;
 - reliably detected status/story media is marked as status/story media and kept
   separate from normal direct-chat rows;
 - contacts, locations, stickers, and link previews are shown as placeholders;
@@ -174,14 +184,10 @@ system preview flow only after the user taps the attachment. Audio rows create a
 player only after the user taps play, and the shared playback controller stops
 the previous audio row before starting another.
 
-Caption text comes from the message text field when present. Some archive shapes
-store photo/video captions in media title metadata instead, so the viewer uses
-that title as caption text only when it does not look like a URL, file path, or
-filename.
-
 Photo previews support pinch-to-zoom on iOS. Photo, video, and document previews
-expose system sharing for the resolved local file URL. The app does not upload
-media or copy media files into Git.
+expose system sharing for the resolved local file URL. Audio rows expose sharing
+directly from the chat attachment. The app does not upload media or copy media
+files into Git.
 
 Chat wallpaper rendering is also lazy. The viewer downscales
 `current_wallpaper.jpg` or `current_wallpaper_dark.jpg` from the archive root
@@ -192,11 +198,15 @@ The viewer does not scan or preload all media globally. Missing or unavailable
 media stays as a placeholder, while unsupported metadata-only rows are kept out
 of the Chat Info media grid. Contact cards require reliable vCard metadata; rows
 with video evidence are classified as video media before contact-card fallback.
-The Chat Info media view queries media for the
-selected chat and related merged session IDs directly from SQLite, applies
-filters for all renderable media, photos, videos, and reliably detected Stories
-/ Status, prioritizes rows with local files, and caps each fetch so it does not
-become an archive-wide media scan. A richer media library remains future work.
+The Chat Info media view queries photo/video/document media
+for the selected chat and related merged session IDs directly from SQLite,
+applies filters for all previewable media, photos, videos, and documents,
+excludes status/story rows, includes deliberately sent audio in the All view,
+keeps voice-message audio in chat rows instead of the media grid, prioritizes rows
+with local files, supports tap or drag multi-select sharing/export for available files, and
+caps each fetch so it does not become an archive-wide media scan. Status/story sessions remain
+available from the main chat list only. A richer media library remains future
+work.
 
 ## Not Yet Used
 

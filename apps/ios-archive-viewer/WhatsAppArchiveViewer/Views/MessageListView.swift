@@ -9,6 +9,8 @@ import UIKit
 
 struct MessageListView: View {
     @EnvironmentObject private var store: ArchiveStore
+    @Environment(\.dismiss) private var dismiss
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     let chat: ChatSummary
     let messages: [MessageRow]
     let isLoadingOlder: Bool
@@ -25,8 +27,12 @@ struct MessageListView: View {
     @State private var latestScrolledSearchQuery = ""
     @State private var latestScrolledSearchResultID: Int64?
     @State private var isChatInfoPresented = false
+    @State private var edgeBackDragOffset: CGFloat = 0
     private let olderLoadThreshold = 8
     private let bottomSpacerID = "message-list-bottom-spacer"
+    private let edgeBackStartWidth: CGFloat = 24
+    private let edgeBackMaxOffset: CGFloat = 52
+    private let edgeBackDismissThreshold: CGFloat = 44
 
     private var trimmedMessageSearchText: String {
         messageSearchText.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -91,6 +97,10 @@ struct MessageListView: View {
                 }
             }
         }
+        .offset(x: edgeBackDragOffset)
+        .animation(.interactiveSpring(response: 0.24, dampingFraction: 0.86), value: edgeBackDragOffset)
+        .contentShape(Rectangle())
+        .simultaneousGesture(edgeBackGesture)
         .navigationTitle(chat.title)
         .searchable(text: $messageSearchText, prompt: "Search messages")
         .toolbar {
@@ -110,6 +120,41 @@ struct MessageListView: View {
         #if os(iOS)
         .navigationBarTitleDisplayMode(.inline)
         #endif
+    }
+
+    private var edgeBackGesture: some Gesture {
+        DragGesture(minimumDistance: 12, coordinateSpace: .global)
+            .onChanged { value in
+                guard shouldHandleEdgeBackDrag(value) else {
+                    if edgeBackDragOffset > 0 {
+                        edgeBackDragOffset = 0
+                    }
+                    return
+                }
+
+                edgeBackDragOffset = min(max(value.translation.width, 0), edgeBackMaxOffset)
+            }
+            .onEnded { value in
+                let shouldDismiss = shouldHandleEdgeBackDrag(value)
+                    && value.translation.width >= edgeBackDismissThreshold
+
+                if shouldDismiss {
+                    edgeBackDragOffset = edgeBackMaxOffset
+                    dismiss()
+                } else {
+                    edgeBackDragOffset = 0
+                }
+            }
+    }
+
+    private func shouldHandleEdgeBackDrag(_ value: DragGesture.Value) -> Bool {
+        guard horizontalSizeClass == .compact else { return false }
+        guard value.startLocation.x <= edgeBackStartWidth else { return false }
+        guard value.translation.width > 0 else { return false }
+
+        let horizontalDistance = value.translation.width
+        let verticalDistance = abs(value.translation.height)
+        return horizontalDistance > verticalDistance * 1.2
     }
 
     private var noMessageSearchResults: some View {
@@ -255,9 +300,32 @@ private struct ChatInfoView: View {
     @State private var mediaSummary: ChatMediaLoadSummary?
     @State private var mediaLoadError: String?
     @State private var thumbnailFailureIDs = Set<String>()
+    @State private var isSelectingMedia = false
+    @State private var selectedMediaIDs = Set<String>()
+    @State private var mediaShareSelection: MediaShareSelection?
+    @State private var mediaTileFrames: [String: CGRect] = [:]
+    @State private var selectionDragMode: MediaSelectionDragMode?
+    @State private var selectionDragVisitedIDs = Set<String>()
+    @State private var selectionDragIntent: MediaSelectionDragIntent?
 
     private var mediaTaskID: String {
         "\(chat.id)-\(selectedFilter.rawValue)"
+    }
+
+    private var exportableMediaItems: [ChatMediaItem] {
+        mediaItems.filter { item in
+            item.media.fileURL != nil && item.media.isFileAvailableInArchive
+        }
+    }
+
+    private var selectedExportURLs: [URL] {
+        mediaItems.compactMap { item in
+            guard selectedMediaIDs.contains(item.id),
+                  item.media.isFileAvailableInArchive else {
+                return nil
+            }
+            return item.media.fileURL
+        }
     }
 
     var body: some View {
@@ -294,17 +362,39 @@ private struct ChatInfoView: View {
                                 .foregroundStyle(.secondary)
                         }
 
+                        mediaSelectionControls
+
                         LazyVGrid(
                             columns: [GridItem(.adaptive(minimum: 104), spacing: 8)],
                             spacing: 8
                         ) {
                             ForEach(mediaItems) { item in
-                                ChatInfoMediaTile(item: item) {
+                                ChatInfoMediaTile(
+                                    item: item,
+                                    isSelectionMode: isSelectingMedia,
+                                    isSelected: selectedMediaIDs.contains(item.id),
+                                    onToggleSelection: {
+                                        toggleMediaSelection(item)
+                                    }
+                                ) {
                                     thumbnailFailureIDs.insert(item.id)
                                 }
+                                .background(
+                                    GeometryReader { proxy in
+                                        Color.clear.preference(
+                                            key: ChatInfoMediaTileFramePreferenceKey.self,
+                                            value: [item.id: proxy.frame(in: .named("chatInfoMediaGrid"))]
+                                        )
+                                    }
+                                )
                             }
                         }
                         .padding(.vertical, 4)
+                        .coordinateSpace(name: "chatInfoMediaGrid")
+                        .onPreferenceChange(ChatInfoMediaTileFramePreferenceKey.self) { frames in
+                            mediaTileFrames = frames
+                        }
+                        .mediaSelectionDrag(isSelectingMedia, gesture: mediaSelectionDragGesture)
                     }
                 }
             }
@@ -322,7 +412,63 @@ private struct ChatInfoView: View {
             .task(id: mediaTaskID) {
                 loadMediaItems()
             }
+            #if os(iOS)
+            .sheet(item: $mediaShareSelection) { selection in
+                ActivityView(activityItems: selection.urls)
+            }
+            #endif
         }
+    }
+
+    @ViewBuilder
+    private var mediaSelectionControls: some View {
+        HStack(spacing: 8) {
+            Text(isSelectingMedia ? selectionSummaryText : exportableSummaryText)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
+
+            if isSelectingMedia {
+                Spacer(minLength: 4)
+
+                compactMediaButton(systemImage: "checkmark.circle.fill", title: "Select all") {
+                    selectAllExportableMedia()
+                }
+                .disabled(exportableMediaItems.isEmpty)
+
+                compactMediaButton(systemImage: "xmark.circle", title: "Clear selection") {
+                    selectedMediaIDs = []
+                }
+                .disabled(selectedMediaIDs.isEmpty)
+
+                compactMediaButton(systemImage: "square.and.arrow.up", title: "Share selected") {
+                    shareSelectedMedia()
+                }
+                .disabled(selectedExportURLs.isEmpty)
+            } else {
+                Spacer(minLength: 4)
+            }
+
+            compactMediaButton(systemImage: isSelectingMedia ? "checkmark.circle" : "checkmark.circle", title: isSelectingMedia ? "Done selecting" : "Select media") {
+                isSelectingMedia.toggle()
+                if !isSelectingMedia {
+                    selectedMediaIDs = []
+                    resetSelectionDrag()
+                }
+            }
+        }
+    }
+
+    private func compactMediaButton(systemImage: String, title: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: systemImage)
+                .font(.headline)
+                .frame(width: 36, height: 32)
+                .background(Color.secondary.opacity(0.12), in: Capsule())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(title)
     }
 
     private var summaryText: String? {
@@ -343,14 +489,113 @@ private struct ChatInfoView: View {
             mediaItems = page.items
             mediaSummary = page.summary
             thumbnailFailureIDs = []
+            selectedMediaIDs = selectedMediaIDs.intersection(Set(page.items.map(\.id)))
+            if page.items.isEmpty {
+                isSelectingMedia = false
+            }
             mediaLoadError = nil
             logMediaSummary(page.summary)
         } catch {
             mediaItems = []
             mediaSummary = nil
             thumbnailFailureIDs = []
+            selectedMediaIDs = []
+            isSelectingMedia = false
             mediaLoadError = "Could not load media."
         }
+    }
+
+    private var selectionSummaryText: String {
+        let selectedCount = selectedMediaIDs.count
+        let exportableCount = selectedExportURLs.count
+        if selectedCount == exportableCount {
+            return "\(selectedCount.formatted()) selected"
+        }
+        return "\(selectedCount.formatted()) selected • \(exportableCount.formatted()) exportable"
+    }
+
+    private var exportableSummaryText: String {
+        let exportableCount = exportableMediaItems.count
+        if exportableCount == mediaItems.count {
+            return "\(exportableCount.formatted()) available"
+        }
+        return "\(exportableCount.formatted()) available • \(mediaItems.count.formatted()) shown"
+    }
+
+    private func toggleMediaSelection(_ item: ChatMediaItem) {
+        guard item.media.fileURL != nil, item.media.isFileAvailableInArchive else {
+            return
+        }
+        if selectedMediaIDs.contains(item.id) {
+            selectedMediaIDs.remove(item.id)
+        } else {
+            selectedMediaIDs.insert(item.id)
+        }
+    }
+
+    private func selectAllExportableMedia() {
+        selectedMediaIDs = Set(exportableMediaItems.map(\.id))
+    }
+
+    private func shareSelectedMedia() {
+        let urls = selectedExportURLs
+        guard !urls.isEmpty else { return }
+        mediaShareSelection = MediaShareSelection(urls: urls)
+    }
+
+    private var mediaSelectionDragGesture: some Gesture {
+        DragGesture(minimumDistance: 12, coordinateSpace: .named("chatInfoMediaGrid"))
+            .onChanged { value in
+                guard isSelectingMedia else { return }
+                guard shouldHandleSelectionDrag(value) else { return }
+                updateSelectionDrag(at: value.location)
+            }
+            .onEnded { _ in
+                resetSelectionDrag()
+            }
+    }
+
+    private func shouldHandleSelectionDrag(_ value: DragGesture.Value) -> Bool {
+        if selectionDragIntent == nil {
+            let horizontalDistance = abs(value.translation.width)
+            let verticalDistance = abs(value.translation.height)
+            selectionDragIntent = horizontalDistance > verticalDistance * 1.15 ? .selecting : .scrolling
+        }
+        return selectionDragIntent == .selecting
+    }
+
+    private func updateSelectionDrag(at location: CGPoint) {
+        guard let item = mediaItems.first(where: { item in
+            mediaTileFrames[item.id]?.contains(location) == true
+        }) else {
+            return
+        }
+        guard item.media.fileURL != nil, item.media.isFileAvailableInArchive else {
+            return
+        }
+        guard !selectionDragVisitedIDs.contains(item.id) else {
+            return
+        }
+
+        if selectionDragMode == nil {
+            selectionDragMode = selectedMediaIDs.contains(item.id) ? .remove : .add
+        }
+        selectionDragVisitedIDs.insert(item.id)
+
+        switch selectionDragMode {
+        case .add:
+            selectedMediaIDs.insert(item.id)
+        case .remove:
+            selectedMediaIDs.remove(item.id)
+        case nil:
+            break
+        }
+    }
+
+    private func resetSelectionDrag() {
+        selectionDragMode = nil
+        selectionDragVisitedIDs = []
+        selectionDragIntent = nil
     }
 
     private func logMediaSummary(_ summary: ChatMediaLoadSummary) {
@@ -364,50 +609,145 @@ private struct ChatInfoView: View {
     }
 }
 
+private struct MediaShareSelection: Identifiable {
+    let id = UUID()
+    let urls: [URL]
+}
+
+private enum MediaSelectionDragMode {
+    case add
+    case remove
+}
+
+private enum MediaSelectionDragIntent {
+    case selecting
+    case scrolling
+}
+
+private extension View {
+    @ViewBuilder
+    func mediaSelectionDrag<SelectionGesture: Gesture>(
+        _ isEnabled: Bool,
+        gesture: SelectionGesture
+    ) -> some View {
+        if isEnabled {
+            simultaneousGesture(gesture)
+        } else {
+            self
+        }
+    }
+}
+
+private struct ChatInfoMediaTileFramePreferenceKey: PreferenceKey {
+    static var defaultValue: [String: CGRect] = [:]
+
+    static func reduce(value: inout [String: CGRect], nextValue: () -> [String: CGRect]) {
+        value.merge(nextValue(), uniquingKeysWith: { _, newValue in newValue })
+    }
+}
+
+#if os(iOS)
+private struct ActivityView: UIViewControllerRepresentable {
+    let activityItems: [Any]
+
+    func makeUIViewController(context: Context) -> UIActivityViewController {
+        UIActivityViewController(activityItems: activityItems, applicationActivities: nil)
+    }
+
+    func updateUIViewController(_ controller: UIActivityViewController, context: Context) {
+    }
+}
+#endif
+
 private struct ChatInfoMediaTile: View {
     let item: ChatMediaItem
+    let isSelectionMode: Bool
+    let isSelected: Bool
+    let onToggleSelection: () -> Void
     let onThumbnailFailed: () -> Void
     @StateObject private var playbackController = VideoPlaybackController()
     @State private var thumbnail: CGImage?
     @State private var didFailThumbnail = false
     @State private var didReportThumbnailFailure = false
     @State private var photoPreviewItem: PhotoPreviewItem?
+    @State private var documentPreviewItem: DocumentPreviewItem?
     @State private var isVideoPresented = false
 
     var body: some View {
-        Button {
-            openPreview()
-        } label: {
-            ZStack(alignment: .bottomTrailing) {
-                thumbnailContent
-                    .frame(height: 104)
-                    .frame(maxWidth: .infinity)
-                    .background(Color.secondary.opacity(0.12))
-                    .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+        ZStack(alignment: .bottomTrailing) {
+            thumbnailContent
+                .frame(height: 104)
+                .frame(maxWidth: .infinity)
+                .background(Color.secondary.opacity(0.12))
+                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                .overlay(selectionBorder)
 
-                if item.media.source == .statusStory {
-                    Image(systemName: "circle.dashed")
-                        .font(.caption)
-                        .foregroundStyle(.white)
-                        .padding(5)
-                        .background(.black.opacity(0.55), in: Circle())
-                        .padding(5)
-                }
+            if item.media.source == .statusStory {
+                Image(systemName: "circle.dashed")
+                    .font(.caption)
+                    .foregroundStyle(.white)
+                    .padding(5)
+                    .background(.black.opacity(0.55), in: Circle())
+                    .padding(5)
+            }
+
+            if isSelectionMode {
+                selectionBadge
+                    .padding(6)
             }
         }
-        .buttonStyle(.plain)
-        .disabled(item.media.fileURL == nil)
+        .contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .opacity(isSelectionMode && !isExportable ? 0.45 : 1)
+        .onTapGesture {
+            handleTap()
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(accessibilityLabel)
+        .accessibilityAddTraits(.isButton)
+        .accessibilityAction {
+            handleTap()
+        }
         .task(id: item.media.fileURL) {
             await loadThumbnailIfNeeded()
         }
         .sheet(item: $photoPreviewItem) { item in
             PhotoPreviewView(url: item.url)
         }
+        #if os(iOS)
+        .sheet(item: $documentPreviewItem) { item in
+            DocumentPreviewView(url: item.url)
+                .ignoresSafeArea()
+        }
+        #endif
         .sheet(isPresented: $isVideoPresented) {
             if let url = item.media.fileURL {
                 VideoPlayerSheet(controller: playbackController, url: url)
             }
         }
+    }
+
+    private var isExportable: Bool {
+        item.media.fileURL != nil && item.media.isFileAvailableInArchive
+    }
+
+    private var accessibilityLabel: String {
+        isSelectionMode ? "Select media" : item.media.kind.placeholderText
+    }
+
+    @ViewBuilder
+    private var selectionBorder: some View {
+        if isSelectionMode && isSelected {
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .stroke(Color.accentColor, lineWidth: 3)
+        }
+    }
+
+    private var selectionBadge: some View {
+        Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+            .font(.title3.weight(.semibold))
+            .foregroundStyle(isSelected ? Color.accentColor : Color.white)
+            .background(.black.opacity(isSelected ? 0 : 0.45), in: Circle())
+            .accessibilityHidden(true)
     }
 
     @ViewBuilder
@@ -435,7 +775,7 @@ private struct ChatInfoMediaTile: View {
             return "photo"
         case .video, .videoMessage:
             return "video"
-        case .audio:
+        case .audio, .voiceMessage:
             return "waveform"
         case .document:
             return "doc"
@@ -452,8 +792,18 @@ private struct ChatInfoMediaTile: View {
         case .video, .videoMessage:
             playbackController.load(url: url, restart: true)
             isVideoPresented = true
+        case .document:
+            documentPreviewItem = DocumentPreviewItem(url: url)
         default:
             break
+        }
+    }
+
+    private func handleTap() {
+        if isSelectionMode {
+            onToggleSelection()
+        } else if item.media.fileURL != nil {
+            openPreview()
         }
     }
 
@@ -490,7 +840,7 @@ private extension MessageRow {
     func matchesSearch(_ query: String) -> Bool {
         guard !query.isEmpty else { return true }
         let labels = [
-            text,
+            displayText,
             nonTextPlaceholderText,
             friendlySenderName,
             safeSenderPhoneNumber
@@ -512,6 +862,7 @@ private final class AudioPlaybackController: ObservableObject {
     @Published private(set) var durationSeconds: Double?
 
     private var player: AVPlayer?
+    private var durationLoadTask: Task<Void, Never>?
     private var endObserver: NSObjectProtocol?
     private var timeObserver: Any?
 
@@ -548,6 +899,14 @@ private final class AudioPlaybackController: ObservableObject {
         pausedMessageID = nil
         durationSeconds = nil
         currentTimeSeconds = 0
+        durationLoadTask = Task { [weak self, weak item] in
+            guard let item else { return }
+            guard let duration = await audioDuration(for: item.asset) else { return }
+            await MainActor.run {
+                guard self?.player?.currentItem === item else { return }
+                self?.durationSeconds = duration
+            }
+        }
         endObserver = NotificationCenter.default.addObserver(
             forName: .AVPlayerItemDidPlayToEndTime,
             object: item,
@@ -558,7 +917,7 @@ private final class AudioPlaybackController: ObservableObject {
             }
         }
         timeObserver = player.addPeriodicTimeObserver(
-            forInterval: CMTime(seconds: 0.25, preferredTimescale: 600),
+            forInterval: CMTime(seconds: 0.1, preferredTimescale: 600),
             queue: .main
         ) { [weak self, weak item] time in
             Task { @MainActor in
@@ -576,6 +935,8 @@ private final class AudioPlaybackController: ObservableObject {
     }
 
     func stop() {
+        durationLoadTask?.cancel()
+        durationLoadTask = nil
         if let player, let timeObserver {
             player.removeTimeObserver(timeObserver)
             self.timeObserver = nil
@@ -607,12 +968,18 @@ private final class AudioPlaybackController: ObservableObject {
 
     private func updateProgress(currentTime: Double, item: AVPlayerItem?) {
         guard currentTime.isFinite else { return }
-        currentTimeSeconds = max(0, currentTime)
 
-        guard let item else { return }
-        let duration = item.duration.seconds
-        if duration.isFinite, duration > 0 {
-            durationSeconds = duration
+        if let item {
+            let duration = item.duration.seconds
+            if duration.isFinite, duration > 0 {
+                durationSeconds = duration
+            }
+        }
+
+        if let durationSeconds, durationSeconds > 0 {
+            currentTimeSeconds = min(max(0, currentTime), durationSeconds)
+        } else {
+            currentTimeSeconds = max(0, currentTime)
         }
     }
 }
@@ -620,6 +987,7 @@ private final class AudioPlaybackController: ObservableObject {
 private struct MessageBubbleView: View {
     let message: MessageRow
     let isGroupChat: Bool
+    @Environment(\.colorScheme) private var colorScheme
     @EnvironmentObject private var audioPlayback: AudioPlaybackController
 
     var body: some View {
@@ -632,19 +1000,21 @@ private struct MessageBubbleView: View {
                 if let senderLabel {
                     Text(senderLabel)
                         .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(bubblePalette.metadataText)
                 }
 
                 MessageContentView(message: message)
+                    .foregroundStyle(bubblePalette.primaryText)
+                    .tint(bubblePalette.linkText)
                     .padding(.horizontal, 12)
                     .padding(.vertical, 8)
-                    .background(bubbleColor, in: bubbleShape)
+                    .background(bubblePalette.background, in: bubbleShape)
                     .textSelection(.enabled)
 
                 if let messageDate = message.messageDate {
                     Text(Self.dateFormatter.string(from: messageDate))
                         .font(.caption2)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(bubblePalette.metadataText)
                 }
             }
 
@@ -673,10 +1043,8 @@ private struct MessageBubbleView: View {
         return nil
     }
 
-    private var bubbleColor: Color {
-        message.isFromMe
-            ? Color(red: 0.86, green: 0.95, blue: 0.84)
-            : Color.white.opacity(0.94)
+    private var bubblePalette: ChatBubblePalette {
+        ChatBubblePalette(isFromMe: message.isFromMe, colorScheme: colorScheme)
     }
 
     private var bubbleShape: UnevenRoundedRectangle {
@@ -697,6 +1065,63 @@ private struct MessageBubbleView: View {
     }()
 }
 
+private struct ChatBubblePalette {
+    let isFromMe: Bool
+    let colorScheme: ColorScheme
+
+    var background: Color {
+        guard colorScheme == .dark else {
+            return isFromMe
+                ? Color(red: 0.86, green: 0.95, blue: 0.84)
+                : Color.white.opacity(0.94)
+        }
+
+        return isFromMe
+            ? Color(red: 0.00, green: 0.36, blue: 0.30)
+            : Color(red: 0.12, green: 0.17, blue: 0.20)
+    }
+
+    var primaryText: Color {
+        colorScheme == .dark ? Color.white.opacity(0.96) : Color.primary
+    }
+
+    var secondaryText: Color {
+        colorScheme == .dark ? Color.white.opacity(0.68) : Color.secondary
+    }
+
+    var metadataText: Color {
+        colorScheme == .dark ? Color.white.opacity(0.62) : Color.secondary
+    }
+
+    var linkText: Color {
+        colorScheme == .dark ? Color(red: 0.49, green: 0.79, blue: 1.00) : Color.accentColor
+    }
+
+    static func attachmentBackground(for colorScheme: ColorScheme) -> Color {
+        colorScheme == .dark ? Color.white.opacity(0.08) : Color.secondary.opacity(0.08)
+    }
+
+    static func subtleIconBackground(isFromMe: Bool, colorScheme: ColorScheme) -> Color {
+        guard colorScheme == .dark else {
+            return isFromMe
+                ? Color(red: 0.22, green: 0.55, blue: 0.24).opacity(0.16)
+                : Color.secondary.opacity(0.12)
+        }
+
+        return Color.white.opacity(isFromMe ? 0.16 : 0.10)
+    }
+
+    static func subtleIconForeground(isFromMe: Bool, colorScheme: ColorScheme) -> Color {
+        guard colorScheme == .dark else {
+            return isFromMe
+                ? Color(red: 0.12, green: 0.43, blue: 0.16)
+                : Color.secondary
+        }
+
+        return Color.white.opacity(isFromMe ? 0.90 : 0.74)
+    }
+}
+
 private struct MessageContentView: View {
     let message: MessageRow
 
@@ -708,10 +1133,13 @@ private struct MessageContentView: View {
                 LinkPreviewAttachmentView(media: nil, fallbackURL: url)
             }
 
-            if let displayText {
+            if let media = message.media, isCaptionedAttachment(media), let displayText {
                 LinkedMessageText(text: displayText)
                     .textSelection(.enabled)
-            } else if message.isVoiceCallEvent {
+            } else if let displayText {
+                LinkedMessageText(text: displayText)
+                    .textSelection(.enabled)
+            } else if message.media == nil && message.isVoiceCallEvent {
                 VoiceCallAttachmentView(isFromMe: message.isFromMe)
             } else if message.media == nil {
                 Text(message.nonTextPlaceholderText ?? "Unsupported message")
@@ -721,18 +1149,24 @@ private struct MessageContentView: View {
     }
 
     private var displayText: String? {
-        if let text = message.text?.trimmingCharacters(in: .whitespacesAndNewlines), !text.isEmpty {
-            return text
-        }
-        return message.media?.fallbackCaptionText
+        message.displayText ?? message.media?.fallbackCaptionText
     }
 
     private func shouldShowAttachment(for media: MediaMetadata) -> Bool {
         switch media.kind {
-        case .photo, .video, .videoMessage, .audio, .document, .linkPreview:
+        case .photo, .video, .videoMessage, .audio, .voiceMessage, .document, .linkPreview:
             return true
         case .contact, .location, .sticker, .call, .callOrSystem, .system, .deleted, .media:
             return displayText == nil
+        }
+    }
+
+    private func isCaptionedAttachment(_ media: MediaMetadata) -> Bool {
+        switch media.kind {
+        case .photo, .video, .videoMessage, .audio, .voiceMessage, .document:
+            return true
+        case .contact, .location, .sticker, .linkPreview, .call, .callOrSystem, .system, .deleted, .media:
+            return false
         }
     }
 
@@ -743,7 +1177,7 @@ private struct MessageContentView: View {
             PhotoAttachmentView(media: media)
         case .video, .videoMessage:
             VideoAttachmentView(media: media)
-        case .audio:
+        case .audio, .voiceMessage:
             AudioAttachmentView(messageID: message.id, media: media)
         case .contact:
             ContactAttachmentView(media: media)
@@ -762,6 +1196,7 @@ private struct MessageContentView: View {
 
 private struct VoiceCallAttachmentView: View {
     let isFromMe: Bool
+    @Environment(\.colorScheme) private var colorScheme
     @ScaledMetric(relativeTo: .subheadline) private var iconContainerSize: CGFloat = 30
     @ScaledMetric(relativeTo: .subheadline) private var iconSize: CGFloat = 13
 
@@ -791,20 +1226,17 @@ private struct VoiceCallAttachmentView: View {
     }
 
     private var iconBackground: Color {
-        isFromMe
-            ? Color(red: 0.22, green: 0.55, blue: 0.24).opacity(0.16)
-            : Color.secondary.opacity(0.12)
+        ChatBubblePalette.subtleIconBackground(isFromMe: isFromMe, colorScheme: colorScheme)
     }
 
     private var iconForeground: Color {
-        isFromMe
-            ? Color(red: 0.12, green: 0.43, blue: 0.16)
-            : Color.secondary
+        ChatBubblePalette.subtleIconForeground(isFromMe: isFromMe, colorScheme: colorScheme)
     }
 }
 
 private struct LinkedMessageText: View {
     let text: String
+    @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
         Text(attributedText)
@@ -819,16 +1251,21 @@ private struct LinkedMessageText: View {
                 continue
             }
             attributed[attributedRange].link = match.url
-            attributed[attributedRange].foregroundColor = .accentColor
+            attributed[attributedRange].foregroundColor = linkColor
         }
 
         return attributed
+    }
+
+    private var linkColor: Color {
+        ChatBubblePalette(isFromMe: false, colorScheme: colorScheme).linkText
     }
 }
 
 private struct LinkPreviewAttachmentView: View {
     let media: MediaMetadata?
     let fallbackURL: URL?
+    @Environment(\.colorScheme) private var colorScheme
 
     private var previewURL: URL? {
         media?.linkPreviewURL
@@ -887,7 +1324,7 @@ private struct LinkPreviewAttachmentView: View {
         }
         .frame(maxWidth: 260, alignment: .leading)
         .padding(10)
-        .background(Color.secondary.opacity(0.08))
+        .background(ChatBubblePalette.attachmentBackground(for: colorScheme))
         .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
     }
 }
@@ -923,6 +1360,7 @@ private enum MessageLinkDetector {
 
 private struct ContactAttachmentView: View {
     let media: MediaMetadata
+    @Environment(\.colorScheme) private var colorScheme
 
     private var displayName: String {
         media.contactDisplayName ?? "Shared contact"
@@ -975,7 +1413,7 @@ private struct ContactAttachmentView: View {
         }
         .frame(maxWidth: 260, alignment: .leading)
         .padding(10)
-        .background(Color.secondary.opacity(0.08))
+        .background(ChatBubblePalette.attachmentBackground(for: colorScheme))
         .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
         .accessibilityElement(children: .combine)
     }
@@ -983,6 +1421,7 @@ private struct ContactAttachmentView: View {
 
 private struct DocumentAttachmentView: View {
     let media: MediaMetadata
+    @Environment(\.colorScheme) private var colorScheme
     @State private var previewItem: DocumentPreviewItem?
 
     private var fileSizeText: String? {
@@ -1056,7 +1495,7 @@ private struct DocumentAttachmentView: View {
             Spacer(minLength: 0)
         }
         .padding(10)
-        .background(Color.secondary.opacity(0.08))
+        .background(ChatBubblePalette.attachmentBackground(for: colorScheme))
         .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
     }
 
@@ -1484,35 +1923,43 @@ private struct AudioAttachmentView: View {
     @EnvironmentObject private var audioPlayback: AudioPlaybackController
     @State private var scrubberValue: Double = 0
     @State private var isScrubbing = false
+    @State private var fileDurationSeconds: Double?
 
     var body: some View {
         if !media.isFileAvailableInArchive || media.fileURL == nil {
             AttachmentPlaceholderView(title: "Audio unavailable", systemImage: "waveform")
-        } else {
+        } else if let url = media.fileURL {
             VStack(alignment: .leading, spacing: 6) {
-                Button {
-                    if let url = media.fileURL {
+                HStack(spacing: 10) {
+                    Button {
                         audioPlayback.toggle(messageID: messageID, url: url)
-                    }
-                } label: {
-                    HStack(spacing: 10) {
-                        Image(systemName: audioPlayback.isPlaying(messageID) ? "pause.circle.fill" : "play.circle.fill")
-                            .font(.title2)
+                    } label: {
+                        HStack(spacing: 10) {
+                            Image(systemName: audioPlayback.isPlaying(messageID) ? "pause.circle.fill" : "play.circle.fill")
+                                .font(.title2)
 
-                        Text("Audio")
-                            .font(.subheadline)
+                            Text("Audio")
+                                .font(.subheadline)
 
-                        Spacer(minLength: 0)
+                            Spacer(minLength: 0)
+                        }
+                        .contentShape(Rectangle())
                     }
-                    .contentShape(Rectangle())
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Audio attachment")
+
+                    ShareLink(item: url) {
+                        Image(systemName: "square.and.arrow.up")
+                            .font(.subheadline.weight(.semibold))
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Share audio")
                 }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Audio attachment")
 
                 Slider(
                     value: Binding(
                         get: { scrubberDisplayValue },
-                        set: { scrubberValue = $0 }
+                        set: { scrubberValue = min(max($0, 0), scrubberDuration) }
                     ),
                     in: 0...max(scrubberDuration, 1),
                     onEditingChanged: handleScrubEditingChanged
@@ -1536,6 +1983,11 @@ private struct AudioAttachmentView: View {
                 scrubberValue = 0
                 isScrubbing = false
             }
+            .task(id: url) {
+                await loadFileDuration(from: url)
+            }
+        } else {
+            AttachmentPlaceholderView(title: "Audio unavailable", systemImage: "waveform")
         }
     }
 
@@ -1547,18 +1999,20 @@ private struct AudioAttachmentView: View {
     }
 
     private var scrubberDuration: Double {
-        (audioPlayback.isPlaying(messageID) || audioPlayback.pausedMessageID == messageID)
-            ? (audioPlayback.durationSeconds ?? media.durationSeconds ?? 0)
-            : (media.durationSeconds ?? 0)
+        let duration = (audioPlayback.isPlaying(messageID) || audioPlayback.pausedMessageID == messageID)
+            ? (audioPlayback.durationSeconds ?? fileDurationSeconds ?? media.durationSeconds ?? 0)
+            : (fileDurationSeconds ?? media.durationSeconds ?? 0)
+        return max(duration, 0)
     }
 
     private var scrubberDisplayValue: Double {
         if isScrubbing {
-            return scrubberValue
+            return min(scrubberValue, scrubberDuration)
         }
-        return (audioPlayback.isPlaying(messageID) || audioPlayback.pausedMessageID == messageID)
+        let value = (audioPlayback.isPlaying(messageID) || audioPlayback.pausedMessageID == messageID)
             ? audioPlayback.currentTimeSeconds
             : 0
+        return min(max(value, 0), scrubberDuration)
     }
 
     private func handleScrubEditingChanged(_ editing: Bool) {
@@ -1568,6 +2022,11 @@ private struct AudioAttachmentView: View {
             audioPlayback.toggle(messageID: messageID, url: url)
         }
         audioPlayback.seek(messageID: messageID, to: scrubberValue)
+    }
+
+    private func loadFileDuration(from url: URL) async {
+        guard fileDurationSeconds == nil else { return }
+        fileDurationSeconds = await audioDuration(at: url)
     }
 
     private static func timeFormatter(_ value: Double) -> String {
@@ -1582,6 +2041,7 @@ private struct AudioAttachmentView: View {
 private struct AttachmentPlaceholderView: View {
     let title: String
     let systemImage: String
+    @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
         HStack(spacing: 8) {
@@ -1589,7 +2049,7 @@ private struct AttachmentPlaceholderView: View {
             Text(title)
         }
         .font(.subheadline)
-        .foregroundStyle(.secondary)
+        .foregroundStyle(ChatBubblePalette(isFromMe: false, colorScheme: colorScheme).secondaryText)
         .frame(maxWidth: 260, minHeight: 44, alignment: .leading)
     }
 }
@@ -1616,6 +2076,18 @@ private func videoThumbnail(at url: URL, maxPixelSize: CGFloat) async -> CGImage
     generator.appliesPreferredTrackTransform = true
     generator.maximumSize = CGSize(width: maxPixelSize, height: maxPixelSize)
     return try? await generator.image(at: .zero).image
+}
+
+private func audioDuration(at url: URL) async -> Double? {
+    await audioDuration(for: AVURLAsset(url: url))
+}
+
+private func audioDuration(for asset: AVAsset) async -> Double? {
+    guard let duration = try? await asset.load(.duration) else {
+        return nil
+    }
+    let seconds = duration.seconds
+    return seconds.isFinite && seconds > 0 ? seconds : nil
 }
 
 private func prepareMediaPlaybackSession() {

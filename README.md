@@ -22,6 +22,8 @@ the viewer.
 - This project does not upload data to any cloud service.
 - The extractor reads a local iPhone backup and writes a local extracted archive.
 - The viewer opens local SQLite files read-only.
+- The viewer can remember selected local archives using app-local bookmark metadata.
+- Removing a saved archive from the viewer does not delete the archive files.
 - Any iCloud Drive, AirDrop, SwissTransfer, external-drive, or other transfer
   workflow is optional and user-managed.
 
@@ -35,16 +37,19 @@ Working now:
 
 - Extract WhatsApp shared-container files from a local iPhone backup.
 - Open an extracted archive folder or `ChatStorage.sqlite`.
+- Remember selected archives locally so they can be reopened without selecting the folder again.
+- Manage two local saved archive slots: WhatsApp and WhatsApp Business.
 - Browse chats and text messages.
 - Search chat titles in the loaded chat list.
 - Read large chats incrementally by scrolling upward to load older messages.
 - Render available photo attachments inline.
 - Open available video attachments in a tap-to-play video preview.
-- Play available audio and voice attachments with a simple play/pause control.
+- Play available audio and voice attachments with a simple play/pause control and share them from the chat row.
 - Show PDF and common document attachments as document rows, with local preview and sharing when the file resolves.
+- Show captions/text attached to photo, video, audio, or document rows under the media in the same bubble.
 - Use the extracted WhatsApp chat wallpaper as the message background when `current_wallpaper.jpg` is present at the archive root.
 - Detect WhatsApp Status/Stories rows only from reliable message/session evidence such as `status@broadcast`, and keep them out of normal direct-chat browsing.
-- Show a lightweight Chat Info screen with per-chat media filters for all media, photos, videos, and detected Stories/Status media, with available local media prioritized.
+- Show a lightweight Chat Info screen with per-chat filters for all previewable chat media, photos, videos, and documents, with available local media prioritized and selectable for grouped sharing/export; voice-message audio stays in chat rows instead of the media grid.
 - Share photos and videos from their local preview sheets without uploading them.
 - Keep missing or unsupported media as placeholders.
 - Show conservative system/call placeholders without exposing raw sender IDs.
@@ -82,9 +87,15 @@ extracted folder containing `ChatStorage.sqlite`.
    open apps/ios-archive-viewer/WhatsAppArchiveViewer.xcodeproj
    ```
 
-4. Build and run the app, then open either:
+4. Build and run the app, then choose the WhatsApp or WhatsApp Business slot
+   and add either:
    - the extracted folder containing `ChatStorage.sqlite`, or
    - `ChatStorage.sqlite` directly.
+
+   The viewer saves a local archive record with a local label so the archive
+   can be reopened later without selecting it again. Removing a saved archive
+   record does not delete files. If an external folder is moved or iOS marks
+   the saved file access stale, relink it from the archive slot.
 
 5. For large iPhone transfers, read the transfer guide before copying the full
    archive.

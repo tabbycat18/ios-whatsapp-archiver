@@ -43,9 +43,26 @@ The app can open:
 - an extracted archive folder containing `ChatStorage.sqlite`, or
 - `ChatStorage.sqlite` directly.
 
-When an archive is opened, the app copies `ChatStorage.sqlite` and SQLite sidecars into its Application Support folder. It then opens the copied database with `SQLITE_OPEN_READONLY` and sets `PRAGMA query_only = ON`.
+The app starts with a local archive selection screen built around two account
+slots: WhatsApp and WhatsApp Business. Adding an archive stores a small saved
+record with bookmark metadata, local display label, archive kind, last-opened
+date, and chat count when available. Saved labels are app metadata only; editing
+them does not rename or move archive folders. The saved records stay in app
+storage and do not upload archive contents.
 
-The selected archive folder remains the archive root for media availability checks. Media binaries and thumbnails are not copied into the app sandbox and are not loaded into memory.
+When an archive is opened, the app resolves the saved bookmark, starts
+security-scoped access when iOS requires it, opens the selected database in
+place with `SQLITE_OPEN_READONLY`, and sets `PRAGMA query_only = ON`. If a
+bookmark is stale or the external archive moved, the library marks the archive
+as needing reselecting and lets the user relink it.
+
+When an archive is opened, the chat list title is simply `Chats`; the selected
+archive folder name is kept out of the chat-list header.
+
+The selected archive folder remains the archive root for media availability
+checks. Media binaries, thumbnails, and full archives are not copied into the
+app sandbox and are not loaded into memory. Removing a saved archive record only
+removes the app's metadata; it does not delete archive files.
 
 The app does not currently open zip files or packaged archives directly. If a user transfers a packaged archive today, it must be unpacked first and the unpacked folder containing `ChatStorage.sqlite` must be selected.
 
@@ -66,9 +83,7 @@ Older batches query rows before that cursor using `ZMESSAGEDATE` and `Z_PK`, the
 
 At database open, the viewer discovers available message and media columns. If `ZWAMEDIAITEM` is present and joinable through `ZMESSAGE`, message queries join media metadata without requiring media files to be loaded.
 
-The UI currently shows placeholders such as photo, video, audio, or generic media attachment. It also records whether the referenced media path appears available under the selected archive root.
-
-Media rendering is future work.
+The UI currently shows placeholders such as photo, video, audio, or generic media attachment. It also records whether the referenced media path appears available under the selected archive root. Photo, video, audio, and document messages render their `ZWAMESSAGE.ZTEXT` caption under the attachment in the same bubble when present.
 
 ## Transfer Constraints
 
@@ -87,8 +102,5 @@ Packaged archive import is a likely future design direction. One archive file co
 ## Future Work
 
 - Experiment with packaged archive import.
-- Render images without loading whole archives into memory.
-- Add video and audio playback.
 - Expand sender/contact enrichment from `ContactsV2.sqlite`.
-- Add persistent archive bookmarks and polished import management.
 - Add synthetic public fixtures for repeatable tests without private data.

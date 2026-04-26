@@ -17,7 +17,9 @@ Build and run with full Xcode on an iOS simulator or device. Command Line Tools 
 ## What the App Does
 
 - Opens an extracted archive folder containing `ChatStorage.sqlite`, or `ChatStorage.sqlite` directly.
-- Copies `ChatStorage.sqlite` and SQLite sidecars into the app sandbox before opening them.
+- Saves app-local archive records so selected archives can be reopened after relaunch without selecting the folder again.
+- Supports two saved archive slots: WhatsApp and WhatsApp Business.
+- Removes saved archive records without deleting the underlying archive files.
 - Opens SQLite with `SQLITE_OPEN_READONLY`.
 - Sets `PRAGMA query_only = ON`.
 - Loads chat sessions from `ZWACHATSESSION`.
@@ -30,8 +32,8 @@ Build and run with full Xcode on an iOS simulator or device. Command Line Tools 
 - Separates detected status/story-only fragments into a Stories / Status section instead of showing them as normal conversations.
 - Discovers `ZWAMEDIAITEM` metadata when the table and columns are available.
 - Shows text messages, inline photos, tap-to-play video previews, simple audio playback, document attachment rows, and conservative placeholders for unsupported media/system rows.
-- Shows media captions with their attachment when caption metadata is available, even if the media file itself is missing.
-- Opens a lightweight Chat Info view with per-chat media filters for all media, photos, videos, and detected Stories / Status.
+- Shows text captions attached to photo, video, audio, and document message rows under the media in the same bubble.
+- Opens a lightweight Chat Info view with per-chat filters for all previewable chat media, photos, videos, and documents, with tap or drag multi-select sharing for available local files.
 - Prioritizes locally available media in Chat Info while keeping missing or unresolved items as placeholders.
 - Checks whether referenced media files appear available under the selected archive root.
 - Uses the extracted WhatsApp chat wallpaper as the message background when a generic wallpaper file is present at the selected archive root.
@@ -41,6 +43,8 @@ Build and run with full Xcode on an iOS simulator or device. Command Line Tools 
 Media files stay local. The app renders only visible message attachments lazily
 and keeps missing or unresolved files as placeholders. Photo, video, and
 document preview sharing uses local file URLs through the system share sheet.
+Saved archive records are local bookmark metadata only; no archive content is
+uploaded.
 
 ## Current State
 
@@ -62,17 +66,17 @@ document preview sharing uses local file URLs through the system share sheet.
 ### Milestone 4 Chat Media Rendering
 
 - Renders available photo attachments inline after downsampling.
-- Renders captions below photo, video, audio, and document attachments when the archive exposes caption text.
 - Shows available videos as tap-to-play attachments with lazy thumbnails when thumbnail generation succeeds.
-- Plays available audio and voice attachments with a simple play/pause control.
+- Plays available audio and voice attachments with a simple play/pause control and a direct share action.
 - Shows PDFs and common document attachments as rows with a document icon, safe title, type, size, local preview, and sharing when the file resolves.
+- Shows media captions under photo, video, audio, and document attachments in the same bubble.
 - Shows the archive wallpaper behind messages when `current_wallpaper.jpg` or `current_wallpaper_dark.jpg` exists next to `ChatStorage.sqlite`.
 - Keeps unsupported, missing, or unreadable media as placeholders.
 - Loads media only for visible rows and does not scan or preload all archive media.
 - Supports pinch-to-zoom in the photo preview on iOS.
 - Shares photos and videos from the preview sheets through the system share sheet.
 - Opens available documents with the system preview flow and shares them through the system share sheet.
-- Provides a first lightweight Chat Info media view backed by direct per-chat SQLite queries, with local files prioritized before unavailable placeholders.
+- Provides a first lightweight Chat Info media view backed by direct per-chat SQLite queries, with local photo/video/document files prioritized before unavailable placeholders.
 
 ### Milestone 2.5 Full-History Pagination
 
@@ -87,7 +91,7 @@ The app does not load every message at once because large WhatsApp chats can con
 
 ### Current UI Policies
 
-- Chat search filters loaded chat titles only. It does not search message contents.
+- Chat search filters loaded chat titles only. In-chat search filters loaded message text, including media captions stored on the message row.
 - Raw JIDs and internal sender identifiers are hidden in the normal UI.
 - Group sender names use friendly names when the archive provides one, including profile push names stored in `ChatStorage.sqlite` and optional ContactsV2 names. Unsaved senders may show a safely extracted phone number only from classic phone-based WhatsApp JIDs. `@lid` identifiers and unresolved sender tokens are treated as opaque, so the UI shows "Unknown sender" rather than risk showing a wrong name or number.
 - Message classification is conservative. Known media placeholders, likely voice call rows, deleted rows, and system notices are labeled without exposing raw database identifiers. Unknown mappings stay generic instead of guessing unsupported WhatsApp internals.
@@ -99,7 +103,7 @@ The app does not load every message at once because large WhatsApp chats can con
 - Chat wallpaper resolution checks generic archive-root files named `current_wallpaper.jpg` and `current_wallpaper_dark.jpg`.
 - Media rendering is lazy. Images are downsampled before display, video thumbnails are generated only for visible video rows, and audio playback starts only after the user taps play.
 - Contact-card rendering requires reliable vCard metadata. Rows with video media evidence, including instant video notes, are treated as playable video media rather than contact cards.
-- The Chat Info media view queries media for the selected chat/session directly from SQLite, includes related merged session IDs, prioritizes locally available renderable media, and caps each filtered fetch. It is not a full archive-wide media library.
+- The Chat Info media view queries photo/video/document media for the selected chat/session directly from SQLite, includes related merged session IDs, excludes status/story rows, includes deliberately sent audio in the All view while keeping voice-message audio in chat rows, prioritizes locally available renderable media, supports tap or drag multi-select sharing/export for available files, and caps each filtered fetch. It is not a full archive-wide media library.
 
 ## Development Data
 
@@ -117,7 +121,7 @@ Documents/ChatStorage.sqlite-shm
 Documents/ChatStorage.sqlite-journal
 ```
 
-The app also has an Open Archive action that can select either an extracted archive folder containing `ChatStorage.sqlite` or the database file directly. Picking the containing folder is preferred because the selected folder becomes the archive root for media availability checks. The app copies only the database and sidecars into Application Support; it does not copy media binaries into the app sandbox.
+The app starts at an archive selection screen with two account slots: WhatsApp and WhatsApp Business. Each slot can select either an extracted archive folder containing `ChatStorage.sqlite` or the database file directly. Picking the containing folder is preferred because the selected folder becomes the archive root for media availability checks. Saved archive labels are local app metadata and can be renamed without renaming or moving archive folders. The app stores security-scoped bookmark metadata when appropriate and opens the selected database in place; it does not copy the archive or media binaries into the app sandbox. If an external folder is moved or the bookmark becomes stale, relink the saved archive from its slot. The opened chat list is titled `Chats` and does not show the selected archive folder name under the title.
 
 ## Testing Notes
 
@@ -134,7 +138,15 @@ The app also has an Open Archive action that can select either an extracted arch
 - Confirm available videos open in the video preview only after tapping.
 - Confirm instant video/video-message rows are not shown as contact cards and can be opened from the chat row.
 - Confirm available audio or voice rows can play and pause.
+- Confirm available audio or voice rows can be shared from the chat row.
 - Confirm PDF/document rows show safe titles, type, size, open in the system preview, and can be shared.
+- Confirm photo, video, audio, and document rows with captions show the caption below the media in the same bubble.
+- Confirm message search finds media caption text.
+- Confirm a saved archive is listed after force quit and can be opened without reselecting the folder.
+- Confirm the WhatsApp and WhatsApp Business slots can be opened and switched from the archive selection screen.
+- Confirm no more than one saved archive can be added per slot.
+- Confirm local archive labels can be renamed without changing archive folder names.
+- Confirm removing a saved archive record does not delete the archive files.
 - Confirm the chat wallpaper appears behind messages when `current_wallpaper.jpg` is present in the selected archive folder.
 - Confirm missing or unreadable media remains a clean placeholder.
 - Confirm missing or unreadable documents show `Document unavailable`.
@@ -145,7 +157,8 @@ The app also has an Open Archive action that can select either an extracted arch
 - Confirm chat list dates for duplicate-title conversations come from user-visible text, media, or call rows rather than security/system-only fragments.
 - Confirm media rendering does not break automatic older-message loading.
 - Confirm detected status/story-only entries appear under Stories / Status rather than as normal chats.
-- Confirm Chat Info -> Media shows available All, Photos, and Videos items before missing placeholders when the archive contains local files.
+- Confirm Chat Info -> Media shows available All, Photos, Videos, and Docs items before missing placeholders when the archive contains local files, and does not show Stories / Status rows.
+- Confirm Chat Info -> Media can tap-select or drag-select multiple available items, select all shown available items, and share/export them together.
 - Avoid printing private message contents or full private filesystem paths during debugging.
 
 ## Large Archive Transfer Notes
@@ -173,14 +186,14 @@ Packaging may still be useful to test because one large file can be easier to tr
 
 - Do not commit extracted archives, WhatsApp databases, media folders, generated exports, or screenshots with private content.
 - Keep local archives under ignored folders such as `data/` or `exports/`.
+- Saved archive records stay in the installed app's local storage and should not be exported or committed.
 - Check `git status --short --ignored` before every commit.
 
 ## Limitations
 
-- The Chat Info media view is intentionally lightweight and capped per filtered query; it prioritizes available local media but is not a complete archive-wide media browser.
+- The Chat Info media view is intentionally lightweight and capped per filtered query; it prioritizes available local photo/video/document media but is not a complete archive-wide media browser.
 - Link-preview, location, contact-card, and sticker rendering remain placeholders.
 - ContactsV2 enrichment is intentionally conservative and may not resolve every historical contact edge case yet.
 - ContactsV2 improves identity resolution, but duplicate-title sessions can still represent either real separate chats or archive fragments that need conservative classification.
-- Persistent archive bookmarks and polished import management are future work.
-- App document sharing through Finder is not configured yet; use the Files picker with a local or iCloud Drive archive folder.
+- App document sharing through Finder is not configured yet; use the archive library's Add Archive flow with a local or iCloud Drive archive folder.
 - Zip/package import is not implemented yet.

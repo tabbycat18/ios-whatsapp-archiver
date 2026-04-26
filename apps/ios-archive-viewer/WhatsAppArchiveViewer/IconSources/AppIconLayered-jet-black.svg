@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <title>WA Archiver App Icon - Jet Black</title>
+  <desc>Jet black variant rebuilt from the current PNG composition with subtle graphite depth.</desc>
+  <defs>
+    <linearGradient id="bg-main" x1="512" y1="0" x2="512" y2="1024" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#171A1C"/>
+      <stop offset="0.42" stop-color="#060708"/>
+      <stop offset="1" stop-color="#000000"/>
+    </linearGradient>
+    <radialGradient id="bg-glow" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(320 120) rotate(54) scale(760 650)">
+      <stop offset="0" stop-color="#6E7D82" stop-opacity="0.22"/>
+      <stop offset="0.45" stop-color="#1C2427" stop-opacity="0.1"/>
+      <stop offset="1" stop-color="#000000" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="green-sheen" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(720 290) rotate(125) scale(520 450)">
+      <stop offset="0" stop-color="#19C93B" stop-opacity="0.18"/>
+      <stop offset="0.46" stop-color="#19C93B" stop-opacity="0.05"/>
+      <stop offset="1" stop-color="#19C93B" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="edge-highlight" x1="512" y1="0" x2="512" y2="1024" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#FFFFFF" stop-opacity="0.18"/>
+      <stop offset="0.55" stop-color="#FFFFFF" stop-opacity="0.03"/>
+      <stop offset="1" stop-color="#000000" stop-opacity="0.55"/>
+    </linearGradient>
+    <filter id="mark-shadow" x="110" y="110" width="800" height="800" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="14" stdDeviation="14" flood-color="#000000" flood-opacity="0.56"/>
+    </filter>
+    <filter id="soft-icon-depth" x="-40" y="-40" width="1104" height="1104" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="-8" stdDeviation="12" flood-color="#FFFFFF" flood-opacity="0.08"/>
+      <feDropShadow dx="0" dy="22" stdDeviation="20" flood-color="#000000" flood-opacity="0.72"/>
+    </filter>
+  </defs>
+
+  <g id="background-jet-black">
+    <rect width="1024" height="1024" rx="218" fill="url(#bg-main)"/>
+    <rect width="1024" height="1024" rx="218" fill="url(#bg-glow)"/>
+    <rect width="1024" height="1024" rx="218" fill="url(#green-sheen)"/>
+    <rect x="19" y="19" width="986" height="986" rx="202" stroke="url(#edge-highlight)" stroke-width="38" filter="url(#soft-icon-depth)"/>
+  </g>
+
+  <g id="whatsapp-bubble-ring" filter="url(#mark-shadow)" fill="#F7F7F2">
+    <path fill-rule="evenodd" clip-rule="evenodd" d="M516 145C326.7 145 172 299.7 172 489C172 546.4 186.2 601 211.7 649.2L163.3 856.4C161.7 863.4 168.2 869.5 175.1 867.5L356 816.1C403.9 842.1 458.7 857 516 857C705.3 857 860 702.3 860 513C860 497.5 858.9 481.9 856.8 466.8L793.1 471.9C795 485.2 796 498.9 796 513C796 667 670 793 516 793C467.2 793 421.2 780.5 381.3 758.4L359.5 746.4L250.6 777.3L281 647.2L271.6 629.7C249 587.7 236 539.8 236 489C236 334.9 361.9 209 516 209C564.5 209 610.1 221.3 649.8 243L679.8 186.5C631.2 160.2 575.5 145 516 145Z"/>
+  </g>
+  <g id="phone-handset" filter="url(#mark-shadow)" fill="#F7F7F2">
+    <path d="M382.1 337.9C405.7 328 433.1 338.9 443.5 362.3L457.9 394.6C468 417.3 461.9 444 442.8 459.9L426 473.9C421.2 477.9 419.6 484.6 422.2 490.3C449.4 550.7 500.1 597.1 562.5 620.8C568.6 623.1 575.5 620.9 579.3 615.6L599.5 587.3C613.1 568.3 638.5 562.2 659.1 573.2L690 589.8C713.1 602.2 722.7 630.2 712.2 654.2L704.9 670.9C697.7 687.3 684.2 700 667.3 705.7C625.7 719.8 568 709.3 509.2 676.4C449.5 643 393.2 588.7 354.1 525.4C317.3 465.8 307.1 410.6 327.8 373C339.4 351.9 358.9 347.6 382.1 337.9Z"/>
+  </g>
+  <g id="archive-arrow-tray" filter="url(#mark-shadow)" fill="#F7F7F2">
+    <path d="M745 190C755.5 190 764 198.5 764 209V270H792C797.6 270 802.6 273.4 804.8 278.6C806.9 283.7 805.7 289.7 801.7 293.6L755.6 339.7C749.8 345.6 740.2 345.6 734.4 339.7L688.3 293.6C684.3 289.7 683.1 283.7 685.2 278.6C687.4 273.4 692.4 270 698 270H726V209C726 198.5 734.5 190 745 190Z"/>
+    <path fill-rule="evenodd" clip-rule="evenodd" d="M672 354C660.9 354 652 362.9 652 374V414C652 425.1 660.9 434 672 434H816C827.1 434 836 425.1 836 414V374C836 362.9 827.1 354 816 354H672ZM723 380C716.4 380 711 385.4 711 392C711 398.6 716.4 404 723 404H765C771.6 404 777 398.6 777 392C777 385.4 771.6 380 765 380H723Z"/>
+  </g>
+</svg>

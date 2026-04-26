@@ -32,6 +32,7 @@ private struct MediaClassificationInput {
     let groupEventType: Int?
     let localPath: String?
     let title: String?
+    let mediaOrigin: Int?
     let mediaURL: String?
     let vCardName: String?
     let vCardString: String?
@@ -142,6 +143,9 @@ private final class ContactsV2Resolver {
                 Z_PK,
                 \(select("ZWHATSAPPID", columns: columns)),
                 \(select("ZLID", columns: columns)),
+                \(select("ZIDENTIFIER", columns: columns)),
+                \(select("ZPHONENUMBER", columns: columns)),
+                \(select("ZLOCALIZEDPHONENUMBER", columns: columns)),
                 \(select("ZFULLNAME", columns: columns)),
                 \(select("ZGIVENNAME", columns: columns)),
                 \(select("ZLASTNAME", columns: columns)),
@@ -159,16 +163,22 @@ private final class ContactsV2Resolver {
             let identity = ContactIdentity(
                 key: "contactsV2:\(sqlite3_column_int64(statement, 0))",
                 displayName: displayName(
-                    fullName: string(statement, 3),
-                    givenName: string(statement, 4),
-                    lastName: string(statement, 5),
-                    businessName: string(statement, 6),
-                    highlightedName: string(statement, 7),
-                    username: string(statement, 8)
+                    fullName: string(statement, 6),
+                    givenName: string(statement, 7),
+                    lastName: string(statement, 8),
+                    businessName: string(statement, 9),
+                    highlightedName: string(statement, 10),
+                    username: string(statement, 11)
                 )
             )
 
-            for jid in [string(statement, 1), string(statement, 2)].compactMap(normalizedJID) {
+            for jid in [
+                string(statement, 1),
+                string(statement, 2),
+                string(statement, 3),
+                string(statement, 4),
+                string(statement, 5)
+            ].compactMap(normalizedJID) {
                 candidatesByJID[jid, default: []].append(identity)
             }
             stepResult = sqlite3_step(statement)
@@ -211,6 +221,10 @@ private final class ContactsV2Resolver {
         }
         if trimmed.contains("@s.whatsapp.net") || trimmed.contains("@lid") {
             return trimmed
+        }
+        let digits = trimmed.filter(\.isNumber)
+        if digits.count >= 6 {
+            return "\(digits)@s.whatsapp.net"
         }
         return nil
     }
@@ -529,9 +543,9 @@ final class WhatsAppDatabase {
         return "(\(predicates.joined(separator: "\n        OR ")))"
     }
 
-    private func audioMediaSQL() -> String {
+    private func audioMediaSQL(includeVoiceMessages: Bool = true) -> String {
         let path = "lower(COALESCE(mi.ZMEDIALOCALPATH, mi.ZMEDIAURL, mi.ZTITLE, ''))"
-        return """
+        let audioSQL = """
         (m.ZMESSAGETYPE = 3
         OR \(path) LIKE '%.aac'
         OR \(path) LIKE '%.caf'
@@ -541,6 +555,8 @@ final class WhatsAppDatabase {
         OR \(path) LIKE '%.opus'
         OR \(path) LIKE '%.wav')
         """
+        guard !includeVoiceMessages else { return audioSQL }
+        return "(\(audioSQL) AND NOT \(voiceMessageAudioSQL()))"
     }
 
     private func documentMediaSQL() -> String {
@@ -561,7 +577,14 @@ final class WhatsAppDatabase {
     }
 
     private func mediaLibraryCandidateSQL() -> String {
-        "(\(photoMediaSQL()) OR \(videoMediaSQL()) OR \(audioMediaSQL()) OR \(documentMediaSQL()))"
+        "(\(photoMediaSQL()) OR \(videoMediaSQL()) OR \(audioMediaSQL(includeVoiceMessages: false)) OR \(documentMediaSQL()))"
+    }
+
+    private func voiceMessageAudioSQL() -> String {
+        guard mediaSchema?.columns.contains("ZMEDIAORIGIN") == true else {
+            return "0"
+        }
+        return "(mi.ZMEDIAORIGIN = 1)"
     }
 
     private func callMessageSQL(alias: String) -> String {
@@ -680,7 +703,7 @@ final class WhatsAppDatabase {
     func fetchChatMediaLibraryPage(
         sessionIDs: [Int64],
         filter: ChatMediaFilter,
-        includeStatusStoriesInAll: Bool,
+        includeStatusStoriesInAll _: Bool,
         limit: Int = 300
     ) throws -> ChatMediaLibraryPage {
         guard mediaSchema?.canJoinMessages == true else {
@@ -712,15 +735,13 @@ final class WhatsAppDatabase {
         let filterSQL: String
         switch filter {
         case .all:
-            filterSQL = includeStatusStoriesInAll
-                ? candidateSQL
-                : "NOT \(statusStorySQL) AND \(candidateSQL)"
+            filterSQL = "NOT \(statusStorySQL) AND \(candidateSQL)"
         case .photos:
             filterSQL = "NOT \(statusStorySQL) AND \(photoMediaSQL())"
         case .videos:
             filterSQL = "NOT \(statusStorySQL) AND \(videoMediaSQL())"
-        case .statusStories:
-            filterSQL = "\(statusStorySQL) AND \(candidateSQL)"
+        case .documents:
+            filterSQL = "NOT \(statusStorySQL) AND \(documentMediaSQL())"
         }
 
         let totalRowsMatchingFilter = try countMediaRows(
@@ -728,13 +749,11 @@ final class WhatsAppDatabase {
             placeholders: placeholders,
             filterSQL: filterSQL
         )
-        let statusStoryRowsExcluded = filter == .statusStories
-            ? 0
-            : try countMediaRows(
-                sessionIDs: sessionIDs,
-                placeholders: placeholders,
-                filterSQL: statusStorySQL
-            )
+        let statusStoryRowsExcluded = try countMediaRows(
+            sessionIDs: sessionIDs,
+            placeholders: placeholders,
+            filterSQL: statusStorySQL
+        )
         let scanLimit = max(limit, min(limit * 10, 5_000))
         let sql = """
             SELECT
@@ -783,7 +802,7 @@ final class WhatsAppDatabase {
             }
             scannedMedia.append(media)
 
-            guard shouldIncludeInMediaLibrary(media, filter: filter, includeStatusStoriesInAll: includeStatusStoriesInAll) else {
+            guard shouldIncludeInMediaLibrary(media, filter: filter) else {
                 stepResult = sqlite3_step(statement)
                 continue
             }
@@ -840,21 +859,18 @@ final class WhatsAppDatabase {
 
     private func shouldIncludeInMediaLibrary(
         _ media: MediaMetadata,
-        filter: ChatMediaFilter,
-        includeStatusStoriesInAll: Bool
+        filter: ChatMediaFilter
     ) -> Bool {
         switch filter {
         case .all:
-            guard includeStatusStoriesInAll || media.source != .statusStory else {
-                return false
-            }
+            guard media.source != .statusStory else { return false }
             return isMediaLibraryDisplayable(media.kind)
         case .photos:
             return media.source != .statusStory && media.kind == .photo
         case .videos:
             return media.source != .statusStory && (media.kind == .video || media.kind == .videoMessage)
-        case .statusStories:
-            return media.source == .statusStory && isMediaLibraryDisplayable(media.kind)
+        case .documents:
+            return media.source != .statusStory && media.kind == .document
         }
     }
 
@@ -862,7 +878,7 @@ final class WhatsAppDatabase {
         switch kind {
         case .photo, .video, .videoMessage, .audio, .sticker, .document:
             return true
-        case .contact, .location, .linkPreview, .call, .callOrSystem, .system, .deleted, .media:
+        case .voiceMessage, .contact, .location, .linkPreview, .call, .callOrSystem, .system, .deleted, .media:
             return false
         }
     }
@@ -912,6 +928,7 @@ final class WhatsAppDatabase {
                     && item.media.kind != .video
                     && item.media.kind != .videoMessage
                     && item.media.kind != .audio
+                    && item.media.kind != .voiceMessage
             }.count,
             resolvedFileURLRows: displayedItems.filter { $0.media.fileURL != nil }.count,
             existingFileRows: displayedItems.filter(\.media.isFileAvailableInArchive).count,
@@ -1149,7 +1166,8 @@ final class WhatsAppDatabase {
                     groupMemberFirstName: string(statement, 5),
                     groupMemberJID: string(statement, 6),
                     profilePushName: string(statement, 7),
-                    contactsDisplayName: contactsResolver?.identity(for: string(statement, 6))?.displayName,
+                    contactsDisplayName: contactsResolver?.identity(for: string(statement, 6))?.displayName
+                        ?? contactsResolver?.identity(for: string(statement, 2))?.displayName,
                     text: string(statement, 8),
                     messageDate: date(statement, 9),
                     messageType: messageType,
@@ -1244,6 +1262,7 @@ final class WhatsAppDatabase {
                 "NULL AS media_local_path",
                 "NULL AS media_title",
                 "NULL AS media_file_size",
+                "NULL AS media_origin",
                 "NULL AS media_url",
                 "NULL AS media_vcard_name",
                 "NULL AS media_vcard_string",
@@ -1258,6 +1277,7 @@ final class WhatsAppDatabase {
             mediaSchema.select("ZMEDIALOCALPATH", as: "media_local_path"),
             mediaSchema.select("ZTITLE", as: "media_title"),
             mediaSchema.select("ZFILESIZE", as: "media_file_size"),
+            mediaSchema.select("ZMEDIAORIGIN", as: "media_origin"),
             mediaSchema.select("ZMEDIAURL", as: "media_url"),
             mediaSchema.select("ZVCARDNAME", as: "media_vcard_name"),
             mediaSchema.select("ZVCARDSTRING", as: "media_vcard_string"),
@@ -1300,12 +1320,13 @@ final class WhatsAppDatabase {
         let localPath = string(statement, index + 1)
         let title = string(statement, index + 2)
         let fileSize = int64(statement, index + 3)
-        let mediaURL = string(statement, index + 4)
-        let vCardName = string(statement, index + 5)
-        let vCardString = string(statement, index + 6)
-        let latitude = double(statement, index + 7)
-        let longitude = double(statement, index + 8)
-        let durationSeconds = double(statement, index + 9)
+        let mediaOrigin = int(statement, index + 4)
+        let mediaURL = string(statement, index + 5)
+        let vCardName = string(statement, index + 6)
+        let vCardString = string(statement, index + 7)
+        let latitude = double(statement, index + 8)
+        let longitude = double(statement, index + 9)
+        let durationSeconds = double(statement, index + 10)
 
         guard itemID != nil || localPath != nil || title != nil || fileSize != nil || mediaURL != nil || vCardName != nil || vCardString != nil || latitude != nil || longitude != nil || durationSeconds != nil else {
             return nil
@@ -1320,6 +1341,7 @@ final class WhatsAppDatabase {
                 groupEventType: groupEventType,
                 localPath: localPath,
                 title: title,
+                mediaOrigin: mediaOrigin,
                 mediaURL: mediaURL,
                 vCardName: vCardName,
                 vCardString: vCardString,
@@ -1457,7 +1479,7 @@ final class WhatsAppDatabase {
             return .video
         }
         if input.messageType == 3 {
-            return .audio
+            return isVoiceMessageAudio(input) ? .voiceMessage : .audio
         }
         if input.messageType == 5 {
             return .location
@@ -1486,7 +1508,7 @@ final class WhatsAppDatabase {
                 return .video
             }
             if mimeType.hasPrefix("audio/") {
-                return .audio
+                return isVoiceMessageAudio(input) ? .voiceMessage : .audio
             }
         }
 
@@ -1503,12 +1525,16 @@ final class WhatsAppDatabase {
         case "mp4", "mov", "m4v":
             return .video
         case "aac", "caf", "m4a", "mp3", "ogg", "opus", "wav":
-            return .audio
+            return isVoiceMessageAudio(input) ? .voiceMessage : .audio
         case "pdf", "doc", "docx", "xls", "xlsx", "ppt", "pptx", "txt", "rtf", "zip":
             return .document
         default:
             return input.messageType == 0 ? .callOrSystem : .media
         }
+    }
+
+    private func isVoiceMessageAudio(_ input: MediaClassificationInput) -> Bool {
+        input.mediaOrigin == 1
     }
 
     private func hasReliableVCard(name: String?, string: String?, messageType: Int?) -> Bool {

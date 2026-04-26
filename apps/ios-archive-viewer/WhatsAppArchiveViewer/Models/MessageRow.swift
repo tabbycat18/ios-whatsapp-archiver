@@ -5,6 +5,7 @@ enum MediaAttachmentKind: String, Hashable {
     case video
     case videoMessage
     case audio
+    case voiceMessage
     case contact
     case location
     case sticker
@@ -26,6 +27,8 @@ enum MediaAttachmentKind: String, Hashable {
             return "Video message"
         case .audio:
             return "Audio attachment"
+        case .voiceMessage:
+            return "Voice message"
         case .contact:
             return "Contact card"
         case .location:
@@ -105,7 +108,7 @@ struct MediaMetadata: Hashable {
 
     var fallbackCaptionText: String? {
         switch kind {
-        case .photo, .video, .videoMessage, .audio:
+        case .photo, .video, .videoMessage, .audio, .voiceMessage:
             return Self.safeCaptionText(title)
         case .contact, .location, .sticker, .document, .linkPreview, .call, .callOrSystem, .system, .deleted, .media:
             return nil
@@ -234,6 +237,16 @@ struct MessageRow: Identifiable, Hashable {
             ?? DisplayNameSanitizer.safePhoneNumber(from: senderJID)
     }
 
+    var displayText: String? {
+        guard let trimmed = text?.trimmingCharacters(in: .whitespacesAndNewlines), !trimmed.isEmpty else {
+            return nil
+        }
+        guard !shouldSuppressRawSystemText(trimmed) else {
+            return nil
+        }
+        return trimmed
+    }
+
     var nonTextPlaceholderText: String? {
         if let media {
             return media.kind.placeholderText
@@ -261,13 +274,28 @@ struct MessageRow: Identifiable, Hashable {
     private static func isCallMessageType(_ value: Int?) -> Bool {
         value == 59 || value == 66
     }
+
+    private func shouldSuppressRawSystemText(_ value: String) -> Bool {
+        guard Self.isSystemMessageType(messageType) || media?.kind == .system else {
+            return false
+        }
+        let lowercased = value.lowercased()
+        guard lowercased.contains("@lid")
+            || lowercased.contains("@s.whatsapp.net")
+            || lowercased.contains("@g.us")
+            || value.contains(";")
+            || value.contains(",") else {
+            return false
+        }
+        return true
+    }
 }
 
 enum ChatMediaFilter: String, CaseIterable, Identifiable {
     case all
     case photos
     case videos
-    case statusStories
+    case documents
 
     var id: String { rawValue }
 
@@ -279,8 +307,8 @@ enum ChatMediaFilter: String, CaseIterable, Identifiable {
             return "Photos"
         case .videos:
             return "Videos"
-        case .statusStories:
-            return "Stories / Status"
+        case .documents:
+            return "Docs"
         }
     }
 }

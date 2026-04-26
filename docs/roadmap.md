@@ -18,7 +18,10 @@
 - Conservative WhatsApp Status/Stories detection from `status@broadcast` schema/session evidence, with status/story-only fragments separated from normal chats.
 - Photo preview zoom and photo/video local share-sheet support.
 - PDF and common document attachment rows with system preview/share support.
-- First lightweight Chat Info media view with per-chat filters and available local media prioritized ahead of missing placeholders.
+- First lightweight Chat Info media view with per-chat photo/video/document filters and available local media prioritized ahead of missing placeholders.
+- Local saved archive library with security-scoped bookmark reopening, multi-archive switching, relinking, and remove-record support.
+- Two-slot archive selection for WhatsApp and WhatsApp Business, with local labels and relinking/removal that does not delete archive files.
+- Captions on photo, video, audio, and document messages rendered under the attachment in the same bubble.
 
 ## Next
 
@@ -33,7 +36,6 @@
 - Expand media rendering for contact cards, locations, stickers, and link previews where safe.
 - Add `ContactsV2.sqlite` enrichment for better names and contact metadata.
 - Expand group sender enrichment where ChatStorage push names are unavailable.
-- Add polished archive import and persistent bookmark flow.
 - Add a non-Xcode distribution path.
 - Improve performance for very large archives and media-heavy chats.
 - Add synthetic public test fixtures with no private WhatsApp data.
