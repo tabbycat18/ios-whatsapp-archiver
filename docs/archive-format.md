@@ -58,11 +58,13 @@ Messages are displayed oldest-to-newest. The initial load fetches the latest 500
 Using the primary key as a tie-breaker keeps pagination stable when multiple messages have the same timestamp.
 
 The chat list prefers the latest relevant user-visible message date for each
-chat. Known system-notice message types are excluded from that primary latest
-date so notices such as security-code changes do not make a chat appear newer
-than the last real conversation row. If no relevant message date is available,
-the viewer falls back to the last-message pointer date, then the maximum message
-date, then a sanitized `ZWACHATSESSION.ZLASTMESSAGEDATE`.
+chat. Relevant rows are currently text rows, media rows, and likely call rows.
+Known system-notice message types are excluded from that primary latest date so
+notices such as security-code changes do not make a chat appear newer than the
+last real conversation row. If no relevant message date is available, visible
+uncertain archive entries may fall back to archive activity dates, but
+system-only and tiny no-visible-message fragments are hidden from normal
+browsing.
 
 This approximates WhatsApp ordering but may differ where WhatsApp applies
 private ranking or filtering logic not yet mapped by this project.
@@ -76,8 +78,20 @@ unambiguous ContactsV2 contact identity. Merged chats query messages across all
 related session IDs with the same `(ZMESSAGEDATE, Z_PK)` keyset pagination.
 
 The viewer does not merge by display title alone because unrelated people or
-groups can share the same visible title. Same-title sessions remain separate in
-the chat list as separate archive entries without exposing raw JIDs.
+groups can share the same visible title. Same-title sessions are classified
+after strong-identity merging:
+
+- sessions with user-visible text, media, or call rows remain visible as
+  separate conversations;
+- duplicate/system-only sessions are treated as system-only archive fragments;
+- tiny sessions with no clear user-visible rows are treated as archive
+  fragments;
+- uncertain larger entries remain visible with a cautious archive-entry label.
+
+Hidden fragments are omitted from the default chat list and title search. They
+are not merged into another chat and their rows are not deleted; they are only
+filtered out of normal browsing to avoid technical clutter and misleading recent
+dates.
 
 ## Message Classification
 
@@ -95,6 +109,11 @@ The exact private WhatsApp meaning of every type value is not fully mapped.
 converted to phone numbers. Unsaved group senders can remain "Unknown sender"
 when no friendly name, ContactsV2 name, profile push name, or safe phone-based
 JID is available.
+
+ContactsV2 improves contact-name and identity resolution, but it does not prove
+that every same-title session belongs to the same real conversation. The viewer
+therefore keeps ContactsV2 linking conservative and still applies duplicate-title
+fragment classification afterward.
 
 ## Media State
 

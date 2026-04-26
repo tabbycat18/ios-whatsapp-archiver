@@ -45,12 +45,41 @@ private struct ChatSummaryRow {
     let partnerName: String?
     let title: String
     let messageCount: Int
-    let latestMessageDate: Date?
+    let userVisibleMessageCount: Int
+    let systemMessageCount: Int
+    let latestUserVisibleMessageDate: Date?
+    let latestAnyMessageDate: Date?
+    let fallbackMessageDate: Date?
 }
 
 private struct ContactIdentity {
     let key: String
     let displayName: String?
+}
+
+private struct ChatActivityMetrics {
+    let messageCount: Int
+    let userVisibleMessageCount: Int
+    let systemMessageCount: Int
+
+    var hasUserVisibleMessages: Bool {
+        userVisibleMessageCount > 0
+    }
+}
+
+private struct ChatSummaryDraft {
+    let id: Int64
+    let sessionIDs: [Int64]
+    let contactJID: String?
+    let contactIdentifier: String?
+    let partnerName: String?
+    let title: String
+    let detailText: String
+    let latestUserVisibleMessageDate: Date?
+    let latestAnyMessageDate: Date?
+    let fallbackMessageDate: Date?
+    let searchableTitle: String
+    let activity: ChatActivityMetrics
 }
 
 private final class ContactsV2Resolver {
@@ -332,18 +361,9 @@ final class WhatsAppDatabase {
     }
 
     func fetchChats() throws -> [ChatSummary] {
-        let latestRelevantMessageDateSQL: String
-        if messageColumns.contains("ZMESSAGETYPE") {
-            latestRelevantMessageDateSQL = """
-                CASE
-                    WHEN COALESCE(m.ZMESSAGETYPE, -1) NOT IN (6, 10)
-                    THEN m.ZMESSAGEDATE
-                    ELSE NULL
-                END
-                """
-        } else {
-            latestRelevantMessageDateSQL = "m.ZMESSAGEDATE"
-        }
+        let userVisibleMessageSQL = userVisibleMessageSQL(alias: "m")
+        let mediaEvidenceSQL = mediaEvidenceSQL(alias: "m")
+        let systemMessageSQL = systemMessageSQL(alias: "m")
 
         let sql = """
             SELECT
@@ -359,7 +379,12 @@ final class WhatsAppDatabase {
                     ELSE NULL
                 END AS sanitized_last_message_date,
                 COUNT(m.Z_PK) AS message_count,
-                MAX(\(latestRelevantMessageDateSQL)) AS latest_relevant_message_date,
+                SUM(CASE WHEN \(userVisibleMessageSQL) THEN 1 ELSE 0 END) AS user_visible_message_count,
+                SUM(CASE WHEN \(textMessageSQL(alias: "m")) THEN 1 ELSE 0 END) AS text_message_count,
+                SUM(CASE WHEN \(mediaEvidenceSQL) THEN 1 ELSE 0 END) AS media_message_count,
+                SUM(CASE WHEN \(callMessageSQL(alias: "m")) THEN 1 ELSE 0 END) AS call_message_count,
+                SUM(CASE WHEN \(systemMessageSQL) THEN 1 ELSE 0 END) AS system_message_count,
+                MAX(CASE WHEN \(userVisibleMessageSQL) THEN m.ZMESSAGEDATE ELSE NULL END) AS latest_user_visible_message_date,
                 MAX(m.ZMESSAGEDATE) AS latest_any_message_date,
                 lm.ZMESSAGEDATE AS last_message_pointer_date
             FROM ZWACHATSESSION c
@@ -373,7 +398,7 @@ final class WhatsAppDatabase {
                 c.ZLASTMESSAGEDATE,
                 c.ZMESSAGECOUNTER,
                 lm.ZMESSAGEDATE
-            ORDER BY COALESCE(latest_relevant_message_date, last_message_pointer_date, latest_any_message_date, sanitized_last_message_date, 0) DESC, c.Z_PK ASC
+            ORDER BY COALESCE(latest_user_visible_message_date, last_message_pointer_date, latest_any_message_date, sanitized_last_message_date, 0) DESC, c.Z_PK ASC
             """
 
         let statement = try prepare(sql)
@@ -391,7 +416,9 @@ final class WhatsAppDatabase {
                 ?? DisplayNameSanitizer.friendlyName(partnerName)
                 ?? DisplayNameSanitizer.friendlyName(contactIdentifier)
                 ?? (isGroupJID(contactJID) ? "Group chat" : "Unknown chat")
-            let latestMessageDate = date(statement, 8) ?? date(statement, 10) ?? date(statement, 9) ?? date(statement, 6)
+            let latestUserVisibleMessageDate = date(statement, 13)
+            let latestAnyMessageDate = date(statement, 14)
+            let fallbackMessageDate = latestUserVisibleMessageDate ?? date(statement, 15) ?? latestAnyMessageDate ?? date(statement, 6)
 
             rows.append(
                 ChatSummaryRow(
@@ -402,7 +429,11 @@ final class WhatsAppDatabase {
                     partnerName: partnerName,
                     title: title,
                     messageCount: Int(sqlite3_column_int64(statement, 7)),
-                    latestMessageDate: latestMessageDate
+                    userVisibleMessageCount: Int(sqlite3_column_int64(statement, 8)),
+                    systemMessageCount: Int(sqlite3_column_int64(statement, 12)),
+                    latestUserVisibleMessageDate: latestUserVisibleMessageDate,
+                    latestAnyMessageDate: latestAnyMessageDate,
+                    fallbackMessageDate: fallbackMessageDate
                 )
             )
             stepResult = sqlite3_step(statement)
@@ -424,6 +455,45 @@ final class WhatsAppDatabase {
 
     private func isGroupJID(_ value: String?) -> Bool {
         value?.contains("@g.us") == true
+    }
+
+    private func userVisibleMessageSQL(alias: String) -> String {
+        "(NOT \(systemMessageSQL(alias: alias)) AND (\(textMessageSQL(alias: alias)) OR \(mediaEvidenceSQL(alias: alias)) OR \(callMessageSQL(alias: alias))))"
+    }
+
+    private func textMessageSQL(alias: String) -> String {
+        "(\(alias).ZTEXT IS NOT NULL AND TRIM(\(alias).ZTEXT) <> '')"
+    }
+
+    private func mediaEvidenceSQL(alias: String) -> String {
+        var predicates: [String] = []
+        if mediaSchema?.canJoinMessages == true {
+            predicates.append("EXISTS (SELECT 1 FROM ZWAMEDIAITEM chat_media WHERE chat_media.ZMESSAGE = \(alias).Z_PK)")
+        }
+        if messageColumns.contains("ZMEDIAITEM") {
+            predicates.append("\(alias).ZMEDIAITEM IS NOT NULL")
+        }
+        if messageColumns.contains("ZMESSAGETYPE") {
+            predicates.append("\(alias).ZMESSAGETYPE IN (1, 2, 3, 4, 5, 7, 8, 15)")
+        }
+        guard !predicates.isEmpty else {
+            return "0"
+        }
+        return "(\(predicates.joined(separator: " OR ")))"
+    }
+
+    private func callMessageSQL(alias: String) -> String {
+        guard messageColumns.contains("ZMESSAGETYPE") else {
+            return "0"
+        }
+        return "(\(alias).ZMESSAGETYPE IN (59, 66))"
+    }
+
+    private func systemMessageSQL(alias: String) -> String {
+        guard messageColumns.contains("ZMESSAGETYPE") else {
+            return "0"
+        }
+        return "(\(alias).ZMESSAGETYPE IN (6, 10))"
     }
 
     func fetchMessages(sessionIDs: [Int64], limit: Int = 500) throws -> [MessageRow] {
@@ -489,9 +559,9 @@ final class WhatsAppDatabase {
     private func mergedChatSummaries(from rows: [ChatSummaryRow]) -> [ChatSummary] {
         let groupedRows = Dictionary(grouping: rows, by: \.identityKey)
 
-        var summaries = groupedRows.values.map { group -> ChatSummary in
+        let drafts = groupedRows.values.map { group -> ChatSummaryDraft in
             let sortedGroup = group.sorted { lhs, rhs in
-                switch (lhs.latestMessageDate, rhs.latestMessageDate) {
+                switch (lhs.fallbackMessageDate, rhs.fallbackMessageDate) {
                 case let (lhsDate?, rhsDate?):
                     if lhsDate != rhsDate {
                         return lhsDate > rhsDate
@@ -508,12 +578,18 @@ final class WhatsAppDatabase {
             let primary = sortedGroup[0]
             let sessionIDs = sortedGroup.map(\.id).sorted()
             let messageCount = sortedGroup.reduce(0) { $0 + $1.messageCount }
-            let latestMessageDate = sortedGroup.compactMap(\.latestMessageDate).max()
+            let userVisibleMessageCount = sortedGroup.reduce(0) { $0 + $1.userVisibleMessageCount }
+            let systemMessageCount = sortedGroup.reduce(0) { $0 + $1.systemMessageCount }
+            let latestUserVisibleMessageDate = sortedGroup.compactMap(\.latestUserVisibleMessageDate).max()
+            let latestAnyMessageDate = sortedGroup.compactMap(\.latestAnyMessageDate).max()
+            let fallbackMessageDate = latestUserVisibleMessageDate
+                ?? sortedGroup.compactMap(\.fallbackMessageDate).max()
+                ?? latestAnyMessageDate
             let detailText = sessionIDs.count > 1
                 ? "\(sessionIDs.count) linked archive entries, \(messageCount.formatted()) messages"
                 : "\(messageCount.formatted()) messages"
 
-            return ChatSummary(
+            return ChatSummaryDraft(
                 id: primary.id,
                 sessionIDs: sessionIDs,
                 contactJID: primary.contactJID,
@@ -521,35 +597,106 @@ final class WhatsAppDatabase {
                 partnerName: primary.partnerName,
                 title: primary.title,
                 detailText: detailText,
-                messageCount: messageCount,
-                latestMessageDate: latestMessageDate,
-                searchableTitle: primary.title
+                latestUserVisibleMessageDate: latestUserVisibleMessageDate,
+                latestAnyMessageDate: latestAnyMessageDate,
+                fallbackMessageDate: fallbackMessageDate,
+                searchableTitle: primary.title,
+                activity: ChatActivityMetrics(
+                    messageCount: messageCount,
+                    userVisibleMessageCount: userVisibleMessageCount,
+                    systemMessageCount: systemMessageCount
+                )
             )
         }
 
-        let duplicateTitleCounts = Dictionary(grouping: summaries, by: \.title)
+        let visibleDrafts = drafts.filter { draft in
+            !isHiddenFromDefaultChatList(baseClassification(for: draft.activity))
+        }
+        let visibleDuplicateTitleCounts = Dictionary(grouping: visibleDrafts, by: \.title)
             .mapValues(\.count)
 
-        summaries = summaries.sorted(by: chatSummarySort).map { summary in
-            let duplicateCount = duplicateTitleCounts[summary.title, default: 0]
-            guard duplicateCount > 1 else {
-                return summary
+        let summaries = drafts.compactMap { draft -> ChatSummary? in
+            let baseClassification = baseClassification(for: draft.activity)
+            guard !isHiddenFromDefaultChatList(baseClassification) else {
+                return nil
             }
+
+            let classification: ChatSessionClassification
+            if baseClassification == .normalConversation,
+               visibleDuplicateTitleCounts[draft.title, default: 0] > 1 {
+                classification = .separateConversation
+            } else {
+                classification = baseClassification
+            }
+
             return ChatSummary(
-                id: summary.id,
-                sessionIDs: summary.sessionIDs,
-                contactJID: summary.contactJID,
-                contactIdentifier: summary.contactIdentifier,
-                partnerName: summary.partnerName,
-                title: summary.title,
-                detailText: "Separate archive entry, \(summary.detailText)",
-                messageCount: summary.messageCount,
-                latestMessageDate: summary.latestMessageDate,
-                searchableTitle: summary.searchableTitle
+                id: draft.id,
+                sessionIDs: draft.sessionIDs,
+                contactJID: draft.contactJID,
+                contactIdentifier: draft.contactIdentifier,
+                partnerName: draft.partnerName,
+                title: draft.title,
+                detailText: detailText(for: draft, classification: classification),
+                messageCount: draft.activity.messageCount,
+                latestMessageDate: latestDisplayDate(for: draft, classification: classification),
+                searchableTitle: draft.searchableTitle,
+                classification: classification
             )
         }
 
         return summaries.sorted(by: chatSummarySort)
+    }
+
+    private func baseClassification(for activity: ChatActivityMetrics) -> ChatSessionClassification {
+        if activity.hasUserVisibleMessages {
+            return .normalConversation
+        }
+        if activity.messageCount > 0, activity.systemMessageCount == activity.messageCount {
+            return .systemOnlyFragment
+        }
+        if activity.messageCount <= 5 {
+            return .archiveFragment
+        }
+        return .unknown
+    }
+
+    private func isHiddenFromDefaultChatList(_ classification: ChatSessionClassification) -> Bool {
+        switch classification {
+        case .archiveFragment, .systemOnlyFragment:
+            return true
+        case .normalConversation, .separateConversation, .unknown:
+            return false
+        }
+    }
+
+    private func detailText(
+        for draft: ChatSummaryDraft,
+        classification: ChatSessionClassification
+    ) -> String {
+        switch classification {
+        case .normalConversation:
+            return draft.detailText
+        case .separateConversation:
+            return "Separate conversation, \(draft.detailText)"
+        case .archiveFragment:
+            return "Archive fragment, \(draft.detailText)"
+        case .systemOnlyFragment:
+            return "System-only archive fragment, \(draft.detailText)"
+        case .unknown:
+            return "Archive entry, \(draft.detailText)"
+        }
+    }
+
+    private func latestDisplayDate(
+        for draft: ChatSummaryDraft,
+        classification: ChatSessionClassification
+    ) -> Date? {
+        switch classification {
+        case .normalConversation, .separateConversation:
+            return draft.latestUserVisibleMessageDate ?? draft.fallbackMessageDate
+        case .archiveFragment, .systemOnlyFragment, .unknown:
+            return draft.latestAnyMessageDate ?? draft.fallbackMessageDate
+        }
     }
 
     private func chatSummarySort(_ lhs: ChatSummary, _ rhs: ChatSummary) -> Bool {

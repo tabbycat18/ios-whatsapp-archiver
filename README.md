@@ -41,6 +41,7 @@ Working now:
 - Show media metadata and placeholders.
 - Show conservative system/call placeholders without exposing raw sender IDs.
 - Use `ContactsV2.sqlite` when available for conservative contact-name and split-session resolution.
+- Keep real duplicate-title conversations separate while hiding technical system-only or no-visible-message archive fragments from normal browsing.
 - Detect whether referenced media files appear available in the selected archive.
 
 Not implemented yet:

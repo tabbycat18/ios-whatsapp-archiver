@@ -1,5 +1,13 @@
 import Foundation
 
+enum ChatSessionClassification: String, Hashable {
+    case normalConversation
+    case separateConversation
+    case archiveFragment
+    case systemOnlyFragment
+    case unknown
+}
+
 struct ChatSummary: Identifiable, Hashable {
     let id: Int64
     let sessionIDs: [Int64]
@@ -11,6 +19,7 @@ struct ChatSummary: Identifiable, Hashable {
     let messageCount: Int
     let latestMessageDate: Date?
     let searchableTitle: String
+    let classification: ChatSessionClassification
 
     var isGroupChat: Bool {
         contactJID?.contains("@g.us") == true
