@@ -115,7 +115,7 @@ private struct ChatRowView: View {
                     .foregroundStyle(.secondary)
             }
 
-            Text("\(chat.messageCount.formatted()) messages")
+            Text(chat.detailText)
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
         }

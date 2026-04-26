@@ -23,6 +23,7 @@ Build and run with full Xcode on an iOS simulator or device. Command Line Tools 
 - Loads chat sessions from `ZWACHATSESSION`.
 - Searches loaded chat titles in memory.
 - Loads messages for the selected chat from `ZWAMESSAGE`.
+- Merges exact duplicate chat sessions only when they share the same `ZCONTACTJID`.
 - Discovers `ZWAMEDIAITEM` metadata when the table and columns are available.
 - Shows text messages and conservative media/system placeholders.
 - Checks whether referenced media files appear available under the selected archive root.
@@ -66,6 +67,7 @@ The app does not load every message at once because large WhatsApp chats can con
 - Group sender names use friendly names when the archive provides one, including profile push names stored in `ChatStorage.sqlite`. Unsaved senders may show a safely extracted phone number only from classic phone-based WhatsApp JIDs. `@lid` identifiers and unresolved sender tokens are treated as opaque, so the UI shows "Unknown sender" rather than risk showing a wrong name or number.
 - Message classification is conservative. Known media placeholders, likely voice call rows, deleted rows, and system notices are labeled without exposing raw database identifiers. Unknown mappings stay generic instead of guessing unsupported WhatsApp internals.
 - Chat sorting prefers the latest real user-visible conversation row when possible and excludes known system-notice message types from the primary latest-date calculation. It falls back to broader activity dates only when no relevant message date is available.
+- Split sessions can exist in old archives. The viewer merges exact same-JID sessions, but does not merge rows by title alone because that can combine unrelated people with the same display name.
 - Media path resolution checks several archive-root-relative layouts, including `Media/` and `Message/Media/`, without loading media binaries.
 
 ## Development Data

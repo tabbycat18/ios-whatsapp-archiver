@@ -102,7 +102,7 @@ final class ArchiveStore: ObservableObject {
     func loadMessages(for chat: ChatSummary) {
         guard let database else { return }
         do {
-            let loadedMessages = try database.fetchMessages(chatID: chat.id, limit: messageFetchLimit)
+            let loadedMessages = try database.fetchMessages(sessionIDs: chat.sessionIDs, limit: messageFetchLimit)
             hasMoreOlderMessages = loadedMessages.count > messageLimit
             messages = hasMoreOlderMessages ? Array(loadedMessages.dropFirst()) : loadedMessages
             olderMessagesErrorMessage = nil
@@ -126,6 +126,7 @@ final class ArchiveStore: ObservableObject {
 
         isLoadingOlder = true
         let chatID = chat.id
+        let sessionIDs = chat.sessionIDs
 
         Task { @MainActor [weak self] in
             await Task.yield()
@@ -134,7 +135,7 @@ final class ArchiveStore: ObservableObject {
 
             do {
                 let olderMessages = try database.fetchOlderMessages(
-                    chatID: chatID,
+                    sessionIDs: sessionIDs,
                     before: cursor,
                     limit: self.messageFetchLimit
                 )

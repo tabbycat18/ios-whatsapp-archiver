@@ -144,6 +144,9 @@ enum DisplayNameSanitizer {
         if trimmed.range(of: #"^[+0-9 ()-]{6,}$"#, options: .regularExpression) != nil {
             return true
         }
+        if trimmed.range(of: #"^C[A-Za-z0-9]{4,20}(IYG|sokG|s4kG)$"#, options: .regularExpression) != nil {
+            return true
+        }
         if trimmed.count >= 6,
            trimmed.count <= 22,
            trimmed.range(of: #"^[A-Za-z0-9]+$"#, options: .regularExpression) != nil,

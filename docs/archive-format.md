@@ -66,6 +66,17 @@ date, then a sanitized `ZWACHATSESSION.ZLASTMESSAGEDATE`.
 This approximates WhatsApp ordering but may differ where WhatsApp applies
 private ranking or filtering logic not yet mapped by this project.
 
+## Split Sessions
+
+WhatsApp archives can contain multiple `ZWACHATSESSION` rows that look like the
+same visible chat. The viewer merges sessions only when they share the exact
+same non-empty `ZCONTACTJID`, then queries messages across all merged session
+IDs with the same `(ZMESSAGEDATE, Z_PK)` keyset pagination.
+
+The viewer does not merge by display title alone because unrelated people or
+groups can share the same visible title. Same-title sessions remain separate in
+the chat list and are marked as archive sessions without exposing raw JIDs.
+
 ## Message Classification
 
 The viewer classifies message rows conservatively from available message type,

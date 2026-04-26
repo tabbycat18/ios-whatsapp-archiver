@@ -37,6 +37,16 @@ private struct MediaClassificationInput {
     let longitude: Double?
 }
 
+private struct ChatSummaryRow {
+    let id: Int64
+    let contactJID: String?
+    let contactIdentifier: String?
+    let partnerName: String?
+    let title: String
+    let messageCount: Int
+    let latestMessageDate: Date?
+}
+
 enum WhatsAppDatabaseError: LocalizedError {
     case missingDatabase(URL)
     case invalidSchema(String)
@@ -164,7 +174,7 @@ final class WhatsAppDatabase {
         let statement = try prepare(sql)
         defer { sqlite3_finalize(statement) }
 
-        var chats: [ChatSummary] = []
+        var rows: [ChatSummaryRow] = []
         var stepResult = sqlite3_step(statement)
         while stepResult == SQLITE_ROW {
             let id = sqlite3_column_int64(statement, 0)
@@ -176,30 +186,31 @@ final class WhatsAppDatabase {
                 ?? (isGroupJID(contactJID) ? "Group chat" : "Unknown chat")
             let latestMessageDate = date(statement, 8) ?? date(statement, 10) ?? date(statement, 9) ?? date(statement, 6)
 
-            chats.append(
-                ChatSummary(
+            rows.append(
+                ChatSummaryRow(
                     id: id,
                     contactJID: contactJID,
                     contactIdentifier: contactIdentifier,
                     partnerName: partnerName,
                     title: title,
                     messageCount: Int(sqlite3_column_int64(statement, 7)),
-                    latestMessageDate: latestMessageDate,
-                    searchableTitle: title
+                    latestMessageDate: latestMessageDate
                 )
             )
             stepResult = sqlite3_step(statement)
         }
 
         try throwIfStatementFailed(stepResult)
-        return chats
+        return mergedChatSummaries(from: rows)
     }
 
     private func isGroupJID(_ value: String?) -> Bool {
         value?.contains("@g.us") == true
     }
 
-    func fetchMessages(chatID: Int64, limit: Int = 500) throws -> [MessageRow] {
+    func fetchMessages(sessionIDs: [Int64], limit: Int = 500) throws -> [MessageRow] {
+        let sessionIDs = normalizedSessionIDs(sessionIDs)
+        let placeholders = sessionPlaceholders(for: sessionIDs)
         let sql = """
             SELECT *
             FROM (
@@ -207,7 +218,7 @@ final class WhatsAppDatabase {
                 FROM ZWAMESSAGE m
                 \(mediaJoinSQL())
                 \(groupMemberJoinSQL())
-                WHERE m.ZCHATSESSION = ?
+                WHERE m.ZCHATSESSION IN (\(placeholders))
                 ORDER BY m.ZMESSAGEDATE DESC, m.Z_PK DESC
                 LIMIT ?
             )
@@ -216,23 +227,25 @@ final class WhatsAppDatabase {
 
         let statement = try prepare(sql)
         defer { sqlite3_finalize(statement) }
-        sqlite3_bind_int64(statement, 1, chatID)
-        sqlite3_bind_int(statement, 2, Int32(limit))
+        bindSessionIDs(sessionIDs, to: statement)
+        sqlite3_bind_int(statement, Int32(sessionIDs.count + 1), Int32(limit))
 
         return try readMessages(from: statement)
     }
 
     func fetchOlderMessages(
-        chatID: Int64,
+        sessionIDs: [Int64],
         before cursor: MessagePaginationCursor,
         limit: Int = 500
     ) throws -> [MessageRow] {
+        let sessionIDs = normalizedSessionIDs(sessionIDs)
+        let placeholders = sessionPlaceholders(for: sessionIDs)
         let sql = """
             \(messageRowSelectSQL())
             FROM ZWAMESSAGE m
             \(mediaJoinSQL())
             \(groupMemberJoinSQL())
-            WHERE m.ZCHATSESSION = ?
+            WHERE m.ZCHATSESSION IN (\(placeholders))
               AND (
                 m.ZMESSAGEDATE < ?
                 OR (m.ZMESSAGEDATE = ? AND m.Z_PK < ?)
@@ -244,14 +257,120 @@ final class WhatsAppDatabase {
         let statement = try prepare(sql)
         defer { sqlite3_finalize(statement) }
         let cursorDate = cursor.messageDate.timeIntervalSinceReferenceDate
-        sqlite3_bind_int64(statement, 1, chatID)
-        sqlite3_bind_double(statement, 2, cursorDate)
-        sqlite3_bind_double(statement, 3, cursorDate)
-        sqlite3_bind_int64(statement, 4, cursor.messageID)
-        sqlite3_bind_int(statement, 5, Int32(limit))
+        bindSessionIDs(sessionIDs, to: statement)
+        let cursorDateIndex = Int32(sessionIDs.count + 1)
+        sqlite3_bind_double(statement, cursorDateIndex, cursorDate)
+        sqlite3_bind_double(statement, cursorDateIndex + 1, cursorDate)
+        sqlite3_bind_int64(statement, cursorDateIndex + 2, cursor.messageID)
+        sqlite3_bind_int(statement, cursorDateIndex + 3, Int32(limit))
 
         let descendingMessages = try readMessages(from: statement)
         return Array(descendingMessages.reversed())
+    }
+
+    private func mergedChatSummaries(from rows: [ChatSummaryRow]) -> [ChatSummary] {
+        let groupedRows = Dictionary(grouping: rows) { row -> String in
+            if let contactJID = row.contactJID?.trimmingCharacters(in: .whitespacesAndNewlines), !contactJID.isEmpty {
+                return "jid:\(contactJID)"
+            }
+            return "session:\(row.id)"
+        }
+
+        var summaries = groupedRows.values.map { group -> ChatSummary in
+            let sortedGroup = group.sorted { lhs, rhs in
+                switch (lhs.latestMessageDate, rhs.latestMessageDate) {
+                case let (lhsDate?, rhsDate?):
+                    if lhsDate != rhsDate {
+                        return lhsDate > rhsDate
+                    }
+                case (_?, nil):
+                    return true
+                case (nil, _?):
+                    return false
+                case (nil, nil):
+                    break
+                }
+                return lhs.id < rhs.id
+            }
+            let primary = sortedGroup[0]
+            let sessionIDs = sortedGroup.map(\.id).sorted()
+            let messageCount = sortedGroup.reduce(0) { $0 + $1.messageCount }
+            let latestMessageDate = sortedGroup.compactMap(\.latestMessageDate).max()
+            let detailText = sessionIDs.count > 1
+                ? "\(sessionIDs.count) archive sessions, \(messageCount.formatted()) messages"
+                : "\(messageCount.formatted()) messages"
+
+            return ChatSummary(
+                id: primary.id,
+                sessionIDs: sessionIDs,
+                contactJID: primary.contactJID,
+                contactIdentifier: primary.contactIdentifier,
+                partnerName: primary.partnerName,
+                title: primary.title,
+                detailText: detailText,
+                messageCount: messageCount,
+                latestMessageDate: latestMessageDate,
+                searchableTitle: primary.title
+            )
+        }
+
+        let duplicateTitleCounts = Dictionary(grouping: summaries, by: \.title)
+            .mapValues(\.count)
+
+        var duplicateTitleIndexes: [String: Int] = [:]
+        summaries = summaries.sorted(by: chatSummarySort).map { summary in
+            let duplicateCount = duplicateTitleCounts[summary.title, default: 0]
+            guard duplicateCount > 1 else {
+                return summary
+            }
+            let duplicateIndex = duplicateTitleIndexes[summary.title, default: 0] + 1
+            duplicateTitleIndexes[summary.title] = duplicateIndex
+            return ChatSummary(
+                id: summary.id,
+                sessionIDs: summary.sessionIDs,
+                contactJID: summary.contactJID,
+                contactIdentifier: summary.contactIdentifier,
+                partnerName: summary.partnerName,
+                title: summary.title,
+                detailText: "Archive session \(duplicateIndex) of \(duplicateCount), \(summary.detailText)",
+                messageCount: summary.messageCount,
+                latestMessageDate: summary.latestMessageDate,
+                searchableTitle: summary.searchableTitle
+            )
+        }
+
+        return summaries.sorted(by: chatSummarySort)
+    }
+
+    private func chatSummarySort(_ lhs: ChatSummary, _ rhs: ChatSummary) -> Bool {
+        switch (lhs.latestMessageDate, rhs.latestMessageDate) {
+        case let (lhsDate?, rhsDate?):
+            if lhsDate != rhsDate {
+                return lhsDate > rhsDate
+            }
+        case (_?, nil):
+            return true
+        case (nil, _?):
+            return false
+        case (nil, nil):
+            break
+        }
+        return lhs.id < rhs.id
+    }
+
+    private func normalizedSessionIDs(_ sessionIDs: [Int64]) -> [Int64] {
+        let normalized = Array(Set(sessionIDs)).sorted()
+        return normalized.isEmpty ? [-1] : normalized
+    }
+
+    private func sessionPlaceholders(for sessionIDs: [Int64]) -> String {
+        Array(repeating: "?", count: sessionIDs.count).joined(separator: ", ")
+    }
+
+    private func bindSessionIDs(_ sessionIDs: [Int64], to statement: OpaquePointer) {
+        for (index, sessionID) in sessionIDs.enumerated() {
+            sqlite3_bind_int64(statement, Int32(index + 1), sessionID)
+        }
     }
 
     private func messageRowSelectSQL() -> String {
