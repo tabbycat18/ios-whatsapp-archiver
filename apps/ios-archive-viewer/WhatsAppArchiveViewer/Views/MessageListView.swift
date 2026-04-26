@@ -633,8 +633,7 @@ private struct MessageBubbleView: View {
                 MessageContentView(message: message)
                     .padding(.horizontal, 12)
                     .padding(.vertical, 8)
-                    .background(message.isFromMe ? Color(red: 0.86, green: 0.95, blue: 0.84) : Color.white.opacity(0.94))
-                    .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                    .background(bubbleColor, in: bubbleShape)
                     .textSelection(.enabled)
 
                 if let messageDate = message.messageDate {
@@ -669,6 +668,22 @@ private struct MessageBubbleView: View {
         return nil
     }
 
+    private var bubbleColor: Color {
+        message.isFromMe
+            ? Color(red: 0.86, green: 0.95, blue: 0.84)
+            : Color.white.opacity(0.94)
+    }
+
+    private var bubbleShape: UnevenRoundedRectangle {
+        UnevenRoundedRectangle(
+            topLeadingRadius: 18,
+            bottomLeadingRadius: message.isFromMe ? 18 : 5,
+            bottomTrailingRadius: message.isFromMe ? 5 : 18,
+            topTrailingRadius: 18,
+            style: .continuous
+        )
+    }
+
     private static let dateFormatter: DateFormatter = {
         let formatter = DateFormatter()
         formatter.dateStyle = .medium
@@ -691,6 +706,8 @@ private struct MessageContentView: View {
             if let displayText {
                 LinkedMessageText(text: displayText)
                     .textSelection(.enabled)
+            } else if message.isVoiceCallEvent {
+                VoiceCallAttachmentView(isFromMe: message.isFromMe)
             } else if message.media == nil {
                 Text(message.nonTextPlaceholderText ?? "Unsupported message")
                     .textSelection(.enabled)
@@ -727,10 +744,55 @@ private struct MessageContentView: View {
             ContactAttachmentView(media: media)
         case .linkPreview:
             LinkPreviewAttachmentView(media: media, fallbackURL: displayText.flatMap(MessageLinkDetector.firstWebURL(in:)))
+        case .call:
+            VoiceCallAttachmentView(isFromMe: message.isFromMe)
         default:
             Text(media.kind.placeholderText)
                 .textSelection(.enabled)
         }
+    }
+}
+
+private struct VoiceCallAttachmentView: View {
+    let isFromMe: Bool
+    @ScaledMetric(relativeTo: .subheadline) private var iconContainerSize: CGFloat = 30
+    @ScaledMetric(relativeTo: .subheadline) private var iconSize: CGFloat = 13
+
+    var body: some View {
+        HStack(spacing: 9) {
+            ZStack {
+                Circle()
+                    .fill(iconBackground)
+
+                Image(systemName: "phone.fill")
+                    .font(.system(size: iconSize, weight: .semibold))
+                    .foregroundStyle(iconForeground)
+                    .accessibilityHidden(true)
+            }
+            .frame(width: iconContainerSize, height: iconContainerSize)
+
+            Text("Voice call")
+                .font(.subheadline.weight(.medium))
+                .foregroundStyle(.primary)
+                .lineLimit(1)
+                .minimumScaleFactor(0.85)
+                .textSelection(.enabled)
+        }
+        .frame(maxWidth: 240, alignment: isFromMe ? .trailing : .leading)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Voice call")
+    }
+
+    private var iconBackground: Color {
+        isFromMe
+            ? Color(red: 0.22, green: 0.55, blue: 0.24).opacity(0.16)
+            : Color.secondary.opacity(0.12)
+    }
+
+    private var iconForeground: Color {
+        isFromMe
+            ? Color(red: 0.12, green: 0.43, blue: 0.16)
+            : Color.secondary
     }
 }
 

@@ -137,7 +137,7 @@ group-event type, and media metadata:
 - reliably detected status/story media is marked as status/story media and kept
   separate from normal direct-chat rows;
 - documents, contacts, locations, stickers, and link previews are shown as placeholders;
-- likely call rows are labeled as `VOICE CALL` when the message type evidence supports it;
+- likely call rows are displayed conservatively as `Voice call` when the message type evidence supports it;
 - known system-notice rows are labeled as system messages;
 - deleted rows are labeled as deleted messages when the message type supports it;
 - unknown mappings remain generic instead of exposing internal identifiers.
