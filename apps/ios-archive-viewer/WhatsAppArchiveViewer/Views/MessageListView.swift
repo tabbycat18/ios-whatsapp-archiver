@@ -2,6 +2,9 @@ import AVFoundation
 import AVKit
 import ImageIO
 import SwiftUI
+#if os(iOS)
+import UIKit
+#endif
 
 struct MessageListView: View {
     let chat: ChatSummary
@@ -18,6 +21,7 @@ struct MessageListView: View {
     @State private var lastOlderLoadTriggerMessageID: Int64?
     @State private var messageSearchText = ""
     @State private var latestScrolledSearchQuery = ""
+    @State private var latestScrolledSearchResultID: Int64?
     private let olderLoadThreshold = 8
     private let bottomSpacerID = "message-list-bottom-spacer"
 
@@ -103,7 +107,7 @@ struct MessageListView: View {
 
     private var messageListBottomSpacer: some View {
         Color.clear
-            .frame(height: 64)
+            .frame(height: 32)
             .id(bottomSpacerID)
             .listRowSeparator(.hidden)
             .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
@@ -169,14 +173,16 @@ struct MessageListView: View {
     private func scrollToFirstSearchResultIfNeeded(using proxy: ScrollViewProxy) {
         guard isSearchingMessages else {
             latestScrolledSearchQuery = ""
+            latestScrolledSearchResultID = nil
             return
         }
-        guard latestScrolledSearchQuery != trimmedMessageSearchText else { return }
         guard let firstResultID = displayedMessages.first?.element.id else { return }
+        guard latestScrolledSearchQuery != trimmedMessageSearchText || latestScrolledSearchResultID != firstResultID else { return }
         latestScrolledSearchQuery = trimmedMessageSearchText
+        latestScrolledSearchResultID = firstResultID
         DispatchQueue.main.async {
             withAnimation {
-                proxy.scrollTo(firstResultID, anchor: UnitPoint(x: 0.5, y: 0.24))
+                proxy.scrollTo(firstResultID, anchor: .center)
             }
         }
     }
@@ -531,17 +537,23 @@ private struct PhotoPreviewView: View {
     @State private var didFail = false
 
     var body: some View {
-        ZStack(alignment: .topTrailing) {
+        ZStack(alignment: .top) {
             Color.black
                 .ignoresSafeArea()
 
             Group {
                 if let image {
+                    #if os(iOS)
+                    ZoomableImageView(image: image)
+                        .ignoresSafeArea()
+                        .accessibilityLabel("Photo attachment")
+                    #else
                     Image(decorative: image, scale: 1, orientation: .up)
                         .resizable()
                         .scaledToFit()
                         .padding()
                         .accessibilityLabel("Photo attachment")
+                    #endif
                 } else if didFail {
                     AttachmentPlaceholderView(title: "Photo unavailable", systemImage: "photo")
                         .padding()
@@ -552,15 +564,26 @@ private struct PhotoPreviewView: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
 
-            Button {
-                dismiss()
-            } label: {
-                Image(systemName: "xmark.circle.fill")
-                    .font(.system(size: 32))
-                    .foregroundStyle(.white, .black.opacity(0.35))
-                    .padding()
+            HStack {
+                Button {
+                    dismiss()
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.system(size: 32))
+                        .foregroundStyle(.white, .black.opacity(0.35))
+                }
+                .accessibilityLabel("Close photo")
+
+                Spacer()
+
+                ShareLink(item: url) {
+                    Image(systemName: "square.and.arrow.up.circle.fill")
+                        .font(.system(size: 32))
+                        .foregroundStyle(.white, .black.opacity(0.35))
+                }
+                .accessibilityLabel("Share photo")
             }
-            .accessibilityLabel("Close photo")
+            .padding()
         }
         .task {
             await loadPreviewImage()
@@ -583,6 +606,61 @@ private struct PhotoPreviewView: View {
         }
     }
 }
+
+#if os(iOS)
+private struct ZoomableImageView: UIViewRepresentable {
+    let image: CGImage
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator()
+    }
+
+    func makeUIView(context: Context) -> UIScrollView {
+        let scrollView = UIScrollView()
+        scrollView.delegate = context.coordinator
+        scrollView.minimumZoomScale = 1
+        scrollView.maximumZoomScale = 5
+        scrollView.bouncesZoom = true
+        scrollView.showsVerticalScrollIndicator = false
+        scrollView.showsHorizontalScrollIndicator = false
+        scrollView.backgroundColor = .black
+
+        let imageView = context.coordinator.imageView
+        imageView.contentMode = .scaleAspectFit
+        imageView.translatesAutoresizingMaskIntoConstraints = false
+        scrollView.addSubview(imageView)
+
+        NSLayoutConstraint.activate([
+            imageView.leadingAnchor.constraint(equalTo: scrollView.contentLayoutGuide.leadingAnchor),
+            imageView.trailingAnchor.constraint(equalTo: scrollView.contentLayoutGuide.trailingAnchor),
+            imageView.topAnchor.constraint(equalTo: scrollView.contentLayoutGuide.topAnchor),
+            imageView.bottomAnchor.constraint(equalTo: scrollView.contentLayoutGuide.bottomAnchor),
+            imageView.widthAnchor.constraint(equalTo: scrollView.frameLayoutGuide.widthAnchor),
+            imageView.heightAnchor.constraint(equalTo: scrollView.frameLayoutGuide.heightAnchor)
+        ])
+
+        return scrollView
+    }
+
+    func updateUIView(_ scrollView: UIScrollView, context: Context) {
+        let imageIdentifier = "\(image.width)x\(image.height)"
+        if context.coordinator.imageIdentifier != imageIdentifier {
+            context.coordinator.imageIdentifier = imageIdentifier
+            scrollView.setZoomScale(1, animated: false)
+        }
+        context.coordinator.imageView.image = UIImage(cgImage: image)
+    }
+
+    final class Coordinator: NSObject, UIScrollViewDelegate {
+        let imageView = UIImageView()
+        var imageIdentifier: String?
+
+        func viewForZooming(in scrollView: UIScrollView) -> UIView? {
+            imageView
+        }
+    }
+}
+#endif
 
 private struct VideoAttachmentView: View {
     let media: MediaMetadata
@@ -632,7 +710,9 @@ private struct VideoAttachmentView: View {
                     await loadThumbnailIfNeeded()
                 }
                 .sheet(isPresented: $isPlayerPresented) {
-                    VideoPlayerSheet(controller: playbackController)
+                    if let url = media.fileURL {
+                        VideoPlayerSheet(controller: playbackController, url: url)
+                    }
                 }
             }
         }
@@ -656,10 +736,38 @@ private struct VideoAttachmentView: View {
 
 private struct VideoPlayerSheet: View {
     @ObservedObject var controller: VideoPlaybackController
+    let url: URL
+    @Environment(\.dismiss) private var dismiss
 
     var body: some View {
-        VideoPlayer(player: controller.player)
-            .ignoresSafeArea()
+        ZStack(alignment: .top) {
+            Color.black
+                .ignoresSafeArea()
+
+            VideoPlayer(player: controller.player)
+                .ignoresSafeArea()
+
+            HStack {
+                Button {
+                    dismiss()
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.system(size: 32))
+                        .foregroundStyle(.white, .black.opacity(0.35))
+                }
+                .accessibilityLabel("Close video")
+
+                Spacer()
+
+                ShareLink(item: url) {
+                    Image(systemName: "square.and.arrow.up.circle.fill")
+                        .font(.system(size: 32))
+                        .foregroundStyle(.white, .black.opacity(0.35))
+                }
+                .accessibilityLabel("Share video")
+            }
+            .padding()
+        }
         .onAppear {
             controller.play()
         }

@@ -39,7 +39,7 @@ struct ChatListView: View {
                     }
                 }
             }
-            .navigationTitle(store.archiveName)
+            .navigationTitle("Chats")
             .searchable(text: $searchText, placement: .sidebar, prompt: "Search chats")
             .toolbar {
                 ToolbarItem(placement: .primaryAction) {
@@ -105,20 +105,25 @@ private struct ChatRowView: View {
     let chat: ChatSummary
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            HStack(alignment: .firstTextBaseline) {
-                Text(chat.title)
-                    .font(.headline)
-                    .lineLimit(1)
-                Spacer()
-                Text(chat.latestMessageDate.map(Self.dateFormatter.string(from:)) ?? "")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
+        HStack(spacing: 12) {
+            ChatAvatarView(title: chat.title)
 
-            Text(chat.detailText)
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(alignment: .firstTextBaseline) {
+                    Text(chat.title)
+                        .font(.headline)
+                        .lineLimit(1)
+                    Spacer()
+                    Text(chat.latestMessageDate.map(Self.dateFormatter.string(from:)) ?? "")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+
+                Text(chat.detailText)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
         }
         .padding(.vertical, 4)
     }
@@ -129,4 +134,67 @@ private struct ChatRowView: View {
         formatter.timeStyle = .short
         return formatter
     }()
+}
+
+private struct ChatAvatarView: View {
+    let title: String
+
+    private var initials: String? {
+        Self.initials(from: title)
+    }
+
+    private var paletteColor: Color {
+        Self.palette[Self.paletteIndex(for: title)]
+    }
+
+    var body: some View {
+        ZStack {
+            Circle()
+                .fill(paletteColor.gradient)
+
+            if let initials {
+                Text(initials)
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .minimumScaleFactor(0.7)
+            } else {
+                Image(systemName: "person.fill")
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundStyle(.white)
+            }
+        }
+        .frame(width: 44, height: 44)
+        .accessibilityHidden(true)
+    }
+
+    private static let palette: [Color] = [
+        Color(red: 0.15, green: 0.48, blue: 0.74),
+        Color(red: 0.22, green: 0.58, blue: 0.39),
+        Color(red: 0.62, green: 0.36, blue: 0.13),
+        Color(red: 0.68, green: 0.24, blue: 0.35),
+        Color(red: 0.36, green: 0.33, blue: 0.69),
+        Color(red: 0.22, green: 0.53, blue: 0.58)
+    ]
+
+    private static func initials(from title: String) -> String? {
+        let letters = title
+            .split(whereSeparator: { !$0.isLetter && !$0.isNumber })
+            .compactMap { word -> String? in
+                guard let letter = word.first(where: \.isLetter) else { return nil }
+                return String(letter)
+                    .folding(options: [.diacriticInsensitive, .caseInsensitive], locale: .current)
+                    .uppercased()
+            }
+            .prefix(2)
+            .joined()
+
+        return letters.isEmpty ? nil : letters
+    }
+
+    private static func paletteIndex(for title: String) -> Int {
+        let scalarTotal = title.unicodeScalars.reduce(0) { partialResult, scalar in
+            partialResult + Int(scalar.value)
+        }
+        return abs(scalarTotal) % palette.count
+    }
 }
