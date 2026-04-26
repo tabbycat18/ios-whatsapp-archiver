@@ -158,10 +158,19 @@ private struct ArchiveLibraryView: View {
     let onRelinkArchive: (SavedArchive) -> Void
     @State private var renameTarget: SavedArchive?
     @State private var renameText = ""
+    @State private var isInstructionsPresented = false
 
     var body: some View {
         NavigationStack {
             List {
+                Section {
+                    InstructionsCardView {
+                        isInstructionsPresented = true
+                    }
+                    .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
+                    .listRowBackground(Color.clear)
+                }
+
                 Section {
                     ForEach(ArchiveKind.allCases) { kind in
                         let archive = store.savedArchive(for: kind)
@@ -209,6 +218,18 @@ private struct ArchiveLibraryView: View {
                 }
             }
             .navigationTitle("WhatsApp Archiver")
+            .toolbar {
+                ToolbarItem(placement: .primaryAction) {
+                    Button {
+                        isInstructionsPresented = true
+                    } label: {
+                        Label("Help", systemImage: "questionmark.circle")
+                    }
+                }
+            }
+            .sheet(isPresented: $isInstructionsPresented) {
+                ArchiveInstructionsView()
+            }
             .overlay(alignment: .bottom) {
                 if store.isOpeningArchive {
                     ArchiveOpeningOverlay()
@@ -319,7 +340,7 @@ private struct ArchiveSlotCardView: View {
             )
             .disabled(!canAdd)
         } else {
-            HStack(spacing: 10) {
+            VStack(spacing: 10) {
                 ArchiveActionButton(
                     title: isOpening ? "Opening" : "Open",
                     systemImage: isOpening ? nil : "arrow.right.circle.fill",
@@ -330,32 +351,38 @@ private struct ArchiveSlotCardView: View {
                 )
                 .disabled(isOpening)
 
-                ArchiveActionButton(
-                    title: "Relink",
-                    systemImage: "link",
-                    style: .secondary,
-                    width: 108,
-                    action: onRelink
-                )
-                .disabled(isOpening)
+                HStack(spacing: 10) {
+                    ArchiveActionButton(
+                        title: "Relink",
+                        systemImage: "link",
+                        style: .secondary,
+                        maxWidth: .infinity,
+                        action: onRelink
+                    )
+                    .disabled(isOpening)
 
-                Menu {
-                    Button(action: onRename) {
-                        Label("Rename", systemImage: "pencil")
-                    }
+                    Menu {
+                        Button(action: onRename) {
+                            Label("Rename", systemImage: "pencil")
+                        }
 
-                    Button(role: .destructive, action: onRemove) {
-                        Label("Remove", systemImage: "trash")
-                    }
-                } label: {
-                    Label("More", systemImage: "ellipsis")
-                        .lineLimit(1)
-                        .frame(width: 76)
+                        Button(role: .destructive, action: onRemove) {
+                            Label("Remove", systemImage: "trash")
+                        }
+                    } label: {
+                        HStack(spacing: 7) {
+                            Image(systemName: "ellipsis.circle")
+                            Text("More")
+                                .lineLimit(1)
+                        }
+                        .font(.body.weight(.semibold))
+                        .frame(maxWidth: .infinity)
                         .frame(minHeight: ArchiveActionButton.height)
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.large)
+                    .disabled(isOpening)
                 }
-                .buttonStyle(.bordered)
-                .controlSize(.large)
-                .disabled(isOpening)
             }
         }
     }
@@ -391,6 +418,55 @@ private struct ArchiveSlotCardView: View {
         formatter.unitsStyle = .short
         return formatter
     }()
+}
+
+private struct InstructionsCardView: View {
+    let onOpen: () -> Void
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 12) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .fill(Color(.tertiarySystemGroupedBackground))
+
+                Image(systemName: "questionmark.circle.fill")
+                    .font(.system(size: 19, weight: .semibold))
+                    .foregroundStyle(Color.accentColor)
+            }
+            .frame(width: 44, height: 44)
+
+            VStack(alignment: .leading, spacing: 5) {
+                Text("How It Works")
+                    .font(.headline)
+                    .foregroundStyle(.primary)
+
+                Text("Backup, extract, transfer, and browse your archive locally.")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+
+            Button(action: onOpen) {
+                Text("Help")
+                    .font(.body.weight(.semibold))
+                    .lineLimit(1)
+                    .frame(minWidth: 72, minHeight: ArchiveActionButton.height)
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.large)
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .fill(Color(.secondarySystemGroupedBackground))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .stroke(.quaternary)
+        )
+    }
 }
 
 private struct DemoArchiveCardView: View {
@@ -496,6 +572,116 @@ private struct ArchiveActionButton: View {
             button
                 .buttonStyle(.bordered)
                 .controlSize(.large)
+        }
+    }
+}
+
+private struct ArchiveInstructionsView: View {
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationStack {
+            List {
+                InstructionSection(
+                    title: "Quick Start",
+                    systemImage: "iphone",
+                    rows: [
+                        "Make an encrypted local iPhone backup on your Mac.",
+                        "Run the extractor script on the Mac.",
+                        "Copy the extracted archive to your iPhone.",
+                        "Open WhatsApp Archiver and add WhatsApp or WhatsApp Business.",
+                        "Browse chats and media locally."
+                    ]
+                )
+
+                InstructionSection(
+                    title: "Detailed Steps",
+                    systemImage: "folder",
+                    rows: [
+                        "In Finder, select your iPhone and choose a local backup.",
+                        "Enable encrypted backup and keep the backup password.",
+                        "Run the extractor from this project on the Mac.",
+                        "The archive usually contains ChatStorage.sqlite, ContactsV2.sqlite, Media/, and Message/.",
+                        "Transfer the extracted archive folder to the iPhone, then add it in the app."
+                    ]
+                )
+
+                InstructionSection(
+                    title: "Transfer Notes",
+                    systemImage: "arrow.triangle.2.circlepath",
+                    rows: [
+                        "Real archives can be tens of GB and contain many files.",
+                        "AirDrop and Files transfers can be slow for large archives.",
+                        "iCloud Drive is user-managed and may keep syncing in the background.",
+                        "Zip or package transfer is experimental until the app supports it directly.",
+                        "Keep the Mac copy until the archive opens correctly on iPhone."
+                    ]
+                )
+
+                InstructionSection(
+                    title: "Privacy Notes",
+                    systemImage: "shield",
+                    rows: [
+                        "The app reads local files in place.",
+                        "This project has no server and does not upload archives.",
+                        "Third-party transfer services are outside this project.",
+                        "Removing a saved archive record does not delete archive files."
+                    ]
+                )
+
+                InstructionSection(
+                    title: "Demo Archive",
+                    systemImage: "message",
+                    rows: [
+                        "Tap Try Demo Archive on the archive home screen to open bundled sample data.",
+                        "The demo is fully synthetic and does not use a real archive slot.",
+                        "Developers can also select test-fixtures/demo-archive/ through the normal Add flow."
+                    ]
+                )
+
+                InstructionSection(
+                    title: "Installation Status",
+                    systemImage: "lock",
+                    rows: [
+                        "The source code is on GitHub.",
+                        "Current installation still requires Xcode or developer/test distribution.",
+                        "GitHub alone is not a universal one-tap iPhone install path.",
+                        "Future options may include TestFlight, App Store, EU alternative distribution, or Web Distribution if requirements are met."
+                    ]
+                )
+            }
+            .navigationTitle("Instructions")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") {
+                        dismiss()
+                    }
+                }
+            }
+        }
+    }
+}
+
+private struct InstructionSection: View {
+    let title: String
+    let systemImage: String
+    let rows: [String]
+
+    var body: some View {
+        Section {
+            ForEach(rows, id: \.self) { row in
+                Label {
+                    Text(row)
+                        .font(.body)
+                        .fixedSize(horizontal: false, vertical: true)
+                } icon: {
+                    Image(systemName: "checkmark.circle")
+                        .foregroundStyle(.secondary)
+                }
+            }
+        } header: {
+            Label(title, systemImage: systemImage)
         }
     }
 }

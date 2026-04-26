@@ -24,6 +24,7 @@
 - Captions on photo, video, audio, and document messages rendered under the attachment in the same bubble.
 - Bundled fully synthetic demo archive entry on the archive home screen.
 - Polished archive home actions with explicit Open, Add, Relink, and More controls.
+- Offline in-app Help / Instructions for backup, extraction, transfer, privacy, demo usage, and installation status.
 
 ## Next
 
@@ -39,6 +40,7 @@
 - Add `ContactsV2.sqlite` enrichment for better names and contact metadata.
 - Expand group sender enrichment where ChatStorage push names are unavailable.
 - Add a non-Xcode distribution path.
+- Continue improving first-run guidance and release packaging for non-developer users.
 - Improve performance for very large archives and media-heavy chats.
 - Add release packaging around demo and archive-opening workflows for non-Xcode users.
 

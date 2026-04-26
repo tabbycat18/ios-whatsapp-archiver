@@ -1185,6 +1185,9 @@ Run the iOS viewer and tap `Try Demo Archive` on the archive home screen. The
 Xcode app target bundles this synthetic fixture as `Demo Archive`, and opening
 it does not occupy either real archive slot.
 
+The archive home Help screen also explains this demo behavior offline in the
+app.
+
 To test the manual Add flow, choose a real archive slot and select this
 directory:
 

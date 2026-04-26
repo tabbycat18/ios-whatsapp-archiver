@@ -38,6 +38,7 @@ Working now:
 - Extract WhatsApp shared-container files from a local iPhone backup.
 - Open an extracted archive folder or `ChatStorage.sqlite`.
 - Try a bundled, fully synthetic demo archive from the archive home screen.
+- Read offline in-app instructions from the archive home screen.
 - Remember selected archives locally so they can be reopened without selecting the folder again.
 - Manage two local saved archive slots: WhatsApp and WhatsApp Business.
 - Browse chats and text messages.
@@ -127,6 +128,17 @@ python3 tools/generate_demo_archive.py
 The fixture is fully synthetic and must remain under `test-fixtures/`. Normal
 non-Xcode distribution is still future work; this repository does not currently
 provide a one-tap iPhone install path from GitHub.
+
+## In-App Help
+
+The archive home screen includes a `How It Works` card and a Help toolbar
+button. The instructions are bundled in the app and work offline. They explain
+the backup, extraction, transfer, archive adding, demo archive, privacy, and
+current installation status without linking to remote GitHub docs.
+
+Current installation still requires Xcode or another developer/test
+distribution path. Future distribution options may include TestFlight, App
+Store, EU alternative distribution, or Web Distribution if requirements are met.
 
 ## Documentation
 

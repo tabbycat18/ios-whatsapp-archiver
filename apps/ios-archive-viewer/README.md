@@ -18,6 +18,7 @@ Build and run with full Xcode on an iOS simulator or device. Command Line Tools 
 
 - Opens an extracted archive folder containing `ChatStorage.sqlite`, or `ChatStorage.sqlite` directly.
 - Opens a bundled, fully synthetic demo archive from the archive home screen.
+- Provides offline in-app Help / Instructions from the archive home screen.
 - Saves app-local archive records so selected archives can be reopened after relaunch without selecting the folder again.
 - Supports two saved archive slots: WhatsApp and WhatsApp Business.
 - Removes saved archive records without deleting the underlying archive files.
@@ -124,6 +125,23 @@ Documents/ChatStorage.sqlite-journal
 
 The app starts at an archive selection screen with two account slots: WhatsApp and WhatsApp Business. Each slot can select either an extracted archive folder containing `ChatStorage.sqlite` or the database file directly. Picking the containing folder is preferred because the selected folder becomes the archive root for media availability checks. Saved archive labels are local app metadata and can be renamed without renaming or moving archive folders. The app stores security-scoped bookmark metadata when appropriate and opens the selected database in place; it does not copy the archive or media binaries into the app sandbox. If an external folder is moved or the bookmark becomes stale, relink the saved archive from its slot. The opened chat list is titled `Chats` and does not show the selected archive folder name under the title.
 
+### In-App Instructions
+
+The archive home screen includes a `How It Works` card and a Help toolbar
+button. The instructions screen is bundled in SwiftUI and works offline. It
+covers:
+
+- quick start backup, extraction, transfer, and archive adding
+- detailed Finder backup steps and expected archive files
+- large archive transfer notes
+- privacy notes
+- demo archive usage
+- current installation status
+
+The screen intentionally avoids local private paths and remote GitHub loading.
+It also states that GitHub source is not a universal one-tap iPhone install
+path; current installation still requires Xcode or developer/test distribution.
+
 ### Synthetic Demo Archive
 
 The app target bundles the public fixture at:
@@ -153,6 +171,8 @@ does not currently provide a packaged non-Xcode install path for normal users.
 
 ## Testing Notes
 
+- Confirm the archive home Help entry is visible and the Instructions screen
+  opens offline.
 - On the archive home screen, confirm `Try Demo Archive` opens synthetic chats
   and does not fill either real archive slot.
 - Test with a large chat and confirm the latest 500 messages appear first.
