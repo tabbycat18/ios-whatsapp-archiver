@@ -57,7 +57,6 @@ source alone is not a one-tap iPhone install path.
 - media captions
 - Stories rows via `status@broadcast`
 - wallpaper via `current_wallpaper.jpg`
-- synthetic profile pictures via `Profile Pictures/`
 - Chat Info / Media filters
 - intentionally missing media behavior
 
@@ -84,4 +83,4 @@ unavailable-thumbnail behavior; they are not intended to be real playable clips.
 - Status/story sessions: 1
 - Messages: 225
 - Lake Weekend messages: 72
-- Fixture size: 240763 bytes
+- Fixture size: 217866 bytes

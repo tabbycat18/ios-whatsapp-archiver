@@ -3870,92 +3870,6 @@
       "timestamp": "2026-04-25T08:02:00+00:00"
     }
   ],
-  "profile_picture_manifest": [
-    {
-      "id": "alex",
-      "jid": "15550100@s.whatsapp.net",
-      "path": "Profile Pictures/15550100@s.whatsapp.net.jpg",
-      "synthetic": true,
-      "title": "Alex Rivera"
-    },
-    {
-      "id": "maya",
-      "jid": "15550101@s.whatsapp.net",
-      "path": "Profile Pictures/15550101@s.whatsapp.net.jpg",
-      "synthetic": true,
-      "title": "Maya Chen"
-    },
-    {
-      "id": "samir",
-      "jid": "15550102@s.whatsapp.net",
-      "path": "Profile Pictures/15550102@s.whatsapp.net.jpg",
-      "synthetic": true,
-      "title": "Samir Patel"
-    },
-    {
-      "id": "nina",
-      "jid": "15550103@s.whatsapp.net",
-      "path": "Profile Pictures/15550103@s.whatsapp.net.jpg",
-      "synthetic": true,
-      "title": "Nina Rossi"
-    },
-    {
-      "id": "theo",
-      "jid": "15550104@s.whatsapp.net",
-      "path": "Profile Pictures/15550104@s.whatsapp.net.jpg",
-      "synthetic": true,
-      "title": "Theo Martin"
-    },
-    {
-      "id": "elena",
-      "jid": "15550105@s.whatsapp.net",
-      "path": "Profile Pictures/15550105@s.whatsapp.net.jpg",
-      "synthetic": true,
-      "title": "Elena Rivera"
-    },
-    {
-      "id": "jules",
-      "jid": "15550106@s.whatsapp.net",
-      "path": "Profile Pictures/15550106@s.whatsapp.net.jpg",
-      "synthetic": true,
-      "title": "Jules Meyer"
-    },
-    {
-      "id": "priya",
-      "jid": "15550107@s.whatsapp.net",
-      "path": "Profile Pictures/15550107@s.whatsapp.net.jpg",
-      "synthetic": true,
-      "title": "Priya Shah"
-    },
-    {
-      "id": "studio",
-      "jid": "15550108@s.whatsapp.net",
-      "path": "Profile Pictures/15550108@s.whatsapp.net.jpg",
-      "synthetic": true,
-      "title": "Green Corner Studio"
-    },
-    {
-      "id": "leo",
-      "jid": "15550109@s.whatsapp.net",
-      "path": "Profile Pictures/15550109@s.whatsapp.net.jpg",
-      "synthetic": true,
-      "title": "Leo Grant"
-    },
-    {
-      "id": "lake_weekend",
-      "jid": "demo-lake-weekend@g.us",
-      "path": "Profile Pictures/demo-lake-weekend@g.us.jpg",
-      "synthetic": true,
-      "title": "Lake Weekend"
-    },
-    {
-      "id": "office_snacks",
-      "jid": "demo-office-snacks@g.us",
-      "path": "Profile Pictures/demo-office-snacks@g.us.jpg",
-      "synthetic": true,
-      "title": "Office Snacks"
-    }
-  ],
   "status_story_session": {
     "detection": "status@broadcast",
     "message_count": 3,
@@ -3965,7 +3879,7 @@
   "validation": {
     "available_media_files": 25,
     "failures": [],
-    "fixture_size_bytes": 240763,
+    "fixture_size_bytes": 217866,
     "group_chats": 2,
     "lake_weekend_messages": 72,
     "media_items": 27,
