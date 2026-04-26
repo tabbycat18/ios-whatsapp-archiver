@@ -15,6 +15,8 @@
 ## Next
 
 - Merge the Milestone 2.5 pagination PR.
+- Document and validate large archive transfer workflows.
+- Experiment with packaged archive import.
 - Add first image rendering path.
 - Add video rendering.
 - Add audio and voice-note rendering.

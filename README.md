@@ -41,6 +41,8 @@ The old `prototype-media-metadata-discovery` branch was superseded by `46c73eb` 
 - `ContactsV2.sqlite` enrichment is not implemented yet.
 - Import and bookmark persistence are still minimal.
 - Large WhatsApp archives require significant local and iPhone storage.
+- Full raw archive transfer can be slow for archives with tens of GB and more than 100k files.
+- Zip/package import is not implemented yet; packaged archives must be unpacked before selecting them in the app.
 - The current SwiftUI app target supports iPhone and iPad; Mac is used for backup extraction and Xcode development.
 
 ## Repository Layout
@@ -148,8 +150,26 @@ Picking the archive folder is preferred because the app can use that folder as t
 
 The current app opens archives through the iOS Files picker. App document sharing through Finder is not configured yet.
 
+#### Large Archive Transfer Notes
+
+A full iPhone WhatsApp archive can be tens of GB and can contain more than 100k files. Raw folder transfer can be slow even on modern Mac and iPhone hardware. The bottleneck is often the transfer method, number of files, iOS file handling, iCloud sync, or cable speed, not CPU or SSD speed.
+
+This project does not upload data anywhere. Any iCloud Drive, AirDrop, Finder, Files, external-drive, or third-party provider transfer is user-managed.
+
+#### Recommended Current Workflow
+
+- Extract the backup on the Mac.
+- Validate the archive with the viewer using `ChatStorage.sqlite` first.
+- For full-history text browsing, transfer only `ChatStorage.sqlite` and its SQLite sidecars if media is not needed.
+- For media path or rendering development, use a small media subset first.
+- Do not transfer the full archive repeatedly during development.
+- Transfer the full archive only when the full media folder is actually needed.
+- Prefer testing a packaged archive workflow before repeatedly transferring a raw full folder.
+
 Transfer options:
 
+- Development/testing mode: use only `ChatStorage.sqlite` first, optionally with a small media subset.
+- Raw folder transfer: possible through Finder, Files, iCloud Drive, AirDrop, or another provider depending on the workflow, but it can be slow for large archives because it has to handle many individual files.
 - Copy the extracted archive folder into iCloud Drive, then open it from Files on the iPhone.
 - Copy through another Files provider if it preserves the folder structure and can keep the folder downloaded locally.
 - For very large archives, AirDrop or external-drive workflows may be impractical.
@@ -163,6 +183,21 @@ For iCloud Drive:
 - On iPhone, open Files, navigate to iCloud Drive, and ensure the archive folder is downloaded locally before opening it in the viewer.
 
 iCloud Drive is an optional user-managed transfer method. It is not part of this project's privacy model.
+
+For AirDrop:
+
+- AirDrop can work, but very large raw archives may transfer slowly.
+- The iPhone may spend additional time saving the received data after transfer progress appears mostly complete.
+
+For zip or packaged archive experiments:
+
+- A zip file may transfer more reliably because it is one large file instead of more than 100k small files.
+- Zip may not reduce size much because photos and videos are already compressed.
+- Creating and unpacking a zip requires extra free space. For a 39 GB archive, expect to need substantially more than 39 GB free during packaging and unpacking.
+- The current app does not support opening or importing zip files directly.
+- Unzip the archive first, then select the extracted folder containing `ChatStorage.sqlite`.
+
+Future work may add packaged archive import where the app imports one archive file, unpacks or indexes it locally, and avoids transferring thousands of individual files through app document sharing. That is not implemented yet.
 
 ## More Documentation
 

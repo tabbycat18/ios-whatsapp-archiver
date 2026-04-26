@@ -106,7 +106,41 @@ The app copies `ChatStorage.sqlite` and any SQLite sidecars into its Application
 
 The current viewer opens archives through the iOS Files picker. App document sharing through Finder is not configured yet.
 
-Recommended transfer path:
+### Large Archive Transfer Reality
+
+A full iPhone WhatsApp archive can be tens of GB and can contain more than 100k files. A raw folder with that many files can transfer slowly even on modern Mac and iPhone hardware. The limiting factor is often the transfer method, number of files, iOS file handling, iCloud sync, or cable speed, not the Mac's CPU or SSD.
+
+This project does not upload data anywhere. Transfer through iCloud Drive, AirDrop, Finder, Files, external drives, or any third-party provider is user-managed.
+
+### Recommended Current Workflow
+
+1. Extract the backup on the Mac.
+2. Validate the archive with the viewer using `ChatStorage.sqlite` first.
+3. For full-history text browsing, transfer only `ChatStorage.sqlite` and its SQLite sidecars if media is not needed.
+4. For media path or rendering work, use a small media subset first.
+5. Transfer the full raw archive only when necessary.
+6. Prefer testing a packaged archive workflow before repeatedly transferring the full raw folder.
+
+### Development and Testing Mode
+
+Use only the database first:
+
+```text
+ChatStorage.sqlite
+ChatStorage.sqlite-wal
+ChatStorage.sqlite-shm
+ChatStorage.sqlite-journal
+```
+
+Sidecars are only needed if present. This is enough to validate chat list loading, message loading, and full-history pagination. Add a small `Media/` or `Message/Media/` subset only when testing media path discovery or future media rendering.
+
+### Raw Folder Transfer
+
+Raw folder transfer is possible through Files, iCloud Drive, AirDrop, or another provider depending on the workflow. It is best reserved for cases where the full media archive is required. Large raw folders can be slow because the transfer path has to account for many individual files.
+
+### iCloud Drive
+
+Recommended iCloud Drive path:
 
 1. Copy the extracted shared-container folder into iCloud Drive.
 2. Wait until iCloud upload and sync complete on the Mac.
@@ -118,6 +152,26 @@ For iCloud Drive, copy rather than move the archive if you want to keep the orig
 
 iCloud Drive is optional and user-managed. This project does not provide a cloud service.
 
+### AirDrop
+
+AirDrop can work, but very large raw archives may transfer slowly. The iPhone may also spend additional time saving the received data after transfer progress appears mostly complete.
+
+### Zip or Packaged Archive Experiment
+
+A zip file may transfer more reliably because it is one large file instead of more than 100k small files. It may not reduce size much because photos and videos are already compressed.
+
+Packaging has storage costs:
+
+- creating the package needs additional free space on the Mac;
+- transferring it needs free space on the target device or cloud provider;
+- unpacking it needs additional free space again.
+
+For a 39 GB archive, expect to need substantially more than 39 GB free during packaging and unpacking.
+
+The current app does not support opening or importing zip files directly. If you test a zip/package workflow today, unzip it first and select the extracted folder containing `ChatStorage.sqlite`.
+
+A likely future app milestone is packaged archive import: the app imports one archive file, unpacks or indexes it locally, and avoids transferring thousands of individual files through app document sharing. This is future work, not current support.
+
 ## Troubleshooting
 
 - `Missing Manifest.db` or `Missing Manifest.plist`: the `backup` argument is not the actual iPhone backup folder.
@@ -126,6 +180,9 @@ iCloud Drive is optional and user-managed. This project does not provide a cloud
 - No files matched the default domain: confirm WhatsApp is installed in that backup, or inspect the backup manifest with a safe local workflow before changing `--domain-like`.
 - Viewer cannot find `ChatStorage.sqlite`: select the extracted shared-container folder, not the parent output folder.
 - Media placeholders show unavailable files: make sure the whole extracted archive folder, including `Media/` and `Message/`, was transferred and downloaded locally.
+- iPhone transfer appears stuck near the end: large archives may still be saving or syncing after progress appears mostly complete.
+- iCloud Drive folder appears on the Mac but not on iPhone: wait for upload/sync completion and then ensure the folder is downloaded locally in Files.
+- Zip file does not open in the viewer: unzip it first; direct zip import is not implemented.
 
 ## Privacy Checklist
 

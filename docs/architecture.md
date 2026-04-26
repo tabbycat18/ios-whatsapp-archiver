@@ -45,6 +45,8 @@ When an archive is opened, the app copies `ChatStorage.sqlite` and SQLite sideca
 
 The selected archive folder remains the archive root for media availability checks. Media binaries and thumbnails are not copied into the app sandbox and are not loaded into memory.
 
+The app does not currently open zip files or packaged archives directly. If a user transfers a packaged archive today, it must be unpacked first and the unpacked folder containing `ChatStorage.sqlite` must be selected.
+
 ## Data Loading
 
 Chat summaries are loaded from `ZWACHATSESSION` with per-chat message counts derived from `ZWAMESSAGE`.
@@ -66,8 +68,23 @@ The UI currently shows placeholders such as photo, video, audio, or generic medi
 
 Media rendering is future work.
 
+## Transfer Constraints
+
+Large real-world WhatsApp archives can be tens of GB and can contain more than 100k files. Raw folder transfer to iPhone can be slow because the bottleneck may be the transfer method, file count, iOS file handling, iCloud sync, or cable speed.
+
+The project itself does not upload archive data. iCloud Drive, AirDrop, Finder, Files, external-drive, or third-party provider transfers are user-managed.
+
+The current architecture is best tested incrementally:
+
+- database-only transfer for chat list, message loading, and full-history pagination;
+- small media subsets for media path discovery and future rendering work;
+- full raw archive transfer only when the complete media set is required.
+
+Packaged archive import is a likely future design direction. One archive file could be imported by the app, unpacked or indexed locally, and avoid pushing thousands of individual files through app document sharing. That workflow is not implemented yet.
+
 ## Future Work
 
+- Experiment with packaged archive import.
 - Render images without loading whole archives into memory.
 - Add video and audio playback.
 - Enrich sender/contact labels from `ContactsV2.sqlite`.
