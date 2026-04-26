@@ -34,7 +34,7 @@ enum MediaAttachmentKind: String, Hashable {
         case .linkPreview:
             return "Link preview"
         case .call:
-            return "Call"
+            return "Voice call"
         case .callOrSystem:
             return "Call or system message"
         case .system:
@@ -155,22 +155,32 @@ enum DisplayNameSanitizer {
     }
 
     static func safePhoneNumber(from value: String?) -> String? {
-        guard var candidate = value?.trimmingCharacters(in: .whitespacesAndNewlines), !candidate.isEmpty else {
+        guard let candidate = value?.trimmingCharacters(in: .whitespacesAndNewlines), !candidate.isEmpty else {
             return nil
         }
 
-        if let atIndex = candidate.firstIndex(of: "@") {
-            candidate = String(candidate[..<atIndex])
-        }
-        if let slashIndex = candidate.firstIndex(of: "/") {
-            candidate = String(candidate[..<slashIndex])
-        }
-        if let colonIndex = candidate.firstIndex(of: ":") {
-            candidate = String(candidate[..<colonIndex])
+        let lowercasedCandidate = candidate.lowercased()
+        guard !lowercasedCandidate.contains("@lid"),
+              !lowercasedCandidate.contains("@g.us"),
+              !candidate.contains(";"),
+              !candidate.contains(",") else {
+            return nil
         }
 
-        let digits = candidate.filter(\.isNumber)
-        guard digits.count >= 7, digits.count <= 15, digits.count == candidate.count else {
+        guard let atIndex = candidate.firstIndex(of: "@") else {
+            return nil
+        }
+
+        let localPart = String(candidate[..<atIndex])
+        let domainAndSuffix = String(candidate[candidate.index(after: atIndex)...]).lowercased()
+        let domain = domainAndSuffix.split(whereSeparator: { $0 == "/" || $0 == ":" }).first.map(String.init)
+        guard domain == "s.whatsapp.net" else {
+            return nil
+        }
+
+        let phoneCandidate = localPart.split(whereSeparator: { $0 == "/" || $0 == ":" }).first.map(String.init) ?? ""
+        let digits = phoneCandidate.filter(\.isNumber)
+        guard digits.count >= 7, digits.count <= 15, digits == phoneCandidate else {
             return nil
         }
         return "+\(digits)"

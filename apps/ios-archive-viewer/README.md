@@ -63,8 +63,8 @@ The app does not load every message at once because large WhatsApp chats can con
 
 - Chat search filters loaded chat titles only. It does not search message contents.
 - Raw JIDs and internal sender identifiers are hidden in the normal UI.
-- Group sender names use friendly names when the archive provides one. Unsaved senders may show a safely extracted phone number; otherwise the UI shows "Unknown sender".
-- Message classification is conservative. Known media placeholders, likely call rows, deleted rows, and system notices are labeled without exposing raw database identifiers. Unknown mappings stay generic instead of guessing unsupported WhatsApp internals.
+- Group sender names use friendly names when the archive provides one. Unsaved senders may show a safely extracted phone number only from classic phone-based WhatsApp JIDs. `@lid` identifiers are treated as opaque, so the UI shows "Unknown sender" rather than risk showing a wrong number.
+- Message classification is conservative. Known media placeholders, likely voice call rows, deleted rows, and system notices are labeled without exposing raw database identifiers. Unknown mappings stay generic instead of guessing unsupported WhatsApp internals.
 - Chat sorting prefers the latest real user-visible conversation row when possible and excludes known system-notice message types from the primary latest-date calculation. It falls back to broader activity dates only when no relevant message date is available.
 - Media path resolution checks several archive-root-relative layouts, including `Media/` and `Message/Media/`, without loading media binaries.
 
