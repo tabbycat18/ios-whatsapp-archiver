@@ -54,6 +54,8 @@ archive root.
 - ticket
 - PDF
 - snacks
+- birthday
+- receipt
 
 ## Notes
 
@@ -69,6 +71,6 @@ unavailable-thumbnail behavior; they are not intended to be real playable clips.
 - One-to-one chats: 8
 - Group chats: 2
 - Status/story sessions: 1
-- Messages: 225
-- Lake Weekend messages: 72
-- Fixture size: 217866 bytes
+- Messages: 202
+- Lake Weekend messages: 69
+- Fixture size: 217473 bytes
