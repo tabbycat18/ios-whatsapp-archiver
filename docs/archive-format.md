@@ -136,6 +136,7 @@ group-event type, and media metadata:
 - instant video/video-message rows are treated as video media when file, MIME, duration, or message-type evidence supports it;
 - available audio and voice rows get a simple play/pause control;
 - available documents, including PDFs and common office/text/archive files, are shown as document rows with safe title, type, size, system preview, and sharing when the local file resolves;
+- media captions are rendered under the attachment in the same message bubble when available, including for missing media placeholders;
 - reliably detected status/story media is marked as status/story media and kept
   separate from normal direct-chat rows;
 - contacts, locations, stickers, and link previews are shown as placeholders;
@@ -172,6 +173,11 @@ metadata without rendering full files inline, then open the local file in the
 system preview flow only after the user taps the attachment. Audio rows create a
 player only after the user taps play, and the shared playback controller stops
 the previous audio row before starting another.
+
+Caption text comes from the message text field when present. Some archive shapes
+store photo/video captions in media title metadata instead, so the viewer uses
+that title as caption text only when it does not look like a URL, file path, or
+filename.
 
 Photo previews support pinch-to-zoom on iOS. Photo, video, and document previews
 expose system sharing for the resolved local file URL. The app does not upload

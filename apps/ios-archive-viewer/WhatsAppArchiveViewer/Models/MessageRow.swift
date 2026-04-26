@@ -103,6 +103,15 @@ struct MediaMetadata: Hashable {
             ?? "File"
     }
 
+    var fallbackCaptionText: String? {
+        switch kind {
+        case .photo, .video, .videoMessage, .audio:
+            return Self.safeCaptionText(title)
+        case .contact, .location, .sticker, .document, .linkPreview, .call, .callOrSystem, .system, .deleted, .media:
+            return nil
+        }
+    }
+
     var searchableAttachmentLabels: [String] {
         switch kind {
         case .document:
@@ -112,7 +121,7 @@ struct MediaMetadata: Hashable {
                 fileExtensionLabel
             ].compactMap { $0 }
         default:
-            return [kind.placeholderText]
+            return [kind.placeholderText, fallbackCaptionText].compactMap { $0 }
         }
     }
 
@@ -135,6 +144,33 @@ struct MediaMetadata: Hashable {
         guard let value, !value.isEmpty else { return nil }
         let fileExtension = URL(fileURLWithPath: value).pathExtension
         return fileExtension.isEmpty ? nil : fileExtension.lowercased()
+    }
+
+    private static func safeCaptionText(_ value: String?) -> String? {
+        guard let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines), !trimmed.isEmpty else {
+            return nil
+        }
+        guard normalizedWebURL(from: trimmed) == nil,
+              !looksLikeFileOrPath(trimmed),
+              !DisplayNameSanitizer.isRawIdentifierLike(trimmed) else {
+            return nil
+        }
+        return trimmed
+    }
+
+    private static func looksLikeFileOrPath(_ value: String) -> Bool {
+        if value.contains("/") || value.contains("\\") {
+            return true
+        }
+
+        let fileExtensions = [
+            "jpg", "jpeg", "png", "heic", "webp", "gif",
+            "mp4", "mov", "m4v",
+            "aac", "caf", "m4a", "mp3", "ogg", "opus", "wav",
+            "pdf", "doc", "docx", "xls", "xlsx", "ppt", "pptx", "txt", "rtf", "zip"
+        ]
+        let lowercased = value.lowercased()
+        return fileExtensions.contains { lowercased.hasSuffix(".\($0)") }
     }
 
     private static func vCardField(named fieldName: String, in vCardString: String?) -> String? {

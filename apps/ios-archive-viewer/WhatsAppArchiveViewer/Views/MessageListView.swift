@@ -721,10 +721,10 @@ private struct MessageContentView: View {
     }
 
     private var displayText: String? {
-        guard let text = message.text?.trimmingCharacters(in: .whitespacesAndNewlines), !text.isEmpty else {
-            return nil
+        if let text = message.text?.trimmingCharacters(in: .whitespacesAndNewlines), !text.isEmpty {
+            return text
         }
-        return text
+        return message.media?.fallbackCaptionText
     }
 
     private func shouldShowAttachment(for media: MediaMetadata) -> Bool {

@@ -30,6 +30,7 @@ Build and run with full Xcode on an iOS simulator or device. Command Line Tools 
 - Separates detected status/story-only fragments into a Stories / Status section instead of showing them as normal conversations.
 - Discovers `ZWAMEDIAITEM` metadata when the table and columns are available.
 - Shows text messages, inline photos, tap-to-play video previews, simple audio playback, document attachment rows, and conservative placeholders for unsupported media/system rows.
+- Shows media captions with their attachment when caption metadata is available, even if the media file itself is missing.
 - Opens a lightweight Chat Info view with per-chat media filters for all media, photos, videos, and detected Stories / Status.
 - Prioritizes locally available media in Chat Info while keeping missing or unresolved items as placeholders.
 - Checks whether referenced media files appear available under the selected archive root.
@@ -61,6 +62,7 @@ document preview sharing uses local file URLs through the system share sheet.
 ### Milestone 4 Chat Media Rendering
 
 - Renders available photo attachments inline after downsampling.
+- Renders captions below photo, video, audio, and document attachments when the archive exposes caption text.
 - Shows available videos as tap-to-play attachments with lazy thumbnails when thumbnail generation succeeds.
 - Plays available audio and voice attachments with a simple play/pause control.
 - Shows PDFs and common document attachments as rows with a document icon, safe title, type, size, local preview, and sharing when the file resolves.
