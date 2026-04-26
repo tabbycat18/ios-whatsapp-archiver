@@ -1,6 +1,6 @@
-# iOS WhatsApp Archiver
+# WhatsApp Archiver
 
-iOS WhatsApp Archiver is a local extractor and read-only archive viewer for
+WhatsApp Archiver is a local extractor and read-only archive viewer for
 your own iPhone WhatsApp backup.
 
 This project is not affiliated with WhatsApp, Meta, or Apple.
@@ -37,6 +37,7 @@ Working now:
 
 - Extract WhatsApp shared-container files from a local iPhone backup.
 - Open an extracted archive folder or `ChatStorage.sqlite`.
+- Try a bundled, fully synthetic demo archive from the archive home screen.
 - Remember selected archives locally so they can be reopened without selecting the folder again.
 - Manage two local saved archive slots: WhatsApp and WhatsApp Business.
 - Browse chats and text messages.
@@ -99,6 +100,33 @@ extracted folder containing `ChatStorage.sqlite`.
 
 5. For large iPhone transfers, read the transfer guide before copying the full
    archive.
+
+## Demo Archive
+
+The app target bundles the public synthetic fixture from
+`test-fixtures/demo-archive/`. On the archive home screen, tap
+`Try Demo Archive` to open it without choosing files. The demo is labeled
+`Demo Archive`, does not use either real archive slot, and is not saved as a
+user archive record.
+
+Developers can also manually open the same fixture by adding a real archive
+slot and selecting:
+
+```text
+test-fixtures/demo-archive/
+```
+
+Selecting the folder is preferred over selecting `ChatStorage.sqlite` directly
+because media availability checks and wallpaper lookup use the archive root.
+Regenerate the fixture with:
+
+```bash
+python3 tools/generate_demo_archive.py
+```
+
+The fixture is fully synthetic and must remain under `test-fixtures/`. Normal
+non-Xcode distribution is still future work; this repository does not currently
+provide a one-tap iPhone install path from GitHub.
 
 ## Documentation
 

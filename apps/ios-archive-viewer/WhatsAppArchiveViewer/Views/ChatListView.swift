@@ -197,8 +197,18 @@ private struct ArchiveLibraryView: View {
                 } footer: {
                     Text("Labels are saved only in this app. Removing a saved archive record does not delete its files.")
                 }
+
+                Section {
+                    DemoArchiveCardView(
+                        isOpening: store.openingArchiveID == ArchiveStore.demoArchiveID,
+                        isDisabled: store.isOpeningArchive,
+                        onOpen: store.openDemoArchive
+                    )
+                    .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
+                    .listRowBackground(Color.clear)
+                }
             }
-            .navigationTitle("iOS WhatsApp Archiver")
+            .navigationTitle("WhatsApp Archiver")
             .overlay(alignment: .bottom) {
                 if store.isOpeningArchive {
                     ArchiveOpeningOverlay()
@@ -300,34 +310,34 @@ private struct ArchiveSlotCardView: View {
     @ViewBuilder
     private var actionButtons: some View {
         if archive == nil {
-            Button(action: onAdd) {
-                Label("Add", systemImage: "folder.badge.plus")
-                    .frame(maxWidth: .infinity)
-            }
-            .buttonStyle(.borderedProminent)
-            .controlSize(.large)
-            .tint(.green)
+            ArchiveActionButton(
+                title: "Add",
+                systemImage: "folder.badge.plus",
+                style: .primary,
+                maxWidth: .infinity,
+                action: onAdd
+            )
             .disabled(!canAdd)
         } else {
             HStack(spacing: 10) {
-                Button(action: onOpen) {
-                    Label(isOpening ? "Opening" : "Open", systemImage: "arrow.right.circle.fill")
-                        .frame(maxWidth: .infinity)
-                }
-                .buttonStyle(.borderedProminent)
-                .controlSize(.large)
-                .tint(.green)
+                ArchiveActionButton(
+                    title: isOpening ? "Opening" : "Open",
+                    systemImage: isOpening ? nil : "arrow.right.circle.fill",
+                    showsProgress: isOpening,
+                    style: .primary,
+                    maxWidth: .infinity,
+                    action: onOpen
+                )
                 .disabled(isOpening)
 
-                Button(action: onRelink) {
-                    Label("Relink", systemImage: "link")
-                        .labelStyle(.iconOnly)
-                        .frame(width: 42)
-                }
-                .buttonStyle(.bordered)
-                .controlSize(.large)
+                ArchiveActionButton(
+                    title: "Relink",
+                    systemImage: "link",
+                    style: .secondary,
+                    width: 108,
+                    action: onRelink
+                )
                 .disabled(isOpening)
-                .accessibilityLabel("Relink archive")
 
                 Menu {
                     Button(action: onRename) {
@@ -339,13 +349,13 @@ private struct ArchiveSlotCardView: View {
                     }
                 } label: {
                     Label("More", systemImage: "ellipsis")
-                        .labelStyle(.iconOnly)
-                        .frame(width: 42)
+                        .lineLimit(1)
+                        .frame(width: 76)
+                        .frame(minHeight: ArchiveActionButton.height)
                 }
                 .buttonStyle(.bordered)
                 .controlSize(.large)
                 .disabled(isOpening)
-                .accessibilityLabel("More archive actions")
             }
         }
     }
@@ -381,6 +391,113 @@ private struct ArchiveSlotCardView: View {
         formatter.unitsStyle = .short
         return formatter
     }()
+}
+
+private struct DemoArchiveCardView: View {
+    let isOpening: Bool
+    let isDisabled: Bool
+    let onOpen: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(alignment: .top, spacing: 12) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .fill(Color.blue.opacity(0.12))
+
+                    Image(systemName: "sparkles")
+                        .font(.system(size: 19, weight: .semibold))
+                        .foregroundStyle(.blue)
+                }
+                .frame(width: 44, height: 44)
+
+                VStack(alignment: .leading, spacing: 5) {
+                    Text("Demo Archive")
+                        .font(.headline)
+                        .foregroundStyle(.primary)
+                        .lineLimit(1)
+
+                    Text("Synthetic sample chats and media bundled with the app.")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(2)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+
+            ArchiveActionButton(
+                title: isOpening ? "Opening" : "Try Demo Archive",
+                systemImage: isOpening ? nil : "play.circle.fill",
+                showsProgress: isOpening,
+                style: .secondary,
+                maxWidth: .infinity,
+                action: onOpen
+            )
+            .disabled(isDisabled)
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .fill(Color(.secondarySystemGroupedBackground))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .stroke(.quaternary)
+        )
+    }
+}
+
+private struct ArchiveActionButton: View {
+    enum Style {
+        case primary
+        case secondary
+    }
+
+    static let height: CGFloat = 44
+
+    let title: String
+    var systemImage: String?
+    var showsProgress = false
+    var style: Style
+    var width: CGFloat?
+    var maxWidth: CGFloat?
+    let action: () -> Void
+
+    var body: some View {
+        let button = Button(action: action) {
+            HStack(spacing: 7) {
+                if showsProgress {
+                    ProgressView()
+                        .controlSize(.small)
+                } else if let systemImage {
+                    Image(systemName: systemImage)
+                }
+
+                Text(title)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.9)
+            }
+            .font(.body.weight(.semibold))
+            .frame(width: width)
+            .frame(maxWidth: maxWidth)
+            .frame(minHeight: Self.height)
+            .contentShape(Rectangle())
+        }
+
+        switch style {
+        case .primary:
+            button
+                .buttonStyle(.borderedProminent)
+                .controlSize(.large)
+                .tint(.green)
+        case .secondary:
+            button
+                .buttonStyle(.bordered)
+                .controlSize(.large)
+        }
+    }
 }
 
 private struct ArchiveOpeningOverlay: View {

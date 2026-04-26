@@ -22,6 +22,8 @@
 - Local saved archive library with security-scoped bookmark reopening, multi-archive switching, relinking, and remove-record support.
 - Two-slot archive selection for WhatsApp and WhatsApp Business, with local labels and relinking/removal that does not delete archive files.
 - Captions on photo, video, audio, and document messages rendered under the attachment in the same bubble.
+- Bundled fully synthetic demo archive entry on the archive home screen.
+- Polished archive home actions with explicit Open, Add, Relink, and More controls.
 
 ## Next
 
@@ -38,7 +40,7 @@
 - Expand group sender enrichment where ChatStorage push names are unavailable.
 - Add a non-Xcode distribution path.
 - Improve performance for very large archives and media-heavy chats.
-- Add synthetic public test fixtures with no private WhatsApp data.
+- Add release packaging around demo and archive-opening workflows for non-Xcode users.
 
 ## Non-Technical User Goal
 

@@ -17,6 +17,7 @@ Build and run with full Xcode on an iOS simulator or device. Command Line Tools 
 ## What the App Does
 
 - Opens an extracted archive folder containing `ChatStorage.sqlite`, or `ChatStorage.sqlite` directly.
+- Opens a bundled, fully synthetic demo archive from the archive home screen.
 - Saves app-local archive records so selected archives can be reopened after relaunch without selecting the folder again.
 - Supports two saved archive slots: WhatsApp and WhatsApp Business.
 - Removes saved archive records without deleting the underlying archive files.
@@ -123,8 +124,37 @@ Documents/ChatStorage.sqlite-journal
 
 The app starts at an archive selection screen with two account slots: WhatsApp and WhatsApp Business. Each slot can select either an extracted archive folder containing `ChatStorage.sqlite` or the database file directly. Picking the containing folder is preferred because the selected folder becomes the archive root for media availability checks. Saved archive labels are local app metadata and can be renamed without renaming or moving archive folders. The app stores security-scoped bookmark metadata when appropriate and opens the selected database in place; it does not copy the archive or media binaries into the app sandbox. If an external folder is moved or the bookmark becomes stale, relink the saved archive from its slot. The opened chat list is titled `Chats` and does not show the selected archive folder name under the title.
 
+### Synthetic Demo Archive
+
+The app target bundles the public fixture at:
+
+```text
+test-fixtures/demo-archive/
+```
+
+Tap `Try Demo Archive` on the archive home screen to open it. The demo is
+clearly labeled `Demo Archive`, does not occupy the WhatsApp or WhatsApp
+Business slots, does not create a saved archive record, and is safe to remove
+from memory by returning to the archive home screen.
+
+Developers can regenerate the fixture from the repository root:
+
+```bash
+python3 tools/generate_demo_archive.py
+```
+
+Developers can also test manual archive picking by selecting
+`test-fixtures/demo-archive/` through the normal Add flow. The same folder can
+work on device if it is copied through Finder or Files and then selected in the
+app. Selecting the folder is preferred over selecting `ChatStorage.sqlite`
+directly because sidecar files, media, and wallpaper lookup resolve relative to
+the archive root. The fixture is bundled in Xcode builds only; this repository
+does not currently provide a packaged non-Xcode install path for normal users.
+
 ## Testing Notes
 
+- On the archive home screen, confirm `Try Demo Archive` opens synthetic chats
+  and does not fill either real archive slot.
 - Test with a large chat and confirm the latest 500 messages appear first.
 - Search for a known chat title, then clear search and confirm all chats return.
 - Search for duplicate-title contacts and confirm real separate conversations remain visible while system-only fragments do not drive normal results.

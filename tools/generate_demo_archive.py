@@ -1163,7 +1163,7 @@ def create_contacts_v2() -> None:
 def write_readme(validation: dict) -> None:
     readme = f"""# Synthetic Demo WhatsApp Archive
 
-This is a fully synthetic demo archive for iOS WhatsApp Archiver.
+This is a fully synthetic demo archive for WhatsApp Archiver.
 
 It contains no real WhatsApp data, no real phone numbers, no real addresses, no
 real tickets, no real receipts, and no private messages. The `+1 555 0100`
@@ -1181,7 +1181,12 @@ refuses to operate outside that path.
 
 ## Load In The App
 
-Run the iOS viewer, choose Add Archive, and select this directory:
+Run the iOS viewer and tap `Try Demo Archive` on the archive home screen. The
+Xcode app target bundles this synthetic fixture as `Demo Archive`, and opening
+it does not occupy either real archive slot.
+
+To test the manual Add flow, choose a real archive slot and select this
+directory:
 
 ```text
 test-fixtures/demo-archive/
@@ -1190,6 +1195,10 @@ test-fixtures/demo-archive/
 Selecting the folder is preferred over selecting `ChatStorage.sqlite` directly
 because media availability checks and `current_wallpaper.jpg` resolution use the
 archive root.
+
+The same folder can work on device if it is copied through Finder or Files and
+then selected from the app. The fixture is bundled in Xcode builds only; GitHub
+source alone is not a one-tap iPhone install path.
 
 ## Feature Coverage
 

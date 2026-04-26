@@ -4,6 +4,7 @@ import UniformTypeIdentifiers
 enum ArchiveImportError: LocalizedError {
     case missingApplicationSupportDirectory
     case missingDatabase(URL)
+    case missingDemoArchive
     case importFailed(String)
     case staleBookmark(String)
     case bookmarkResolutionFailed(String)
@@ -14,6 +15,8 @@ enum ArchiveImportError: LocalizedError {
             return "Could not locate the app's Application Support folder."
         case .missingDatabase:
             return "Missing ChatStorage.sqlite in the selected archive."
+        case .missingDemoArchive:
+            return "The bundled demo archive is missing from this build."
         case .importFailed(let message):
             return "Could not import archive: \(message)"
         case .staleBookmark(let archiveName):
@@ -313,6 +316,15 @@ final class ArchiveStore: ObservableObject {
         }
     }
 
+    func openDemoArchive() {
+        guard openingArchiveID == nil else { return }
+        openingArchiveID = Self.demoArchiveID
+        Task { @MainActor [weak self] in
+            await Task.yield()
+            self?.openDemoArchiveImmediately()
+        }
+    }
+
     func relinkArchive(id: UUID, with url: URL) {
         guard openingArchiveID == nil else { return }
         openingArchiveID = id
@@ -385,6 +397,37 @@ final class ArchiveStore: ObservableObject {
             archivesNeedingRelink.insert(archive.id)
             errorMessage = ArchiveImportError.bookmarkResolutionFailed(archive.displayName).localizedDescription
         } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    private func openDemoArchiveImmediately() {
+        defer {
+            if openingArchiveID == Self.demoArchiveID {
+                openingArchiveID = nil
+            }
+        }
+
+        do {
+            let demoArchiveURL = try Self.bundledDemoArchiveURL()
+            var demoArchive = SavedArchive(
+                id: Self.demoArchiveID,
+                displayName: "Demo Archive",
+                archiveKind: nil,
+                bookmarkData: Data(),
+                selectedResourceIsDirectory: true,
+                createdAt: Date(),
+                lastOpenedAt: nil,
+                chatCount: nil
+            )
+            let access = try ArchiveAccess(
+                savedArchiveID: demoArchive.id,
+                selectedURL: demoArchiveURL,
+                selectedResourceIsDirectory: true
+            )
+            openArchive(savedArchive: &demoArchive, access: access, shouldSave: false)
+        } catch {
+            closeArchive()
             errorMessage = error.localizedDescription
         }
     }
@@ -611,12 +654,37 @@ final class ArchiveStore: ObservableObject {
             .first { FileManager.default.fileExists(atPath: $0.path) }
     }
 
+    private static func bundledDemoArchiveURL() throws -> URL {
+        let bundle = Bundle.main
+        let directoryCandidates = [
+            bundle.url(forResource: "demo-archive", withExtension: nil),
+            bundle.url(forResource: "DemoArchive", withExtension: nil)
+        ]
+
+        if let directoryURL = directoryCandidates.compactMap({ $0 }).first,
+           FileManager.default.fileExists(atPath: directoryURL.appendingPathComponent("ChatStorage.sqlite").path) {
+            return directoryURL.standardizedFileURL
+        }
+
+        if let databaseURL = bundle.url(forResource: "ChatStorage", withExtension: "sqlite", subdirectory: "demo-archive") {
+            return databaseURL.deletingLastPathComponent().standardizedFileURL
+        }
+
+        if let databaseURL = bundle.url(forResource: "ChatStorage", withExtension: "sqlite", subdirectory: "DemoArchive") {
+            return databaseURL.deletingLastPathComponent().standardizedFileURL
+        }
+
+        throw ArchiveImportError.missingDemoArchive
+    }
+
     private func resetPaginationState() {
         olderMessagesErrorMessage = nil
         isLoadingOlder = false
         hasMoreOlderMessages = false
         initialMessageLoadGeneration += 1
     }
+
+    static let demoArchiveID = UUID(uuidString: "2A625145-C65F-43B8-AF6B-74E33AF8D20B")!
 
     private func databaseURL(in pickedURL: URL) throws -> URL {
         if try isDirectory(pickedURL) {

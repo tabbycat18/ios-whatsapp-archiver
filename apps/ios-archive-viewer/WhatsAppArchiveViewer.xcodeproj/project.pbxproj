@@ -16,6 +16,7 @@
 		6D3F20172C10000100A1B001 /* libsqlite3.tbd in Frameworks */ = {isa = PBXBuildFile; fileRef = 6D3F20162C10000100A1B001 /* libsqlite3.tbd */; };
 		6D3F20222C10000100A1B001 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 6D3F20212C10000100A1B001 /* Assets.xcassets */; };
 		6D3F20252C10000100A1B001 /* AppIcon.icon in Resources */ = {isa = PBXBuildFile; fileRef = 6D3F20242C10000100A1B001 /* AppIcon.icon */; };
+		6D3F20272C10000100A1B001 /* DemoArchive in Resources */ = {isa = PBXBuildFile; fileRef = 6D3F20262C10000100A1B001 /* DemoArchive */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -29,6 +30,7 @@
 		6D3F20162C10000100A1B001 /* libsqlite3.tbd */ = {isa = PBXFileReference; lastKnownFileType = "sourcecode.text-based-dylib-definition"; name = libsqlite3.tbd; path = usr/lib/libsqlite3.tbd; sourceTree = SDKROOT; };
 		6D3F20212C10000100A1B001 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		6D3F20242C10000100A1B001 /* AppIcon.icon */ = {isa = PBXFileReference; lastKnownFileType = folder.iconcomposer.icon; path = AppIcon.icon; sourceTree = "<group>"; };
+		6D3F20262C10000100A1B001 /* DemoArchive */ = {isa = PBXFileReference; lastKnownFileType = folder; name = DemoArchive; path = "../../test-fixtures/demo-archive"; sourceTree = SOURCE_ROOT; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -66,6 +68,7 @@
 				6D3F200A2C10000100A1B001 /* WhatsAppArchiveApp.swift */,
 				6D3F20212C10000100A1B001 /* Assets.xcassets */,
 				6D3F20242C10000100A1B001 /* AppIcon.icon */,
+				6D3F20262C10000100A1B001 /* DemoArchive */,
 				6D3F20092C10000100A1B001 /* Models */,
 				6D3F20192C10000100A1B001 /* Database */,
 				6D3F201A2C10000100A1B001 /* Views */,
@@ -167,6 +170,7 @@
 			files = (
 				6D3F20222C10000100A1B001 /* Assets.xcassets in Resources */,
 				6D3F20252C10000100A1B001 /* AppIcon.icon in Resources */,
+				6D3F20272C10000100A1B001 /* DemoArchive in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
