@@ -110,10 +110,11 @@ dates.
 WhatsApp Status/Stories media can appear in `ChatStorage.sqlite` as rows that
 are not direct messages in a normal chat. The current viewer detects these rows
 conservatively using reliable archive evidence, currently `status@broadcast` in
-message/session JID fields. Path names can be useful diagnostic clues during an
-audit, but path-only evidence is not used as runtime product logic because it can
-overmatch archive layouts that are not yet validated. The viewer also does not
-use recency, such as "last 48 hours", as product logic.
+message/session JID fields on non-outgoing rows. Outgoing rows are never hidden
+by status/story classification. Path names can be useful diagnostic clues during
+an audit, but path-only evidence is not used as runtime product logic because it
+can overmatch archive layouts that are not yet validated. The viewer also does
+not use recency, such as "last 48 hours", as product logic.
 
 When every row in a session is reliably detected as status/story data, that
 session is grouped into a separate Stories / Status section rather than listed

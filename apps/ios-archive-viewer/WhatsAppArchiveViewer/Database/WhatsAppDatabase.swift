@@ -544,7 +544,7 @@ final class WhatsAppDatabase {
         }
         predicates.append("\(chatAlias).ZCONTACTJID = 'status@broadcast'")
         guard !predicates.isEmpty else { return "0" }
-        return "(\(predicates.joined(separator: " OR ")))"
+        return "(\(messageAlias).ZISFROMME = 0 AND (\(predicates.joined(separator: " OR "))))"
     }
 
     func fetchMessages(
