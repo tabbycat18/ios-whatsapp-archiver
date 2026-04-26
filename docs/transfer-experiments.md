@@ -1,44 +1,35 @@
-# Packaged Archive Transfer Experiments
+# Large Archive Transfer Experiments
 
-This document defines a repeatable test plan for comparing ways to move an
-extracted iPhone WhatsApp archive from Mac to iPhone.
+This document compares ways to move an extracted iPhone WhatsApp archive from a
+Mac to an iPhone.
 
-The current app does not directly import zip, tar, or other packaged archive
-files. To test a packaged archive today, transfer the package, unpack it on the
-iPhone or Mac, then select the extracted folder that contains
-`ChatStorage.sqlite` in the app.
+The current app does not directly open or import zip, tar, or other packaged
+archive files. To test a packaged archive today, transfer the package, unpack it,
+then select the extracted folder that contains `ChatStorage.sqlite` in the app.
 
-## Goals
+## Privacy First
 
-- Compare raw folder transfer with packaged archive transfer.
-- Measure how much file-count overhead affects transfer time.
-- Measure package creation, transfer, save/download, and unpack time separately.
-- Confirm whether the viewer can open the final extracted archive.
-- Avoid modifying app behavior during this documentation/testing milestone.
+WhatsApp archives can contain highly sensitive personal data and data from other
+people. Local-only transfer remains the privacy-preserving default.
 
-## Safety Rules
+This project does not upload data anywhere. Any iCloud Drive, AirDrop,
+SwissTransfer, external-drive, or third-party transfer workflow is optional and
+user-managed.
 
-- Keep all private archives under ignored local folders such as `data/` or
-  `exports/`.
-- Do not stage or commit `ChatStorage.sqlite`, `ContactsV2.sqlite`, `Media/`,
-  `Message/`, generated exports, package files, or private chat data.
-- Do not use real private data in screenshots, logs, issues, or pull requests.
-- Record measurements and notes only.
+Uploading a WhatsApp archive to a third-party transfer service changes the
+privacy model. Use that kind of service only if you understand and accept the
+risk for your data. Prefer private or password-protected transfer options where
+available, and never commit, share, or publicly upload archives.
 
-## What To Measure
+## Why Transfer Is Hard
 
-Run each experiment against the same extracted archive whenever possible. Record
-the archive size and file count before testing transfer methods.
+A full iPhone WhatsApp archive can be 36-40 GB or larger and contain more than
+130k files. Moving a raw folder can be slow because the transfer path has to
+handle every individual file, not just the total byte count.
 
-Useful Mac commands:
-
-```bash
-du -sh "data/iphone-whatsapp-export/AppDomainGroup-group.net.whatsapp.WhatsApp.shared"
-find "data/iphone-whatsapp-export/AppDomainGroup-group.net.whatsapp.WhatsApp.shared" -type f | wc -l
-```
-
-Adjust paths to match the local archive. Keep command output out of git if it
-contains private paths or filenames.
+Packaged transfer may reduce many-small-file overhead by moving one large file.
+It may not reduce total size much because WhatsApp photos, videos, and voice
+notes are usually already compressed.
 
 ## Free-Space Requirements
 
@@ -57,76 +48,106 @@ Large archives need more free space than the final archive size.
 - For a large archive, plan for substantially more than 2x the archive size
   across packaging, transfer, download, and unpack steps.
 
-Packaged transfer may reduce overhead caused by moving many individual files,
-because the transfer system handles one large file instead of thousands of small
-files. It may not reduce total size much, because WhatsApp photos, videos, and
-voice notes are usually already compressed.
+## Transfer Methods
 
-## Test Matrix
+### A. Raw Folder AirDrop
 
-Test these workflows separately.
+Raw folder AirDrop can work, but it can be slow for a 36-40 GB archive with
+130k+ files. The iPhone may also spend a long time saving the received folder
+after the visible transfer progress appears complete.
 
-### Raw Folder Transfer
+Use this when you want a local-only Apple transfer path and are willing to wait.
 
-1. Start with the extracted archive folder on the Mac.
-2. Copy the raw folder through the chosen provider or cable workflow.
-3. On iPhone, wait until the folder is fully saved and locally available.
-4. Open the viewer and select the copied folder containing `ChatStorage.sqlite`.
-5. Record transfer time, any save/download time, and whether the viewer opened
-   the archive.
+### B. iCloud Drive
 
-### iCloud Drive Copy/Paste
+iCloud Drive is optional and user-managed. Copy/paste the archive folder if you
+want to keep the local Mac copy; dragging can move or copy depending on source
+and destination.
 
-1. Copy the extracted archive folder into iCloud Drive on the Mac.
-2. Wait until Finder reports upload/sync complete.
-3. On iPhone, open Files and download the folder locally if needed.
-4. Open the viewer and select the downloaded folder containing
-   `ChatStorage.sqlite`.
-5. Record Mac copy/upload time, iPhone download time, and viewer result.
+Large folders may appear locally before upload or sync has finished. Wait for
+sync to complete on the Mac, then ensure the folder is downloaded locally on the
+iPhone before opening it in the viewer.
 
-### AirDrop Raw Folder
+### C. Zip Or Package Transfer
 
-1. Start with the extracted archive folder on the Mac.
-2. Send the raw folder to the iPhone with AirDrop.
-3. Wait until AirDrop transfer and iPhone save processing are complete.
-4. Open the viewer and select the saved folder containing `ChatStorage.sqlite`.
-5. Record transfer time, post-transfer save time, failures, and viewer result.
+A zip or tar package is one large file, which can avoid some many-small-file
+overhead. It may not reduce size much because most WhatsApp media is already
+compressed.
 
-### Zip Or Tar Packaged Archive
+Packaging requires extra free space on the Mac. Downloading and unpacking
+requires extra free space on the iPhone or on whichever device performs the
+unpack step.
 
-1. Start with the extracted archive folder on the Mac.
-2. Create a package under an ignored folder such as `data/` or `exports/`.
-3. Record package size and Mac packaging time.
-4. Transfer the package to the iPhone using iCloud Drive, AirDrop, cable, or
-   another user-managed method.
-5. Record transfer time and iPhone save/download time.
-6. Unpack the package before using the viewer.
-7. Select the unpacked folder containing `ChatStorage.sqlite` in the viewer.
-8. Record unzip/import time and whether the viewer opened the result.
+The current app does not open zip files directly. Unzip first, then select the
+unpacked folder containing `ChatStorage.sqlite`.
 
-Example package commands:
+Example store-only zip command:
 
 ```bash
-time ditto -c -k --sequesterRsrc --keepParent \
-  "data/iphone-whatsapp-export/AppDomainGroup-group.net.whatsapp.WhatsApp.shared" \
-  "data/transfer-tests/whatsapp-archive.zip"
+mkdir -p exports/transfer-tests
 
-time tar -cf "data/transfer-tests/whatsapp-archive.tar" \
-  -C "data/iphone-whatsapp-export" \
-  "AppDomainGroup-group.net.whatsapp.WhatsApp.shared"
+/usr/bin/time -p bash -lc '
+  cd data &&
+  zip -r -0 -X ../exports/transfer-tests/iphone-whatsapp-export-store.zip iphone-whatsapp-export
+'
 ```
 
-These packages are experiment artifacts. Keep them ignored and out of git.
+Keep generated packages in ignored folders such as `exports/` or `data/`.
+
+### D. SwissTransfer Or Similar Large-File Service
+
+SwissTransfer or a similar large-file transfer service can be useful for people
+with fast upload and download connections. This is optional and user-managed; it
+is not part of this project and is not controlled by this project.
+
+Local test note: a roughly 40 GB zip uploaded to SwissTransfer in under about 10
+minutes on a high-speed fiber connection. A download on a fast connection may
+also be faster than raw AirDrop, but it depends on internet speed, iPhone
+storage, Wi-Fi, browser behavior, and service conditions.
+
+SwissTransfer currently advertises large file transfers up to 50 GB and
+temporary availability. Check the service's current terms, limits, expiry
+settings, and privacy settings yourself before using it:
+<https://www.infomaniak.com/en/support/faq/2451/getting-started-swisstransfer>
+
+Privacy warning: this uploads the archive to a third-party service. Use only if
+that is acceptable for your archive. Prefer password-protected or private
+transfer options where available.
+
+## What To Measure
+
+Run each experiment against the same extracted archive whenever possible. Record
+the archive size and file count before testing transfer methods.
+
+Useful Mac commands:
+
+```bash
+du -sh "data/iphone-whatsapp-export"
+find "data/iphone-whatsapp-export" -type f | wc -l
+```
+
+Keep detailed command output out of git if it contains private paths or
+filenames.
 
 ## Results Template
 
-| Test date | Archive size | File count | Packaging method | Package size | Mac packaging time | Transfer method | Transfer time | iPhone save/download time | Unzip/import time | Viewer opened result | Notes |
-| --- | --- | ---: | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| YYYY-MM-DD |  |  | Raw folder | N/A | N/A |  |  |  | N/A | Yes/No |  |
-| YYYY-MM-DD |  |  | iCloud Drive copy/paste | N/A | N/A | iCloud Drive |  |  | N/A | Yes/No |  |
-| YYYY-MM-DD |  |  | AirDrop raw folder | N/A | N/A | AirDrop |  |  | N/A | Yes/No |  |
-| YYYY-MM-DD |  |  | zip |  |  |  |  |  |  | Yes/No |  |
-| YYYY-MM-DD |  |  | tar |  |  |  |  |  |  | Yes/No |  |
+| Method | Input | Size | File count | Packaging time | Upload/transfer time | iPhone save/download time | Unzip time | Viewer opened? | Notes |
+| --- | --- | --- | ---: | --- | --- | --- | --- | --- | --- |
+| Raw folder AirDrop | Extracted folder |  |  | N/A |  |  | N/A | Yes/No |  |
+| iCloud Drive | Extracted folder |  |  | N/A |  |  | N/A | Yes/No |  |
+| Zip/package transfer | zip/tar |  |  |  |  |  |  | Yes/No |  |
+| SwissTransfer or similar | zip/tar |  |  |  |  |  |  | Yes/No |  |
+
+## Local Test Notes
+
+These are local observations from one large private archive. They are not a
+promise of performance on other networks, devices, or services.
+
+| Method | Input | Size | File count | Packaging time | Upload/transfer time | iPhone save/download time | Unzip time | Viewer opened? | Notes |
+| --- | --- | --- | ---: | --- | --- | --- | --- | --- | --- |
+| Raw folder AirDrop | Extracted folder | 36-40 GB | 130k+ | N/A | Around an hour or more including transfer/save | Included in transfer/save observation | N/A | Yes | Succeeded, but very slow. |
+| Store-only zip creation | Extracted folder | 36 GB archive, 36 GB zip | 131719 | 195.82 seconds | N/A | N/A | Pending | Pending | Zip completed; size stayed close to archive size. |
+| SwissTransfer upload | Store-only zip | About 40 GB | N/A | Completed before upload | Under about 10 minutes on fiber | Pending | Pending | Pending | Download, unzip, and viewer result still need testing. |
 
 ## Interpreting Results
 

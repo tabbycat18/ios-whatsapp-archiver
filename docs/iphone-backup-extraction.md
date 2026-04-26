@@ -1,8 +1,12 @@
 # iPhone Backup Extraction
 
-This guide explains how to create a local iPhone backup on macOS and extract the WhatsApp shared-container files used by the SwiftUI archive viewer.
+This guide explains how to create a local iPhone backup on macOS, extract the
+WhatsApp files from it, and open the result in the archive viewer.
 
-Run the extractor only on backups you own or are authorized to inspect. Extracted output can contain private messages, contacts, account metadata, and media references. Keep output under ignored local folders such as `data/` or `exports/`.
+Run the extractor only on backups you own or are authorized to inspect. Extracted
+output can contain private messages, contacts, account metadata, photos, videos,
+audio, and data from other people. Keep output under ignored local folders such
+as `data/` or `exports/`.
 
 ## 1. Create a Local iPhone Backup
 
@@ -13,7 +17,9 @@ Run the extractor only on backups you own or are authorized to inspect. Extracte
 5. Set and store the backup password somewhere safe.
 6. Click "Back Up Now".
 
-Encrypted local backups are supported. The extractor needs the backup password for encrypted backups because WhatsApp files are stored inside the encrypted iPhone backup.
+Encrypted local backups are supported and recommended. The extractor needs the
+backup password for encrypted backups because WhatsApp files are stored inside
+the encrypted iPhone backup.
 
 ## 2. Locate the Backup Folder
 
@@ -23,7 +29,9 @@ Finder stores local iPhone backups under the user's MobileSync backup folder. Th
 ~/Library/Application Support/MobileSync/Backup/
 ```
 
-That directory can contain multiple backup folders. Use device information and modification dates to identify the backup you just created. The backup folder must contain `Manifest.db` and `Manifest.plist`.
+That directory can contain multiple backup folders. Use device information and
+modification dates to identify the backup you just created. The backup folder
+must contain `Manifest.db` and `Manifest.plist`.
 
 ## 3. Extract WhatsApp Files
 
@@ -74,7 +82,8 @@ python3 tools/extract_ios_whatsapp_backup.py \
 
 ## 4. Expected Output Structure
 
-The extractor preserves the iPhone backup manifest domain as a top-level folder. With the default domain pattern, a typical archive looks like:
+The extractor preserves the iPhone backup manifest domain as a top-level folder.
+With the default domain pattern, a typical archive looks like:
 
 ```text
 data/iphone-whatsapp-export/
@@ -88,7 +97,13 @@ data/iphone-whatsapp-export/
     `-- Message/
 ```
 
-The exact domain folder name can vary by WhatsApp version and backup metadata. Some sidecar files may be absent. The viewer needs the folder that contains `ChatStorage.sqlite`; selecting that folder is preferred over selecting only the database because media availability checks use the folder as the archive root.
+The exact domain folder name can vary by WhatsApp version and backup metadata.
+Some sidecar files may be absent. The viewer needs the folder that contains
+`ChatStorage.sqlite`; selecting that folder is preferred over selecting only the
+database because media availability checks use the folder as the archive root.
+
+The root `data/` directory is ignored by git and should stay local. Do not move
+private archives into tracked folders.
 
 ## 5. Open in the Viewer
 
@@ -98,9 +113,16 @@ Open the Xcode project:
 open apps/ios-archive-viewer/WhatsAppArchiveViewer.xcodeproj
 ```
 
-Build and run the app in Xcode. Use Open Archive to select the extracted shared-container folder or `ChatStorage.sqlite` directly.
+Build and run the app in Xcode. Use Open Archive to select the extracted
+shared-container folder or `ChatStorage.sqlite` directly.
 
-The app copies `ChatStorage.sqlite` and any SQLite sidecars into its Application Support folder, opens the copied database with read-only SQLite flags, and sets `PRAGMA query_only = ON`. The selected archive root is kept for safe media path resolution. Media rendering is not implemented yet.
+The app copies `ChatStorage.sqlite` and any SQLite sidecars into its Application
+Support folder, opens the copied database with read-only SQLite flags, and sets
+`PRAGMA query_only = ON`. The selected archive root is kept for safe media path
+resolution. Media rendering is not implemented yet.
+
+Do not delete the original iPhone backup or extracted archive until the viewer
+opens the archive and you have confirmed that the files you need are present.
 
 ## 6. Transfer to iPhone
 

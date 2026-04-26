@@ -15,16 +15,22 @@
 ## Next
 
 - Merge the Milestone 2.5 pagination PR.
-- Document and validate large archive transfer workflows with the
+- Finish large archive transfer experiment results with the
   [packaged archive transfer experiments](transfer-experiments.md).
-- Experiment with packaged archive import.
+- Add packaged archive import support.
 - Add first image rendering path.
-- Add video rendering.
-- Add audio and voice-note rendering.
+- Add video and audio rendering.
 - Add `ContactsV2.sqlite` enrichment for better names and contact metadata.
 - Add polished archive import and persistent bookmark flow.
+- Add a non-Xcode distribution path.
 - Improve performance for very large archives and media-heavy chats.
 - Add synthetic public test fixtures with no private WhatsApp data.
+
+## Non-Technical User Goal
+
+Eventually users should not need Xcode to extract and read their archive. A
+future direction could include a packaged macOS helper for extraction and an iOS
+app distribution path for the viewer. Current development still requires Xcode.
 
 ## Maintainer Notes
 
