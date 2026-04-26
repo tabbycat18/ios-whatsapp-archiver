@@ -8,100 +8,75 @@ struct MessageListView: View {
     let olderMessagesErrorMessage: String?
     let initialMessageLoadGeneration: Int
     let onLoadOlderMessages: () -> Void
+    @State private var latestScrolledGeneration: Int?
+    @State private var didCompleteInitialScroll = false
+    @State private var lastOlderLoadTriggerMessageID: Int64?
+    private let olderLoadThreshold = 8
 
     var body: some View {
         VStack(spacing: 0) {
-            paginationHeader
-
-            Divider()
-
             ScrollViewReader { proxy in
                 List {
-                    Section {
-                        ForEach(messages) { message in
-                            MessageBubbleView(message: message)
-                                .id(message.id)
-                                .listRowSeparator(.hidden)
-                        }
-                    } header: {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(chat.title)
-                                .font(.headline)
-                            Text(summaryText)
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-                        .textCase(nil)
-                        .padding(.vertical, 6)
+                    olderPaginationStatus
+
+                    ForEach(Array(messages.enumerated()), id: \.element.id) { index, message in
+                        MessageBubbleView(message: message, isGroupChat: chat.isGroupChat)
+                            .id(message.id)
+                            .listRowSeparator(.hidden)
+                            .onAppear {
+                                loadOlderMessagesIfNeeded(appearingAt: index)
+                            }
                     }
                 }
                 .listStyle(.plain)
                 .onAppear {
-                    scrollToLatestMessage(using: proxy, animated: false)
+                    scrollToLatestMessageIfNeeded(using: proxy, animated: false)
                 }
                 .onChange(of: initialMessageLoadGeneration) { _, _ in
-                    scrollToLatestMessage(using: proxy, animated: false)
+                    didCompleteInitialScroll = false
+                    lastOlderLoadTriggerMessageID = nil
+                    scrollToLatestMessageIfNeeded(using: proxy, animated: false)
                 }
             }
         }
         .navigationTitle(chat.title)
+        #if os(iOS)
+        .navigationBarTitleDisplayMode(.inline)
+        #endif
     }
 
     @ViewBuilder
-    private var paginationHeader: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(alignment: .center, spacing: 12) {
-                Text(summaryText)
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
+    private var olderPaginationStatus: some View {
+        if isLoadingOlder || olderMessagesErrorMessage != nil {
+            HStack(spacing: 8) {
+                Spacer(minLength: 0)
 
-                Spacer()
-
-                if hasMoreOlderMessages {
-                    Button {
-                        onLoadOlderMessages()
-                    } label: {
-                        HStack(spacing: 6) {
-                            if isLoadingOlder {
-                                ProgressView()
-                                    .controlSize(.small)
-                            } else {
-                                Image(systemName: "arrow.up.circle")
-                            }
-                            Text(isLoadingOlder ? "Loading older messages..." : "Load older messages")
-                        }
-                    }
-                    .disabled(isLoadingOlder)
-                    .buttonStyle(.borderedProminent)
+                if isLoadingOlder {
+                    ProgressView()
+                        .controlSize(.small)
                 }
-            }
 
-            if hasMoreOlderMessages {
-                Text("Older messages are available.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
+                if let olderMessagesErrorMessage, !olderMessagesErrorMessage.isEmpty {
+                    Text(olderMessagesErrorMessage)
+                        .font(.caption)
+                        .foregroundStyle(.red)
+                        .multilineTextAlignment(.center)
+                } else if isLoadingOlder {
+                    Text("Loading older messages...")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
 
-            if let olderMessagesErrorMessage {
-                Text(olderMessagesErrorMessage)
-                    .font(.caption)
-                    .foregroundStyle(.red)
-                    .multilineTextAlignment(.center)
+                Spacer(minLength: 0)
             }
+            .padding(.vertical, 4)
+            .listRowSeparator(.hidden)
         }
-        .padding(.horizontal)
-        .padding(.vertical, 10)
-        .background(.bar)
     }
 
-    private var summaryText: String {
-        if messages.count < chat.messageCount {
-            return "Showing \(messages.count.formatted()) of \(chat.messageCount.formatted()) messages"
-        }
-        return "Showing \(messages.count.formatted()) messages"
-    }
-
-    private func scrollToLatestMessage(using proxy: ScrollViewProxy, animated: Bool) {
+    private func scrollToLatestMessageIfNeeded(using proxy: ScrollViewProxy, animated: Bool) {
+        guard latestScrolledGeneration != initialMessageLoadGeneration else { return }
+        latestScrolledGeneration = initialMessageLoadGeneration
         guard let latestMessageID = messages.last?.id else { return }
         DispatchQueue.main.async {
             if animated {
@@ -111,12 +86,23 @@ struct MessageListView: View {
             } else {
                 proxy.scrollTo(latestMessageID, anchor: .bottom)
             }
+            didCompleteInitialScroll = true
         }
+    }
+
+    private func loadOlderMessagesIfNeeded(appearingAt index: Int) {
+        guard didCompleteInitialScroll, hasMoreOlderMessages, !isLoadingOlder else { return }
+        guard index < olderLoadThreshold else { return }
+        guard let oldestMessageID = messages.first?.id else { return }
+        guard lastOlderLoadTriggerMessageID != oldestMessageID else { return }
+        lastOlderLoadTriggerMessageID = oldestMessageID
+        onLoadOlderMessages()
     }
 }
 
 private struct MessageBubbleView: View {
     let message: MessageRow
+    let isGroupChat: Bool
 
     var body: some View {
         HStack {
@@ -125,9 +111,11 @@ private struct MessageBubbleView: View {
             }
 
             VStack(alignment: message.isFromMe ? .trailing : .leading, spacing: 4) {
-                Text(senderLabel)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                if let senderLabel {
+                    Text(senderLabel)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
 
                 Text(displayText)
                     .padding(.horizontal, 12)
@@ -150,19 +138,22 @@ private struct MessageBubbleView: View {
         .padding(.vertical, 3)
     }
 
-    private var senderLabel: String {
+    private var senderLabel: String? {
         if message.isFromMe {
             return "You"
         }
-        return message.pushName?.isEmpty == false ? message.pushName! : (message.senderJID ?? "Them")
+        if isGroupChat {
+            if let friendlyName = DisplayNameSanitizer.friendlyName(message.friendlySenderName) {
+                return friendlyName
+            }
+            return message.safeSenderPhoneNumber ?? "Unknown sender"
+        }
+        return nil
     }
 
     private var displayText: String {
-        guard let text = message.text, !text.isEmpty else {
-            if let media = message.media {
-                return media.kind.placeholderText
-            }
-            return "Unsupported message"
+        guard let text = message.text?.trimmingCharacters(in: .whitespacesAndNewlines), !text.isEmpty else {
+            return message.nonTextPlaceholderText ?? "Unsupported message"
         }
         return text
     }

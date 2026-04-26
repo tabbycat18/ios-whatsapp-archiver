@@ -36,14 +36,18 @@ Working now:
 - Extract WhatsApp shared-container files from a local iPhone backup.
 - Open an extracted archive folder or `ChatStorage.sqlite`.
 - Browse chats and text messages.
-- Read large chats incrementally with "Load older messages".
+- Search chat titles in the loaded chat list.
+- Read large chats incrementally by scrolling upward to load older messages.
 - Show media metadata and placeholders.
+- Show conservative system/call placeholders without exposing raw sender IDs.
+- Use `ContactsV2.sqlite` when available for conservative contact-name and split-session resolution.
+- Keep real duplicate-title conversations separate while hiding technical system-only or no-visible-message archive fragments from normal browsing.
 - Detect whether referenced media files appear available in the selected archive.
 
 Not implemented yet:
 
 - Photo, video, and audio preview.
-- `ContactsV2.sqlite` enrichment.
+- Complete `ContactsV2.sqlite` enrichment for every historical contact edge case.
 - Direct zip/package import.
 - Non-Xcode installation or distribution.
 

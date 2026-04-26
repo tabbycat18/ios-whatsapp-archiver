@@ -21,10 +21,16 @@ Build and run with full Xcode on an iOS simulator or device. Command Line Tools 
 - Opens SQLite with `SQLITE_OPEN_READONLY`.
 - Sets `PRAGMA query_only = ON`.
 - Loads chat sessions from `ZWACHATSESSION`.
+- Searches loaded chat titles in memory.
 - Loads messages for the selected chat from `ZWAMESSAGE`.
+- Uses `ContactsV2.sqlite` when available to improve contact names and link phone-JID/`@lid` sessions only when they map to the same contact row.
+- Merges duplicate chat sessions only when they share a strong identifier, such as the same `ZCONTACTJID` or the same unambiguous ContactsV2 identity.
+- Classifies unresolved duplicate-title entries conservatively so real separate conversations stay visible while technical archive fragments do not clutter normal browsing.
 - Discovers `ZWAMEDIAITEM` metadata when the table and columns are available.
-- Shows text messages and media placeholders.
+- Shows text messages and conservative media/system placeholders.
 - Checks whether referenced media files appear available under the selected archive root.
+- Avoids showing raw JIDs or internal sender identifiers in the normal message UI.
+- Shows safely extracted phone numbers for unsaved group senders when the sender JID can be reduced to digits only.
 
 The app does not render photos, videos, audio, thumbnails, or binary media yet.
 
@@ -48,14 +54,24 @@ The app does not render photos, videos, audio, thumbnails, or binary media yet.
 ### Milestone 2.5 Full-History Pagination
 
 - Opens a selected chat with only the latest 500 messages loaded initially.
-- Adds a top-of-list "Load older messages" control.
-- Loads older messages in additional batches.
+- Loads older messages automatically in additional batches when scrolling upward.
 - Uses stable keyset pagination by message date and primary key instead of `OFFSET`.
 - Prepends older batches while keeping the UI ordered oldest-to-newest.
 - Keeps initial auto-scroll to the latest message, but does not jump back to the bottom after loading older messages.
 - Keeps media metadata and path discovery populated for older loaded messages.
 
-The app does not load every message at once because large WhatsApp chats can contain many thousands of rows. Incremental loading keeps memory use and UI updates bounded while still allowing full-history reading.
+The app does not load every message at once because large WhatsApp chats can contain many thousands of rows. Incremental loading keeps memory use and UI updates bounded while still allowing full-history reading. Scrolling upward loads older history as needed.
+
+### Current UI Policies
+
+- Chat search filters loaded chat titles only. It does not search message contents.
+- Raw JIDs and internal sender identifiers are hidden in the normal UI.
+- Group sender names use friendly names when the archive provides one, including profile push names stored in `ChatStorage.sqlite` and optional ContactsV2 names. Unsaved senders may show a safely extracted phone number only from classic phone-based WhatsApp JIDs. `@lid` identifiers and unresolved sender tokens are treated as opaque, so the UI shows "Unknown sender" rather than risk showing a wrong name or number.
+- Message classification is conservative. Known media placeholders, likely voice call rows, deleted rows, and system notices are labeled without exposing raw database identifiers. Unknown mappings stay generic instead of guessing unsupported WhatsApp internals.
+- Chat sorting prefers the latest real user-visible conversation row when possible and excludes known system-notice message types from the primary latest-date calculation. It falls back to broader activity dates only when no relevant message date is available.
+- Split sessions can exist in old archives. The viewer merges sessions with strong identity evidence, but does not merge rows by title alone because that can combine unrelated people with the same display name.
+- Duplicate-title rows with real user-visible text, media, or call evidence stay visible as separate conversations. Duplicate/system-only rows and tiny no-visible-message archive fragments are hidden from normal browsing and chat-title search instead of being merged or deleted. Uncertain larger archive entries remain visible with a cautious label.
+- Media path resolution checks several archive-root-relative layouts, including `Media/` and `Message/Media/`, without loading media binaries.
 
 ## Development Data
 
@@ -78,11 +94,17 @@ The app also has an Open Archive action that can select either an extracted arch
 ## Testing Notes
 
 - Test with a large chat and confirm the latest 500 messages appear first.
-- Tap "Load older messages" and confirm older rows prepend above the current messages.
+- Search for a known chat title, then clear search and confirm all chats return.
+- Search for duplicate-title contacts and confirm real separate conversations remain visible while system-only fragments do not drive normal results.
+- Scroll upward and confirm older rows load automatically near the top.
 - Confirm ordering remains oldest-to-newest.
 - Confirm sender direction and dates remain correct.
 - Confirm media placeholders still appear.
+- Confirm call and system rows use neutral labels instead of generic unsupported text where possible.
 - Confirm the viewer does not auto-scroll back to newest after loading older messages.
+- Confirm raw/debug identifiers are not shown in the normal message UI.
+- Confirm unresolved group senders show "Unknown sender" instead of raw opaque tokens.
+- Confirm chat list dates for duplicate-title conversations come from user-visible text, media, or call rows rather than security/system-only fragments.
 - Avoid printing private message contents or full private filesystem paths during debugging.
 
 ## Large Archive Transfer Notes
@@ -116,7 +138,8 @@ Packaging may still be useful to test because one large file can be easier to tr
 
 - Media rendering is not implemented yet.
 - Thumbnails and binary media are not loaded into memory yet.
-- `ContactsV2.sqlite` is not used for contact enrichment yet.
+- ContactsV2 enrichment is intentionally conservative and may not resolve every historical contact edge case yet.
+- ContactsV2 improves identity resolution, but duplicate-title sessions can still represent either real separate chats or archive fragments that need conservative classification.
 - Persistent archive bookmarks and polished import management are future work.
 - App document sharing through Finder is not configured yet; use the Files picker with a local or iCloud Drive archive folder.
 - Zip/package import is not implemented yet.

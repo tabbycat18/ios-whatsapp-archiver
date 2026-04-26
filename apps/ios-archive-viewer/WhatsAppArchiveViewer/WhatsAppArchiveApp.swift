@@ -102,7 +102,7 @@ final class ArchiveStore: ObservableObject {
     func loadMessages(for chat: ChatSummary) {
         guard let database else { return }
         do {
-            let loadedMessages = try database.fetchMessages(chatID: chat.id, limit: messageFetchLimit)
+            let loadedMessages = try database.fetchMessages(sessionIDs: chat.sessionIDs, limit: messageFetchLimit)
             hasMoreOlderMessages = loadedMessages.count > messageLimit
             messages = hasMoreOlderMessages ? Array(loadedMessages.dropFirst()) : loadedMessages
             olderMessagesErrorMessage = nil
@@ -125,21 +125,30 @@ final class ArchiveStore: ObservableObject {
         }
 
         isLoadingOlder = true
-        defer { isLoadingOlder = false }
+        let chatID = chat.id
+        let sessionIDs = chat.sessionIDs
 
-        do {
-            let olderMessages = try database.fetchOlderMessages(
-                chatID: chat.id,
-                before: cursor,
-                limit: messageFetchLimit
-            )
-            hasMoreOlderMessages = olderMessages.count > messageLimit
-            let visibleOlderMessages = hasMoreOlderMessages ? Array(olderMessages.dropFirst()) : olderMessages
-            messages.insert(contentsOf: visibleOlderMessages, at: 0)
-            olderMessagesErrorMessage = nil
-            errorMessage = nil
-        } catch {
-            olderMessagesErrorMessage = "Could not load older messages: \(error.localizedDescription)"
+        Task { @MainActor [weak self] in
+            await Task.yield()
+            guard let self else { return }
+            defer { self.isLoadingOlder = false }
+
+            do {
+                let olderMessages = try database.fetchOlderMessages(
+                    sessionIDs: sessionIDs,
+                    before: cursor,
+                    limit: self.messageFetchLimit
+                )
+                guard self.selectedChat?.id == chatID else { return }
+                self.hasMoreOlderMessages = olderMessages.count > self.messageLimit
+                let visibleOlderMessages = self.hasMoreOlderMessages ? Array(olderMessages.dropFirst()) : olderMessages
+                self.messages.insert(contentsOf: visibleOlderMessages, at: 0)
+                self.olderMessagesErrorMessage = nil
+                self.errorMessage = nil
+            } catch {
+                guard self.selectedChat?.id == chatID else { return }
+                self.olderMessagesErrorMessage = "Could not load older messages: \(error.localizedDescription)"
+            }
         }
     }
 

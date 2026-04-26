@@ -30,7 +30,9 @@ The viewer currently focuses on:
 - `ZWAMEDIAITEM` metadata when present and joinable
 - relative media paths under `Media/` and `Message/`
 
-`ContactsV2.sqlite` is preserved by extraction but is not used for contact enrichment yet.
+`ContactsV2.sqlite` is preserved by extraction and used conservatively by the
+viewer when identifiers map unambiguously. Broader contact enrichment remains
+future work.
 
 ## SwiftUI Viewer
 
@@ -87,6 +89,6 @@ Packaged archive import is a likely future design direction. One archive file co
 - Experiment with packaged archive import.
 - Render images without loading whole archives into memory.
 - Add video and audio playback.
-- Enrich sender/contact labels from `ContactsV2.sqlite`.
+- Expand sender/contact enrichment from `ContactsV2.sqlite`.
 - Add persistent archive bookmarks and polished import management.
 - Add synthetic public fixtures for repeatable tests without private data.
