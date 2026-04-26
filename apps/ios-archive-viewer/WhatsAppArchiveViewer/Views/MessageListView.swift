@@ -3,6 +3,7 @@ import AVKit
 import ImageIO
 import SwiftUI
 #if os(iOS)
+import QuickLook
 import UIKit
 #endif
 
@@ -488,13 +489,17 @@ private struct ChatInfoMediaTile: View {
 private extension MessageRow {
     func matchesSearch(_ query: String) -> Bool {
         guard !query.isEmpty else { return true }
-        return [
+        let labels = [
             text,
             nonTextPlaceholderText,
             friendlySenderName,
             safeSenderPhoneNumber
         ]
-        .compactMap { $0 }
+            .compactMap { $0 }
+            + (media?.searchableAttachmentLabels ?? [])
+
+        return labels
+        .filter { !$0.isEmpty }
         .contains { $0.localizedStandardContains(query) }
     }
 }
@@ -724,9 +729,9 @@ private struct MessageContentView: View {
 
     private func shouldShowAttachment(for media: MediaMetadata) -> Bool {
         switch media.kind {
-        case .photo, .video, .videoMessage, .audio, .linkPreview:
+        case .photo, .video, .videoMessage, .audio, .document, .linkPreview:
             return true
-        case .contact, .location, .sticker, .document, .call, .callOrSystem, .system, .deleted, .media:
+        case .contact, .location, .sticker, .call, .callOrSystem, .system, .deleted, .media:
             return displayText == nil
         }
     }
@@ -742,6 +747,8 @@ private struct MessageContentView: View {
             AudioAttachmentView(messageID: message.id, media: media)
         case .contact:
             ContactAttachmentView(media: media)
+        case .document:
+            DocumentAttachmentView(media: media)
         case .linkPreview:
             LinkPreviewAttachmentView(media: media, fallbackURL: displayText.flatMap(MessageLinkDetector.firstWebURL(in:)))
         case .call:
@@ -973,6 +980,146 @@ private struct ContactAttachmentView: View {
         .accessibilityElement(children: .combine)
     }
 }
+
+private struct DocumentAttachmentView: View {
+    let media: MediaMetadata
+    @State private var previewItem: DocumentPreviewItem?
+
+    private var fileSizeText: String? {
+        guard let fileSize = media.fileSize, fileSize > 0 else { return nil }
+        return Self.fileSizeFormatter.string(fromByteCount: fileSize)
+    }
+
+    private var metadataText: String {
+        [media.documentTypeLabel, fileSizeText]
+            .compactMap { $0 }
+            .joined(separator: " • ")
+    }
+
+    var body: some View {
+        if !media.isFileAvailableInArchive || media.fileURL == nil {
+            AttachmentPlaceholderView(title: "Document unavailable", systemImage: "doc")
+        } else if let url = media.fileURL {
+            HStack(spacing: 8) {
+                Button {
+                    previewItem = DocumentPreviewItem(url: url)
+                } label: {
+                    documentCard
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Open document attachment")
+
+                ShareLink(item: url) {
+                    Image(systemName: "square.and.arrow.up")
+                        .font(.subheadline.weight(.semibold))
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Share document")
+            }
+            .frame(maxWidth: 280, alignment: .leading)
+            #if os(iOS)
+            .sheet(item: $previewItem) { item in
+                DocumentPreviewView(url: item.url)
+                    .ignoresSafeArea()
+            }
+            #endif
+        } else {
+            AttachmentPlaceholderView(title: "Document unavailable", systemImage: "doc")
+        }
+    }
+
+    private var documentCard: some View {
+        HStack(spacing: 10) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                    .fill(Color.accentColor.opacity(0.16))
+
+                Image(systemName: documentIconName)
+                    .font(.system(size: 22, weight: .semibold))
+                    .foregroundStyle(Color.accentColor)
+            }
+            .frame(width: 42, height: 42)
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text(media.documentDisplayTitle)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.primary)
+                    .lineLimit(2)
+                    .textSelection(.enabled)
+
+                Text(metadataText)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+
+            Spacer(minLength: 0)
+        }
+        .padding(10)
+        .background(Color.secondary.opacity(0.08))
+        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+    }
+
+    private var documentIconName: String {
+        switch media.fileExtensionLabel {
+        case "pdf":
+            return "doc.richtext"
+        case "zip":
+            return "doc.zipper"
+        default:
+            return "doc"
+        }
+    }
+
+    private static let fileSizeFormatter: ByteCountFormatter = {
+        let formatter = ByteCountFormatter()
+        formatter.allowedUnits = [.useKB, .useMB, .useGB]
+        formatter.countStyle = .file
+        return formatter
+    }()
+}
+
+private struct DocumentPreviewItem: Identifiable {
+    let id = UUID()
+    let url: URL
+}
+
+#if os(iOS)
+private struct DocumentPreviewView: UIViewControllerRepresentable {
+    let url: URL
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(url: url)
+    }
+
+    func makeUIViewController(context: Context) -> QLPreviewController {
+        let controller = QLPreviewController()
+        controller.dataSource = context.coordinator
+        return controller
+    }
+
+    func updateUIViewController(_ controller: QLPreviewController, context: Context) {
+        context.coordinator.url = url
+        controller.reloadData()
+    }
+
+    final class Coordinator: NSObject, QLPreviewControllerDataSource {
+        var url: URL
+
+        init(url: URL) {
+            self.url = url
+        }
+
+        func numberOfPreviewItems(in controller: QLPreviewController) -> Int {
+            1
+        }
+
+        func previewController(_ controller: QLPreviewController, previewItemAt index: Int) -> QLPreviewItem {
+            url as NSURL
+        }
+    }
+}
+#endif
 
 private struct PhotoAttachmentView: View {
     let media: MediaMetadata

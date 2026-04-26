@@ -41,6 +41,7 @@ Working now:
 - Render available photo attachments inline.
 - Open available video attachments in a tap-to-play video preview.
 - Play available audio and voice attachments with a simple play/pause control.
+- Show PDF and common document attachments as document rows, with local preview and sharing when the file resolves.
 - Use the extracted WhatsApp chat wallpaper as the message background when `current_wallpaper.jpg` is present at the archive root.
 - Detect WhatsApp Status/Stories rows only from reliable message/session evidence such as `status@broadcast`, and keep them out of normal direct-chat browsing.
 - Show a lightweight Chat Info screen with per-chat media filters for all media, photos, videos, and detected Stories/Status media, with available local media prioritized.

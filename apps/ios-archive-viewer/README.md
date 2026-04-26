@@ -29,7 +29,7 @@ Build and run with full Xcode on an iOS simulator or device. Command Line Tools 
 - Classifies likely WhatsApp Status/Stories rows only when reliable message/session evidence is present, currently `status@broadcast`.
 - Separates detected status/story-only fragments into a Stories / Status section instead of showing them as normal conversations.
 - Discovers `ZWAMEDIAITEM` metadata when the table and columns are available.
-- Shows text messages, inline photos, tap-to-play video previews, simple audio playback, and conservative placeholders for unsupported media/system rows.
+- Shows text messages, inline photos, tap-to-play video previews, simple audio playback, document attachment rows, and conservative placeholders for unsupported media/system rows.
 - Opens a lightweight Chat Info view with per-chat media filters for all media, photos, videos, and detected Stories / Status.
 - Prioritizes locally available media in Chat Info while keeping missing or unresolved items as placeholders.
 - Checks whether referenced media files appear available under the selected archive root.
@@ -38,8 +38,8 @@ Build and run with full Xcode on an iOS simulator or device. Command Line Tools 
 - Shows safely extracted phone numbers for unsaved group senders when the sender JID can be reduced to digits only.
 
 Media files stay local. The app renders only visible message attachments lazily
-and keeps missing or unresolved files as placeholders. Photo and video preview
-sharing uses local file URLs through the system share sheet.
+and keeps missing or unresolved files as placeholders. Photo, video, and
+document preview sharing uses local file URLs through the system share sheet.
 
 ## Current State
 
@@ -63,11 +63,13 @@ sharing uses local file URLs through the system share sheet.
 - Renders available photo attachments inline after downsampling.
 - Shows available videos as tap-to-play attachments with lazy thumbnails when thumbnail generation succeeds.
 - Plays available audio and voice attachments with a simple play/pause control.
+- Shows PDFs and common document attachments as rows with a document icon, safe title, type, size, local preview, and sharing when the file resolves.
 - Shows the archive wallpaper behind messages when `current_wallpaper.jpg` or `current_wallpaper_dark.jpg` exists next to `ChatStorage.sqlite`.
 - Keeps unsupported, missing, or unreadable media as placeholders.
 - Loads media only for visible rows and does not scan or preload all archive media.
 - Supports pinch-to-zoom in the photo preview on iOS.
 - Shares photos and videos from the preview sheets through the system share sheet.
+- Opens available documents with the system preview flow and shares them through the system share sheet.
 - Provides a first lightweight Chat Info media view backed by direct per-chat SQLite queries, with local files prioritized before unavailable placeholders.
 
 ### Milestone 2.5 Full-History Pagination
@@ -130,8 +132,10 @@ The app also has an Open Archive action that can select either an extracted arch
 - Confirm available videos open in the video preview only after tapping.
 - Confirm instant video/video-message rows are not shown as contact cards and can be opened from the chat row.
 - Confirm available audio or voice rows can play and pause.
+- Confirm PDF/document rows show safe titles, type, size, open in the system preview, and can be shared.
 - Confirm the chat wallpaper appears behind messages when `current_wallpaper.jpg` is present in the selected archive folder.
 - Confirm missing or unreadable media remains a clean placeholder.
+- Confirm missing or unreadable documents show `Document unavailable`.
 - Confirm call and system rows use neutral labels instead of generic unsupported text where possible.
 - Confirm the viewer does not auto-scroll back to newest after loading older messages.
 - Confirm raw/debug identifiers are not shown in the normal message UI.
@@ -172,7 +176,7 @@ Packaging may still be useful to test because one large file can be easier to tr
 ## Limitations
 
 - The Chat Info media view is intentionally lightweight and capped per filtered query; it prioritizes available local media but is not a complete archive-wide media browser.
-- Document, link-preview, location, contact-card, and sticker rendering remain placeholders.
+- Link-preview, location, contact-card, and sticker rendering remain placeholders.
 - ContactsV2 enrichment is intentionally conservative and may not resolve every historical contact edge case yet.
 - ContactsV2 improves identity resolution, but duplicate-title sessions can still represent either real separate chats or archive fragments that need conservative classification.
 - Persistent archive bookmarks and polished import management are future work.

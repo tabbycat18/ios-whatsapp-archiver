@@ -17,6 +17,7 @@
 - Chat wallpaper rendering from generic archive-root `current_wallpaper.jpg` files.
 - Conservative WhatsApp Status/Stories detection from `status@broadcast` schema/session evidence, with status/story-only fragments separated from normal chats.
 - Photo preview zoom and photo/video local share-sheet support.
+- PDF and common document attachment rows with system preview/share support.
 - First lightweight Chat Info media view with per-chat filters and available local media prioritized ahead of missing placeholders.
 
 ## Next
@@ -29,7 +30,7 @@
   [packaged archive transfer experiments](transfer-experiments.md).
 - Add packaged archive import support.
 - Replace the lightweight Chat Info media grid with a fuller per-chat media library.
-- Expand media rendering for documents, contact cards, locations, stickers, and link previews where safe.
+- Expand media rendering for contact cards, locations, stickers, and link previews where safe.
 - Add `ContactsV2.sqlite` enrichment for better names and contact metadata.
 - Expand group sender enrichment where ChatStorage push names are unavailable.
 - Add polished archive import and persistent bookmark flow.

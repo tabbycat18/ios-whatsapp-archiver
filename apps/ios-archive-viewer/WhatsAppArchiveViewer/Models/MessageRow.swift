@@ -84,6 +84,38 @@ struct MediaMetadata: Hashable {
             ?? Self.normalizedWebURL(from: title)
     }
 
+    var documentDisplayTitle: String {
+        DisplayNameSanitizer.friendlyName(title)
+            ?? DisplayNameSanitizer.friendlyName(fileName)
+            ?? "Document"
+    }
+
+    var fileExtensionLabel: String? {
+        Self.fileExtension(from: fileName)
+            ?? Self.fileExtension(from: localPath)
+            ?? Self.fileExtension(from: mediaURL)
+            ?? Self.fileExtension(from: title)
+    }
+
+    var documentTypeLabel: String {
+        fileExtensionLabel?.uppercased()
+            ?? mimeType
+            ?? "File"
+    }
+
+    var searchableAttachmentLabels: [String] {
+        switch kind {
+        case .document:
+            return [
+                "Document",
+                documentDisplayTitle,
+                fileExtensionLabel
+            ].compactMap { $0 }
+        default:
+            return [kind.placeholderText]
+        }
+    }
+
     static func normalizedWebURL(from value: String?) -> URL? {
         guard let value = value?.trimmingCharacters(in: .whitespacesAndNewlines), !value.isEmpty else {
             return nil
@@ -97,6 +129,12 @@ struct MediaMetadata: Hashable {
             return nil
         }
         return url
+    }
+
+    private static func fileExtension(from value: String?) -> String? {
+        guard let value, !value.isEmpty else { return nil }
+        let fileExtension = URL(fileURLWithPath: value).pathExtension
+        return fileExtension.isEmpty ? nil : fileExtension.lowercased()
     }
 
     private static func vCardField(named fieldName: String, in vCardString: String?) -> String? {

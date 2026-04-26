@@ -135,9 +135,10 @@ group-event type, and media metadata:
 - available videos are shown as tap-to-play attachments with lazy thumbnails when thumbnail generation succeeds;
 - instant video/video-message rows are treated as video media when file, MIME, duration, or message-type evidence supports it;
 - available audio and voice rows get a simple play/pause control;
+- available documents, including PDFs and common office/text/archive files, are shown as document rows with safe title, type, size, system preview, and sharing when the local file resolves;
 - reliably detected status/story media is marked as status/story media and kept
   separate from normal direct-chat rows;
-- documents, contacts, locations, stickers, and link previews are shown as placeholders;
+- contacts, locations, stickers, and link previews are shown as placeholders;
 - likely call rows are displayed conservatively as `Voice call` when the message type evidence supports it;
 - known system-notice rows are labeled as system messages;
 - deleted rows are labeled as deleted messages when the message type supports it;
@@ -166,13 +167,15 @@ paths by default.
 
 Media rendering is lazy and row-scoped. Photo rows downsample the referenced
 image before display. Video rows generate thumbnails only for visible rows and
-open playback only after the user taps the attachment. Audio rows create a
+open playback only after the user taps the attachment. Document rows show
+metadata without rendering full files inline, then open the local file in the
+system preview flow only after the user taps the attachment. Audio rows create a
 player only after the user taps play, and the shared playback controller stops
 the previous audio row before starting another.
 
-Photo previews support pinch-to-zoom on iOS. Photo and video previews expose
-system sharing for the resolved local file URL. The app does not upload media or
-copy media files into Git.
+Photo previews support pinch-to-zoom on iOS. Photo, video, and document previews
+expose system sharing for the resolved local file URL. The app does not upload
+media or copy media files into Git.
 
 Chat wallpaper rendering is also lazy. The viewer downscales
 `current_wallpaper.jpg` or `current_wallpaper_dark.jpg` from the archive root
