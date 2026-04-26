@@ -238,6 +238,49 @@ struct WhatsAppArchiveApp: App {
     }
 }
 
+private actor ProfilePhotoService {
+    private let resolver: ProfilePhotoResolver
+
+    init(archiveRootURL: URL) {
+        resolver = ProfilePhotoResolver(archiveRootURL: archiveRootURL)
+    }
+
+    func profilePhotoURL(for chat: ChatSummary) -> URL? {
+        resolver.profilePhotoURL(
+            contactJID: chat.contactJID,
+            contactIdentifier: chat.contactIdentifier,
+            additionalIdentifiers: chat.profilePhotoIdentifiers
+        )
+    }
+}
+
+private struct ProfileAvatarCacheKey: Hashable {
+    let archiveID: UUID
+    let chatID: Int64
+    let contactJID: String?
+    let contactIdentifier: String?
+    let additionalIdentifiers: [String]
+}
+
+private struct ProfileAvatarCacheEntry {
+    let image: CGImage?
+}
+
+private actor ProfileAvatarCache {
+    private var entries: [ProfileAvatarCacheKey: ProfileAvatarCacheEntry] = [:]
+
+    func cachedImage(for key: ProfileAvatarCacheKey) -> ProfileAvatarCacheEntry? {
+        entries[key]
+    }
+
+    func store(_ image: CGImage?, for key: ProfileAvatarCacheKey) {
+        if entries.count > 512 {
+            entries.removeAll(keepingCapacity: true)
+        }
+        entries[key] = ProfileAvatarCacheEntry(image: image)
+    }
+}
+
 @MainActor
 final class ArchiveStore: ObservableObject {
     @Published var savedArchives: [SavedArchive]
@@ -271,7 +314,8 @@ final class ArchiveStore: ObservableObject {
     private let libraryStore = ArchiveLibraryStore()
     private var database: WhatsAppDatabase?
     private var archiveAccess: ArchiveAccess?
-    private var profilePhotoLoadTask: Task<Void, Never>?
+    private var profilePhotoService: ProfilePhotoService?
+    private let profileAvatarCache = ProfileAvatarCache()
 
     init() {
         let loadedArchives = libraryStore.load().sorted(by: Self.archiveSort)
@@ -502,10 +546,9 @@ final class ArchiveStore: ObservableObject {
     }
 
     func closeArchive() {
-        profilePhotoLoadTask?.cancel()
-        profilePhotoLoadTask = nil
         database = nil
         archiveAccess = nil
+        profilePhotoService = nil
         currentArchiveID = nil
         openingArchiveID = nil
         chats = []
@@ -617,6 +660,7 @@ final class ArchiveStore: ObservableObject {
             let loadedChats = try openedDatabase.fetchChats()
             database = openedDatabase
             archiveAccess = access
+            profilePhotoService = ProfilePhotoService(archiveRootURL: access.archiveRootURL)
             currentArchiveID = savedArchive.id
             chats = loadedChats
             selectedChat = nil
@@ -625,7 +669,6 @@ final class ArchiveStore: ObservableObject {
             archiveName = savedArchive.displayName
             wallpaperURL = Self.wallpaperURL(in: access.archiveRootURL)
             errorMessage = nil
-            loadProfilePhotos(for: loadedChats, archiveID: savedArchive.id, archiveRootURL: access.archiveRootURL)
 
             savedArchive.lastOpenedAt = Date()
             savedArchive.chatCount = loadedChats.count
@@ -635,6 +678,7 @@ final class ArchiveStore: ObservableObject {
         } catch {
             database = nil
             archiveAccess = nil
+            profilePhotoService = nil
             currentArchiveID = nil
             chats = []
             selectedChat = nil
@@ -646,33 +690,34 @@ final class ArchiveStore: ObservableObject {
         }
     }
 
-    private func loadProfilePhotos(for loadedChats: [ChatSummary], archiveID: UUID, archiveRootURL: URL) {
-        profilePhotoLoadTask?.cancel()
-        profilePhotoLoadTask = Task.detached(priority: .utility) { [weak self, loadedChats, archiveRootURL] in
-            let profilePhotoURLs = WhatsAppDatabase.resolveProfilePhotoURLs(
-                for: loadedChats,
-                archiveRootURL: archiveRootURL
-            )
-            guard !Task.isCancelled, !profilePhotoURLs.isEmpty else { return }
-
-            await MainActor.run { [weak self] in
-                guard let self, self.currentArchiveID == archiveID else { return }
-                self.chats = self.chats.map { chat in
-                    var updatedChat = chat
-                    if let profilePhotoURL = profilePhotoURLs[chat.id] {
-                        updatedChat.profilePhotoURL = profilePhotoURL
-                    }
-                    return updatedChat
-                }
-
-                if let selectedChat = self.selectedChat,
-                   let profilePhotoURL = profilePhotoURLs[selectedChat.id] {
-                    var updatedSelectedChat = selectedChat
-                    updatedSelectedChat.profilePhotoURL = profilePhotoURL
-                    self.selectedChat = updatedSelectedChat
-                }
-            }
+    func profileAvatarImage(for chat: ChatSummary) async -> CGImage? {
+        guard let archiveID = currentArchiveID,
+              let profilePhotoService,
+              chat.classification != .statusStoryFragment else {
+            return nil
         }
+
+        let cacheKey = ProfileAvatarCacheKey(
+            archiveID: archiveID,
+            chatID: chat.id,
+            contactJID: chat.contactJID,
+            contactIdentifier: chat.contactIdentifier,
+            additionalIdentifiers: chat.profilePhotoIdentifiers
+        )
+        if let cachedResult = await profileAvatarCache.cachedImage(for: cacheKey) {
+            return cachedResult.image
+        }
+
+        guard let imageURL = await profilePhotoService.profilePhotoURL(for: chat) else {
+            await profileAvatarCache.store(nil, for: cacheKey)
+            return nil
+        }
+
+        let image = await Task.detached(priority: .utility) {
+            downsampleAvatarImage(at: imageURL, maxPixelSize: 96)
+        }.value
+        await profileAvatarCache.store(image, for: cacheKey)
+        return image
     }
 
     private static func wallpaperURL(in archiveRootURL: URL) -> URL? {

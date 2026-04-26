@@ -76,8 +76,10 @@ When both light and dark files are present, dark mode prefers
 The viewer can also use local profile/avatar cache images when they are present
 in the selected archive. Resolution is best-effort and conservative: the app
 checks known profile/avatar cache folders by contact or group identifier instead
-of scanning the full media tree, and chats fall back to generated initials when
-no safe match is found.
+of scanning the full media tree. Initials render immediately, profile/avatar
+lookup is lazy for visible chat rows, thumbnails are downsampled off the main
+thread, and missing lookups are cached so scrolling and search do not repeatedly
+probe the filesystem.
 
 ## Ordering and Pagination
 

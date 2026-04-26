@@ -97,7 +97,7 @@ private struct ChatSummaryDraft {
     let activity: ChatActivityMetrics
 }
 
-private final class ProfilePhotoResolver {
+final class ProfilePhotoResolver {
     private let archiveRootURL: URL
     private let fileManager: FileManager
     private var resolvedURLsByCacheKey: [String: URL] = [:]

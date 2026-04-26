@@ -764,7 +764,7 @@ private struct ChatRowView: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            ChatAvatarView(title: chat.title, imageURL: chat.profilePhotoURL)
+            ChatAvatarView(chat: chat)
 
             VStack(alignment: .leading, spacing: 4) {
                 Text(chat.title)
@@ -878,18 +878,21 @@ private final class ChatListDateFormatter {
 }
 
 private struct ChatAvatarView: View {
-    let title: String
-    let imageURL: URL?
+    let chat: ChatSummary
+    @EnvironmentObject private var store: ArchiveStore
     @State private var image: CGImage?
-    @State private var didFailImageLoad = false
-    @State private var loadedImageURL: URL?
+    @State private var loadedAvatarID: String?
 
     private var initials: String? {
-        Self.initials(from: title)
+        Self.initials(from: chat.title)
     }
 
     private var paletteColor: Color {
-        Self.palette[Self.paletteIndex(for: title)]
+        Self.palette[Self.paletteIndex(for: chat.title)]
+    }
+
+    private var avatarID: String {
+        "\(chat.id)|\(chat.contactJID ?? "")|\(chat.contactIdentifier ?? "")|\(chat.profilePhotoIdentifiers.joined(separator: ","))"
     }
 
     var body: some View {
@@ -914,31 +917,24 @@ private struct ChatAvatarView: View {
         }
         .frame(width: 44, height: 44)
         .clipShape(Circle())
-        .task(id: imageURL) {
+        .task(id: avatarID) {
             await loadImageIfNeeded()
         }
         .accessibilityHidden(true)
     }
 
     private func loadImageIfNeeded() async {
-        if loadedImageURL != imageURL {
+        if loadedAvatarID != avatarID {
             image = nil
-            didFailImageLoad = false
-            loadedImageURL = imageURL
+            loadedAvatarID = avatarID
         }
 
-        guard image == nil, !didFailImageLoad, let imageURL else {
-            return
-        }
-
-        let loadedImage = await Task.detached(priority: .utility) {
-            downsampleAvatarImage(at: imageURL, maxPixelSize: 120)
-        }.value
-
-        if let loadedImage {
+        guard image == nil else { return }
+        if let loadedImage = await store.profileAvatarImage(for: chat) {
+            guard !Task.isCancelled else { return }
             image = loadedImage
         } else {
-            didFailImageLoad = true
+            loadedAvatarID = avatarID
         }
     }
 
@@ -974,7 +970,7 @@ private struct ChatAvatarView: View {
     }
 }
 
-private func downsampleAvatarImage(at url: URL, maxPixelSize: CGFloat) -> CGImage? {
+func downsampleAvatarImage(at url: URL, maxPixelSize: CGFloat) -> CGImage? {
     let options = [kCGImageSourceShouldCache: false] as CFDictionary
     guard let source = CGImageSourceCreateWithURL(url as CFURL, options) else {
         return nil

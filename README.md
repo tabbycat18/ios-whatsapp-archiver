@@ -42,7 +42,7 @@ Working now:
 - Remember selected archives locally so they can be reopened without selecting the folder again.
 - Manage two local saved archive slots: WhatsApp and WhatsApp Business.
 - Browse chats and text messages.
-- Show local profile pictures in the chat list when profile/avatar cache files are present in the selected archive.
+- Show local profile pictures lazily in the chat list when profile/avatar cache files are present in the selected archive, while initials appear immediately.
 - Search chat titles in the loaded chat list.
 - Read large chats incrementally by scrolling upward to load older messages.
 - Render available photo attachments inline.
