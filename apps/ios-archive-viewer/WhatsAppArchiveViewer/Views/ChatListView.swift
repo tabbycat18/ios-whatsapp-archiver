@@ -639,77 +639,72 @@ private struct ArchiveInstructionsView: View {
 
     var body: some View {
         NavigationStack {
-            List {
-                InstructionSection(
-                    title: "Quick Start",
-                    systemImage: "iphone",
-                    rows: [
-                        "Make an encrypted local iPhone backup on your Mac.",
-                        "Run the extractor script on the Mac.",
-                        "Copy the extracted archive to your iPhone.",
-                        "Open WA Archiver and add WhatsApp or WhatsApp Business.",
-                        "Browse chats and media locally."
-                    ]
-                )
+            ScrollView {
+                VStack(alignment: .leading, spacing: 18) {
+                    InstructionIntroCard()
 
-                InstructionSection(
-                    title: "Detailed Steps",
-                    systemImage: "folder",
-                    rows: [
-                        "In Finder, select your iPhone and choose a local backup.",
-                        "Enable encrypted backup and keep the backup password.",
-                        "Run the extractor from this project on the Mac.",
-                        "The archive usually contains ChatStorage.sqlite, ContactsV2.sqlite, Media/, and Message/.",
-                        "Transfer the extracted archive folder to the iPhone, then add it in the app."
-                    ]
-                )
+                    InstructionStepsCard(
+                        steps: [
+                            "Create an encrypted local iPhone backup on your Mac.",
+                            "Run the extractor from this project.",
+                            "Transfer the extracted archive folder to your iPhone.",
+                            "Add it to WA Archiver and browse locally."
+                        ]
+                    )
 
-                InstructionSection(
-                    title: "Transfer Notes",
-                    systemImage: "arrow.triangle.2.circlepath",
-                    rows: [
-                        "Real archives can be tens of GB and contain many files.",
-                        "AirDrop and Files transfers can be slow for large archives.",
-                        "iCloud Drive is user-managed and may keep syncing in the background.",
-                        "Zip or package transfer is experimental until the app supports it directly.",
-                        "Keep the Mac copy until the archive opens correctly on iPhone."
-                    ]
-                )
+                    InstructionInfoSection(
+                        title: "Archive Folder",
+                        systemImage: "folder",
+                        rows: [
+                            InstructionInfoRow(
+                                title: "Expected contents",
+                                text: "ChatStorage.sqlite is required. ContactsV2.sqlite, Media/, and Message/ improve names and attachments when present."
+                            ),
+                            InstructionInfoRow(
+                                title: "Large archives",
+                                text: "Real exports can be tens of GB. Keep the Mac copy until the archive opens correctly on iPhone."
+                            )
+                        ]
+                    )
 
-                InstructionSection(
-                    title: "Privacy Notes",
-                    systemImage: "shield",
-                    rows: [
-                        "The app reads local files in place.",
-                        "This project has no server and does not upload archives.",
-                        "Third-party transfer services are outside this project.",
-                        "Removing a saved archive record does not delete archive files."
-                    ]
-                )
+                    InstructionInfoSection(
+                        title: "Privacy",
+                        systemImage: "shield",
+                        rows: [
+                            InstructionInfoRow(
+                                title: "Local only",
+                                text: "The app reads selected files in place and does not upload archives."
+                            ),
+                            InstructionInfoRow(
+                                title: "Saved records",
+                                text: "Removing an archive record only removes the app shortcut; it does not delete archive files."
+                            )
+                        ]
+                    )
 
-                InstructionSection(
-                    title: "Demo Archive",
-                    systemImage: "message",
-                    rows: [
-                        "Tap Try Demo Archive on the archive home screen to open bundled sample data.",
-                        "The demo is fully synthetic and does not use a real archive slot.",
-                        "Developers can also select test-fixtures/demo-archive/ through the normal Add flow."
-                    ]
-                )
-
-                InstructionSection(
-                    title: "Installation Status",
-                    systemImage: "lock",
-                    rows: [
-                        "The source code is on GitHub.",
-                        "Current installation still requires Xcode or developer/test distribution.",
-                        "GitHub alone is not a universal one-tap iPhone install path.",
-                        "Future options may include TestFlight, App Store, EU alternative distribution, or Web Distribution if requirements are met."
-                    ]
-                )
+                    InstructionInfoSection(
+                        title: "Demo and Install",
+                        systemImage: "info.circle",
+                        rows: [
+                            InstructionInfoRow(
+                                title: "Demo archive",
+                                text: "Try Demo Archive opens bundled synthetic sample data and does not use a real archive slot."
+                            ),
+                            InstructionInfoRow(
+                                title: "Distribution",
+                                text: "Current installation still requires Xcode or developer/test distribution."
+                            )
+                        ]
+                    )
+                }
+                .padding(.horizontal, 20)
+                .padding(.vertical, 18)
             }
+            .background(Color(.systemGroupedBackground))
             .navigationTitle("Instructions")
             .navigationBarTitleDisplayMode(.inline)
+            .toolbarBackground(Color(.systemGroupedBackground), for: .navigationBar)
+            .toolbarBackground(.visible, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Done") {
@@ -721,27 +716,93 @@ private struct ArchiveInstructionsView: View {
     }
 }
 
-private struct InstructionSection: View {
-    let title: String
-    let systemImage: String
-    let rows: [String]
+private struct InstructionIntroCard: View {
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Label("Read an iPhone WhatsApp archive locally", systemImage: "lock.doc")
+                .font(.headline)
+
+            Text("You need an encrypted Finder backup, the Mac extractor, and the extracted archive folder on your iPhone.")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(18)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+    }
+}
+
+private struct InstructionStepsCard: View {
+    let steps: [String]
 
     var body: some View {
-        Section {
-            ForEach(rows, id: \.self) { row in
-                Label {
-                    Text(row)
-                        .font(.body)
-                        .fixedSize(horizontal: false, vertical: true)
-                } icon: {
-                    Image(systemName: "checkmark.circle")
-                        .foregroundStyle(.secondary)
+        VStack(alignment: .leading, spacing: 14) {
+            Label("Basic Flow", systemImage: "list.number")
+                .font(.headline)
+                .foregroundStyle(.secondary)
+
+            VStack(alignment: .leading, spacing: 12) {
+                ForEach(Array(steps.enumerated()), id: \.offset) { index, step in
+                    HStack(alignment: .firstTextBaseline, spacing: 12) {
+                        Text("\(index + 1)")
+                            .font(.caption.weight(.bold))
+                            .foregroundStyle(.white)
+                            .frame(width: 24, height: 24)
+                            .background(Color.green, in: Circle())
+
+                        Text(step)
+                            .font(.body)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
                 }
             }
-        } header: {
-            Label(title, systemImage: systemImage)
+            .padding(18)
+            .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
         }
     }
+}
+
+private struct InstructionInfoSection: View {
+    let title: String
+    let systemImage: String
+    let rows: [InstructionInfoRow]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Label(title, systemImage: systemImage)
+                .font(.headline)
+                .foregroundStyle(.secondary)
+
+            VStack(alignment: .leading, spacing: 0) {
+                ForEach(rows) { row in
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(row.title)
+                            .font(.subheadline.weight(.semibold))
+
+                        Text(row.text)
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.vertical, 13)
+
+                    if row.id != rows.last?.id {
+                        Divider()
+                    }
+                }
+            }
+            .padding(.horizontal, 16)
+            .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+        }
+    }
+}
+
+private struct InstructionInfoRow: Identifiable {
+    var id: String { title }
+    let title: String
+    let text: String
 }
 
 private struct ArchiveOpeningOverlay: View {
