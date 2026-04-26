@@ -28,6 +28,7 @@ struct MessageListView: View {
                             .environmentObject(audioPlayback)
                             .id(message.id)
                             .listRowSeparator(.hidden)
+                            .listRowInsets(EdgeInsets(top: 1, leading: 16, bottom: 1, trailing: 16))
                             .onAppear {
                                 loadOlderMessagesIfNeeded(appearingAt: index)
                             }
@@ -168,7 +169,7 @@ private struct MessageBubbleView: View {
                 Spacer(minLength: 36)
             }
 
-            VStack(alignment: message.isFromMe ? .trailing : .leading, spacing: 4) {
+            VStack(alignment: message.isFromMe ? .trailing : .leading, spacing: 2) {
                 if let senderLabel {
                     Text(senderLabel)
                         .font(.caption)
@@ -193,7 +194,7 @@ private struct MessageBubbleView: View {
                 Spacer(minLength: 36)
             }
         }
-        .padding(.vertical, 3)
+        .padding(.vertical, 1)
         .onDisappear {
             if audioPlayback.isPlaying(message.id) {
                 audioPlayback.stop()
