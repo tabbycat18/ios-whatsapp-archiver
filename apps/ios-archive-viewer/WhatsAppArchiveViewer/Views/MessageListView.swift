@@ -3,12 +3,20 @@ import SwiftUI
 struct MessageListView: View {
     let chat: ChatSummary
     let messages: [MessageRow]
-    let loadedLimit: Int
+    let isLoadingOlder: Bool
+    let hasMoreOlderMessages: Bool
+    let olderMessagesErrorMessage: String?
+    let initialMessageLoadGeneration: Int
+    let onLoadOlderMessages: () -> Void
 
     var body: some View {
         ScrollViewReader { proxy in
             List {
                 Section {
+                    if hasMoreOlderMessages || olderMessagesErrorMessage != nil {
+                        paginationControls
+                    }
+
                     ForEach(messages) { message in
                         MessageBubbleView(message: message)
                             .id(message.id)
@@ -30,19 +38,43 @@ struct MessageListView: View {
             .onAppear {
                 scrollToLatestMessage(using: proxy, animated: false)
             }
-            .onChange(of: chat.id) { _, _ in
-                scrollToLatestMessage(using: proxy, animated: false)
-            }
-            .onChange(of: messages.last?.id) { _, _ in
+            .onChange(of: initialMessageLoadGeneration) { _, _ in
                 scrollToLatestMessage(using: proxy, animated: false)
             }
         }
         .navigationTitle(chat.title)
     }
 
+    @ViewBuilder
+    private var paginationControls: some View {
+        VStack(alignment: .center, spacing: 8) {
+            if hasMoreOlderMessages {
+                Button {
+                    onLoadOlderMessages()
+                } label: {
+                    Label(
+                        isLoadingOlder ? "Loading older messages..." : "Load older messages",
+                        systemImage: "arrow.up.circle"
+                    )
+                }
+                .disabled(isLoadingOlder)
+                .buttonStyle(.bordered)
+            }
+
+            if let olderMessagesErrorMessage {
+                Text(olderMessagesErrorMessage)
+                    .font(.caption)
+                    .foregroundStyle(.red)
+                    .multilineTextAlignment(.center)
+            }
+        }
+        .frame(maxWidth: .infinity)
+        .listRowSeparator(.hidden)
+    }
+
     private var summaryText: String {
-        if chat.messageCount > loadedLimit {
-            return "Showing latest \(messages.count.formatted()) of \(chat.messageCount.formatted()) messages"
+        if messages.count < chat.messageCount {
+            return "Showing \(messages.count.formatted()) of \(chat.messageCount.formatted()) messages"
         }
         return "\(chat.messageCount.formatted()) messages"
     }

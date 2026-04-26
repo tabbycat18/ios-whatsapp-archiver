@@ -41,6 +41,16 @@ The app also has an Open Archive action that can select either an extracted arch
 - Attempts safe relative media path resolution under the selected archive root without loading media files.
 - Loads only the latest 500 messages per selected chat, sorted ascending in the message view.
 
+### Milestone 2.5 Full-History Pagination
+
+- Opens a selected chat with only the latest 500 messages loaded initially.
+- Adds a top-of-list control to load older messages incrementally in fixed-size batches.
+- Uses stable keyset pagination by message date and primary key instead of `OFFSET`.
+- Keeps loaded messages sorted oldest-to-newest while prepending older batches.
+- Keeps media metadata and safe path discovery available for older loaded messages without rendering media.
+- Does not load all messages, media binaries, or thumbnails at once.
+- Keeps private archive data local and ignored.
+
 ## Limitations
 
 - Media rendering is not implemented yet.

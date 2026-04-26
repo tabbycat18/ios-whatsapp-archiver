@@ -40,4 +40,14 @@ struct MessageRow: Identifiable, Hashable {
     let messageDate: Date?
     let messageType: Int?
     let media: MediaMetadata?
+
+    var paginationCursor: MessagePaginationCursor? {
+        guard let messageDate else { return nil }
+        return MessagePaginationCursor(messageDate: messageDate, messageID: id)
+    }
+}
+
+struct MessagePaginationCursor: Hashable {
+    let messageDate: Date
+    let messageID: Int64
 }

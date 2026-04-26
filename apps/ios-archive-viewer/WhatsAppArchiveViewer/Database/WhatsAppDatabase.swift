@@ -166,15 +166,7 @@ final class WhatsAppDatabase {
         let sql = """
             SELECT *
             FROM (
-                SELECT
-                    m.Z_PK,
-                    m.ZISFROMME,
-                    m.ZFROMJID,
-                    m.ZPUSHNAME,
-                    m.ZTEXT,
-                    m.ZMESSAGEDATE,
-                    \(messageTypeSelectSQL()) AS message_type,
-                    \(mediaSelectSQL())
+                \(messageRowSelectSQL())
                 FROM ZWAMESSAGE m
                 \(mediaJoinSQL())
                 WHERE m.ZCHATSESSION = ?
@@ -189,6 +181,55 @@ final class WhatsAppDatabase {
         sqlite3_bind_int64(statement, 1, chatID)
         sqlite3_bind_int(statement, 2, Int32(limit))
 
+        return try readMessages(from: statement)
+    }
+
+    func fetchOlderMessages(
+        chatID: Int64,
+        before cursor: MessagePaginationCursor,
+        limit: Int = 500
+    ) throws -> [MessageRow] {
+        let sql = """
+            \(messageRowSelectSQL())
+            FROM ZWAMESSAGE m
+            \(mediaJoinSQL())
+            WHERE m.ZCHATSESSION = ?
+              AND (
+                m.ZMESSAGEDATE < ?
+                OR (m.ZMESSAGEDATE = ? AND m.Z_PK < ?)
+              )
+            ORDER BY m.ZMESSAGEDATE DESC, m.Z_PK DESC
+            LIMIT ?
+            """
+
+        let statement = try prepare(sql)
+        defer { sqlite3_finalize(statement) }
+        let cursorDate = cursor.messageDate.timeIntervalSinceReferenceDate
+        sqlite3_bind_int64(statement, 1, chatID)
+        sqlite3_bind_double(statement, 2, cursorDate)
+        sqlite3_bind_double(statement, 3, cursorDate)
+        sqlite3_bind_int64(statement, 4, cursor.messageID)
+        sqlite3_bind_int(statement, 5, Int32(limit))
+
+        let descendingMessages = try readMessages(from: statement)
+        return Array(descendingMessages.reversed())
+    }
+
+    private func messageRowSelectSQL() -> String {
+        """
+        SELECT
+            m.Z_PK,
+            m.ZISFROMME,
+            m.ZFROMJID,
+            m.ZPUSHNAME,
+            m.ZTEXT,
+            m.ZMESSAGEDATE,
+            \(messageTypeSelectSQL()) AS message_type,
+            \(mediaSelectSQL())
+        """
+    }
+
+    private func readMessages(from statement: OpaquePointer) throws -> [MessageRow] {
         var messages: [MessageRow] = []
         var stepResult = sqlite3_step(statement)
         while stepResult == SQLITE_ROW {

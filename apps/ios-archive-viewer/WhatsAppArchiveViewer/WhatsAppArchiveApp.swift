@@ -36,6 +36,10 @@ final class ArchiveStore: ObservableObject {
     @Published var selectedChat: ChatSummary?
     @Published var messages: [MessageRow] = []
     @Published var errorMessage: String?
+    @Published var olderMessagesErrorMessage: String?
+    @Published var isLoadingOlder = false
+    @Published var hasMoreOlderMessages = false
+    @Published var initialMessageLoadGeneration = 0
     @Published var archiveName = "No Archive"
 
     let messageLimit = 500
@@ -86,6 +90,7 @@ final class ArchiveStore: ObservableObject {
             chats = []
             selectedChat = nil
             messages = []
+            resetPaginationState()
             archiveName = "No Archive"
             errorMessage = error.localizedDescription
         }
@@ -94,11 +99,43 @@ final class ArchiveStore: ObservableObject {
     func loadMessages(for chat: ChatSummary) {
         guard let database else { return }
         do {
-            messages = try database.fetchMessages(chatID: chat.id, limit: messageLimit)
+            let loadedMessages = try database.fetchMessages(chatID: chat.id, limit: messageLimit)
+            messages = loadedMessages
+            hasMoreOlderMessages = loadedMessages.count < chat.messageCount
+            olderMessagesErrorMessage = nil
+            isLoadingOlder = false
+            initialMessageLoadGeneration += 1
             errorMessage = nil
         } catch {
             messages = []
+            resetPaginationState()
             errorMessage = error.localizedDescription
+        }
+    }
+
+    func loadOlderMessages() {
+        guard let database, let chat = selectedChat, !isLoadingOlder, hasMoreOlderMessages else { return }
+        guard let cursor = messages.first?.paginationCursor else {
+            hasMoreOlderMessages = false
+            olderMessagesErrorMessage = "Cannot load older messages because the oldest loaded message has no date."
+            return
+        }
+
+        isLoadingOlder = true
+        defer { isLoadingOlder = false }
+
+        do {
+            let olderMessages = try database.fetchOlderMessages(
+                chatID: chat.id,
+                before: cursor,
+                limit: messageLimit
+            )
+            messages.insert(contentsOf: olderMessages, at: 0)
+            hasMoreOlderMessages = !olderMessages.isEmpty && messages.count < chat.messageCount
+            olderMessagesErrorMessage = nil
+            errorMessage = nil
+        } catch {
+            olderMessagesErrorMessage = "Could not load older messages: \(error.localizedDescription)"
         }
     }
 
@@ -120,15 +157,24 @@ final class ArchiveStore: ObservableObject {
                 loadMessages(for: firstChat)
             } else {
                 messages = []
+                resetPaginationState()
             }
         } catch {
             database = nil
             chats = []
             selectedChat = nil
             messages = []
+            resetPaginationState()
             archiveName = "No Archive"
             errorMessage = error.localizedDescription
         }
+    }
+
+    private func resetPaginationState() {
+        olderMessagesErrorMessage = nil
+        isLoadingOlder = false
+        hasMoreOlderMessages = false
+        initialMessageLoadGeneration += 1
     }
 
     private func importArchive(from pickedURL: URL) throws -> URL {

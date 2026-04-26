@@ -43,7 +43,11 @@ struct ChatListView: View {
                 MessageListView(
                     chat: chat,
                     messages: store.messages,
-                    loadedLimit: store.messageLimit
+                    isLoadingOlder: store.isLoadingOlder,
+                    hasMoreOlderMessages: store.hasMoreOlderMessages,
+                    olderMessagesErrorMessage: store.olderMessagesErrorMessage,
+                    initialMessageLoadGeneration: store.initialMessageLoadGeneration,
+                    onLoadOlderMessages: store.loadOlderMessages
                 )
             } else {
                 ContentUnavailableView("Select a Chat", systemImage: "message")
