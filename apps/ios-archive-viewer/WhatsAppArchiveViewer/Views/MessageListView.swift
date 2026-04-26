@@ -10,6 +10,7 @@ struct MessageListView: View {
     let hasMoreOlderMessages: Bool
     let olderMessagesErrorMessage: String?
     let initialMessageLoadGeneration: Int
+    let wallpaperURL: URL?
     let onLoadOlderMessages: () -> Void
     @StateObject private var audioPlayback = AudioPlaybackController()
     @State private var latestScrolledGeneration: Int?
@@ -18,7 +19,9 @@ struct MessageListView: View {
     private let olderLoadThreshold = 8
 
     var body: some View {
-        VStack(spacing: 0) {
+        ZStack {
+            ChatWallpaperBackgroundView(wallpaperURL: wallpaperURL)
+
             ScrollViewReader { proxy in
                 List {
                     olderPaginationStatus
@@ -29,12 +32,15 @@ struct MessageListView: View {
                             .id(message.id)
                             .listRowSeparator(.hidden)
                             .listRowInsets(EdgeInsets(top: 1, leading: 16, bottom: 1, trailing: 16))
+                            .listRowBackground(Color.clear)
                             .onAppear {
                                 loadOlderMessagesIfNeeded(appearingAt: index)
                             }
                     }
                 }
                 .listStyle(.plain)
+                .scrollContentBackground(.hidden)
+                .background(Color.clear)
                 .onAppear {
                     scrollToLatestMessageIfNeeded(using: proxy, animated: false)
                 }
@@ -77,6 +83,7 @@ struct MessageListView: View {
             }
             .padding(.vertical, 4)
             .listRowSeparator(.hidden)
+            .listRowBackground(Color.clear)
         }
     }
 
@@ -103,6 +110,45 @@ struct MessageListView: View {
         guard lastOlderLoadTriggerMessageID != oldestMessageID else { return }
         lastOlderLoadTriggerMessageID = oldestMessageID
         onLoadOlderMessages()
+    }
+}
+
+private struct ChatWallpaperBackgroundView: View {
+    let wallpaperURL: URL?
+    @State private var image: CGImage?
+    @State private var didFail = false
+
+    var body: some View {
+        ZStack {
+            Color.gray.opacity(0.08)
+
+            if let image {
+                Image(decorative: image, scale: 1, orientation: .up)
+                    .resizable()
+                    .scaledToFill()
+                    .opacity(0.9)
+            }
+        }
+        .ignoresSafeArea()
+        .task(id: wallpaperURL) {
+            await loadWallpaperIfNeeded()
+        }
+    }
+
+    private func loadWallpaperIfNeeded() async {
+        guard image == nil, !didFail, let wallpaperURL else {
+            return
+        }
+
+        let loadedImage = await Task.detached(priority: .utility) {
+            downsampleImage(at: wallpaperURL, maxPixelSize: 1800)
+        }.value
+
+        if let loadedImage {
+            image = loadedImage
+        } else {
+            didFail = true
+        }
     }
 }
 

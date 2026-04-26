@@ -19,6 +19,8 @@ Common files and folders:
 - `ChatStorage.sqlite-shm`
 - `ChatStorage.sqlite-journal`
 - `ContactsV2.sqlite`
+- `current_wallpaper.jpg`
+- `current_wallpaper_dark.jpg`
 - `Media/`
 - `Message/`
 
@@ -47,6 +49,14 @@ The viewer uses fields needed for:
 - message date;
 - message and group-event type when available;
 - media local path, title, size, URL, vCard, location, duration, resolved availability, and inferred attachment kind when available.
+
+The viewer also looks for generic chat wallpaper files at the selected archive
+root:
+
+- `current_wallpaper.jpg`
+- `current_wallpaper_dark.jpg`
+
+If one is present, it is loaded lazily and used as the message-list background.
 
 ## Ordering and Pagination
 
@@ -133,6 +143,11 @@ image before display. Video rows generate thumbnails only for visible rows and
 open playback only after the user taps the attachment. Audio rows create a
 player only after the user taps play, and the shared playback controller stops
 the previous audio row before starting another.
+
+Chat wallpaper rendering is also lazy. The viewer downscales
+`current_wallpaper.jpg` or `current_wallpaper_dark.jpg` from the archive root
+before using it as the message background. Wallpaper files are not copied into
+Git and full local paths are not shown in the normal UI.
 
 The viewer does not scan or preload all media globally. Missing, unavailable, or
 unsupported media stays as a placeholder. The per-chat media library is not

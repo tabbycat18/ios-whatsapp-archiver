@@ -14,6 +14,7 @@
 - Chat title search, compact message UI, conservative system/call labels, and safer group sender fallbacks on the pagination branch.
 - Duplicate-title archive entries are classified so real separate conversations stay visible while system-only or tiny no-visible-message fragments are hidden from normal browsing.
 - First chat media rendering path with inline photos, tap-to-play video previews, and simple audio playback.
+- Chat wallpaper rendering from generic archive-root `current_wallpaper.jpg` files.
 
 ## Next
 

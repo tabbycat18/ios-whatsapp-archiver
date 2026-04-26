@@ -59,6 +59,7 @@ struct ChatListView: View {
                     hasMoreOlderMessages: store.hasMoreOlderMessages,
                     olderMessagesErrorMessage: store.olderMessagesErrorMessage,
                     initialMessageLoadGeneration: store.initialMessageLoadGeneration,
+                    wallpaperURL: store.wallpaperURL,
                     onLoadOlderMessages: store.loadOlderMessages
                 )
             } else {

@@ -29,6 +29,7 @@ Build and run with full Xcode on an iOS simulator or device. Command Line Tools 
 - Discovers `ZWAMEDIAITEM` metadata when the table and columns are available.
 - Shows text messages, inline photos, tap-to-play video previews, simple audio playback, and conservative placeholders for unsupported media/system rows.
 - Checks whether referenced media files appear available under the selected archive root.
+- Uses the extracted WhatsApp chat wallpaper as the message background when a generic wallpaper file is present at the selected archive root.
 - Avoids showing raw JIDs or internal sender identifiers in the normal message UI.
 - Shows safely extracted phone numbers for unsaved group senders when the sender JID can be reduced to digits only.
 
@@ -57,6 +58,7 @@ and keeps missing or unresolved files as placeholders.
 - Renders available photo attachments inline after downsampling.
 - Shows available videos as tap-to-play attachments with lazy thumbnails when thumbnail generation succeeds.
 - Plays available audio and voice attachments with a simple play/pause control.
+- Shows the archive wallpaper behind messages when `current_wallpaper.jpg` or `current_wallpaper_dark.jpg` exists next to `ChatStorage.sqlite`.
 - Keeps unsupported, missing, or unreadable media as placeholders.
 - Loads media only for visible rows and does not scan or preload all archive media.
 
@@ -81,6 +83,7 @@ The app does not load every message at once because large WhatsApp chats can con
 - Split sessions can exist in old archives. The viewer merges sessions with strong identity evidence, but does not merge rows by title alone because that can combine unrelated people with the same display name.
 - Duplicate-title rows with real user-visible text, media, or call evidence stay visible as separate conversations. Duplicate/system-only rows and tiny no-visible-message archive fragments are hidden from normal browsing and chat-title search instead of being merged or deleted. Uncertain larger archive entries remain visible with a cautious label.
 - Media path resolution checks several archive-root-relative layouts, including `Media/` and `Message/Media/`. The normal UI does not print full private media paths.
+- Chat wallpaper resolution checks generic archive-root files named `current_wallpaper.jpg` and `current_wallpaper_dark.jpg`.
 - Media rendering is lazy. Images are downsampled before display, video thumbnails are generated only for visible video rows, and audio playback starts only after the user taps play.
 
 ## Development Data
@@ -113,6 +116,7 @@ The app also has an Open Archive action that can select either an extracted arch
 - Confirm available photos render inline without large layout jumps.
 - Confirm available videos open in the video preview only after tapping.
 - Confirm available audio or voice rows can play and pause.
+- Confirm the chat wallpaper appears behind messages when `current_wallpaper.jpg` is present in the selected archive folder.
 - Confirm missing or unreadable media remains a clean placeholder.
 - Confirm call and system rows use neutral labels instead of generic unsupported text where possible.
 - Confirm the viewer does not auto-scroll back to newest after loading older messages.

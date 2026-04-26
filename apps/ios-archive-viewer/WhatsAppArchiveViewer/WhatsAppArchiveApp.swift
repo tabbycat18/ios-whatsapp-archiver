@@ -41,6 +41,7 @@ final class ArchiveStore: ObservableObject {
     @Published var hasMoreOlderMessages = false
     @Published var initialMessageLoadGeneration = 0
     @Published var archiveName = "No Archive"
+    @Published var wallpaperURL: URL?
 
     let messageLimit = 500
     private var messageFetchLimit: Int {
@@ -95,6 +96,7 @@ final class ArchiveStore: ObservableObject {
             messages = []
             resetPaginationState()
             archiveName = "No Archive"
+            wallpaperURL = nil
             errorMessage = error.localizedDescription
         }
     }
@@ -164,6 +166,7 @@ final class ArchiveStore: ObservableObject {
             chats = loadedChats
             selectedChat = loadedChats.first
             archiveName = databaseURL.deletingLastPathComponent().lastPathComponent
+            wallpaperURL = Self.wallpaperURL(in: archiveRootURL)
             errorMessage = nil
 
             if let firstChat = selectedChat {
@@ -179,8 +182,21 @@ final class ArchiveStore: ObservableObject {
             messages = []
             resetPaginationState()
             archiveName = "No Archive"
+            wallpaperURL = nil
             errorMessage = error.localizedDescription
         }
+    }
+
+    private static func wallpaperURL(in archiveRootURL: URL) -> URL? {
+        let candidates = [
+            "current_wallpaper.jpg",
+            "current_wallpaper_dark.jpg"
+        ]
+
+        let archiveRootURL = archiveRootURL.standardizedFileURL
+        return candidates
+            .map { archiveRootURL.appendingPathComponent($0).standardizedFileURL }
+            .first { FileManager.default.fileExists(atPath: $0.path) }
     }
 
     private func resetPaginationState() {

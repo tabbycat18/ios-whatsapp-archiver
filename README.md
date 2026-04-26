@@ -41,6 +41,7 @@ Working now:
 - Render available photo attachments inline.
 - Open available video attachments in a tap-to-play video preview.
 - Play available audio and voice attachments with a simple play/pause control.
+- Use the extracted WhatsApp chat wallpaper as the message background when `current_wallpaper.jpg` is present at the archive root.
 - Keep missing or unsupported media as placeholders.
 - Show conservative system/call placeholders without exposing raw sender IDs.
 - Use `ContactsV2.sqlite` when available for conservative contact-name and split-session resolution.
