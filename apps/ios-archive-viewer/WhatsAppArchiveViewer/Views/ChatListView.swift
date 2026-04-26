@@ -302,38 +302,50 @@ private struct ArchiveSlotCardView: View {
         if archive == nil {
             Button(action: onAdd) {
                 Label("Add", systemImage: "folder.badge.plus")
+                    .frame(maxWidth: .infinity)
             }
             .buttonStyle(.borderedProminent)
+            .controlSize(.large)
+            .tint(.green)
             .disabled(!canAdd)
         } else {
-            VStack(alignment: .leading, spacing: 8) {
-                HStack(spacing: 8) {
-                    Button(action: onOpen) {
-                        Label(isOpening ? "Opening" : "Open", systemImage: "arrow.right.circle")
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .disabled(isOpening)
-
-                    Button(action: onRelink) {
-                        Label("Relink", systemImage: "link")
-                    }
-                    .buttonStyle(.bordered)
-                    .disabled(isOpening)
+            HStack(spacing: 10) {
+                Button(action: onOpen) {
+                    Label(isOpening ? "Opening" : "Open", systemImage: "arrow.right.circle.fill")
+                        .frame(maxWidth: .infinity)
                 }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.large)
+                .tint(.green)
+                .disabled(isOpening)
 
-                HStack(spacing: 8) {
+                Button(action: onRelink) {
+                    Label("Relink", systemImage: "link")
+                        .labelStyle(.iconOnly)
+                        .frame(width: 42)
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.large)
+                .disabled(isOpening)
+                .accessibilityLabel("Relink archive")
+
+                Menu {
                     Button(action: onRename) {
                         Label("Rename", systemImage: "pencil")
                     }
-                    .buttonStyle(.bordered)
-                    .disabled(isOpening)
 
                     Button(role: .destructive, action: onRemove) {
                         Label("Remove", systemImage: "trash")
                     }
-                    .buttonStyle(.bordered)
-                    .disabled(isOpening)
+                } label: {
+                    Label("More", systemImage: "ellipsis")
+                        .labelStyle(.iconOnly)
+                        .frame(width: 42)
                 }
+                .buttonStyle(.bordered)
+                .controlSize(.large)
+                .disabled(isOpening)
+                .accessibilityLabel("More archive actions")
             }
         }
     }
