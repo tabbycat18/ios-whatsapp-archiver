@@ -38,7 +38,10 @@ Working now:
 - Browse chats and text messages.
 - Search chat titles in the loaded chat list.
 - Read large chats incrementally by scrolling upward to load older messages.
-- Show media metadata and placeholders.
+- Render available photo attachments inline.
+- Open available video attachments in a tap-to-play video preview.
+- Play available audio and voice attachments with a simple play/pause control.
+- Keep missing or unsupported media as placeholders.
 - Show conservative system/call placeholders without exposing raw sender IDs.
 - Use `ContactsV2.sqlite` when available for conservative contact-name and split-session resolution.
 - Keep real duplicate-title conversations separate while hiding technical system-only or no-visible-message archive fragments from normal browsing.
@@ -46,7 +49,7 @@ Working now:
 
 Not implemented yet:
 
-- Photo, video, and audio preview.
+- Per-chat media library.
 - Complete `ContactsV2.sqlite` enrichment for every historical contact edge case.
 - Direct zip/package import.
 - Non-Xcode installation or distribution.

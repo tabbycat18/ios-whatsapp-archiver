@@ -21,6 +21,7 @@ private struct MediaSchema {
 
 private struct MediaPathResolution {
     let relativePath: String?
+    let fileURL: URL?
     let fileName: String?
     let existsInArchive: Bool
 }
@@ -862,7 +863,8 @@ final class WhatsAppDatabase {
                 "NULL AS media_vcard_name",
                 "NULL AS media_vcard_string",
                 "NULL AS media_latitude",
-                "NULL AS media_longitude"
+                "NULL AS media_longitude",
+                "NULL AS media_duration"
             ].joined(separator: ",\n                    ")
         }
 
@@ -875,7 +877,8 @@ final class WhatsAppDatabase {
             mediaSchema.select("ZVCARDNAME", as: "media_vcard_name"),
             mediaSchema.select("ZVCARDSTRING", as: "media_vcard_string"),
             mediaSchema.select("ZLATITUDE", as: "media_latitude"),
-            mediaSchema.select("ZLONGITUDE", as: "media_longitude")
+            mediaSchema.select("ZLONGITUDE", as: "media_longitude"),
+            mediaSchema.select("ZMOVIEDURATION", as: "media_duration")
         ].joined(separator: ",\n                    ")
     }
 
@@ -912,8 +915,9 @@ final class WhatsAppDatabase {
         let vCardString = string(statement, index + 6)
         let latitude = double(statement, index + 7)
         let longitude = double(statement, index + 8)
+        let durationSeconds = double(statement, index + 9)
 
-        guard itemID != nil || localPath != nil || title != nil || fileSize != nil || mediaURL != nil || vCardName != nil || vCardString != nil || latitude != nil || longitude != nil else {
+        guard itemID != nil || localPath != nil || title != nil || fileSize != nil || mediaURL != nil || vCardName != nil || vCardString != nil || latitude != nil || longitude != nil || durationSeconds != nil else {
             return nil
         }
 
@@ -939,10 +943,12 @@ final class WhatsAppDatabase {
         return MediaMetadata(
             itemID: itemID,
             localPath: resolution.relativePath ?? localPath,
+            fileURL: resolution.fileURL,
             fileName: fileName,
             title: title,
             mimeType: mimeType,
             fileSize: fileSize,
+            durationSeconds: durationSeconds,
             isFileAvailableInArchive: resolution.existsInArchive,
             kind: kind
         )
@@ -950,7 +956,7 @@ final class WhatsAppDatabase {
 
     private func resolveMediaPath(_ localPath: String?) -> MediaPathResolution {
         guard let relativePath = normalizedRelativeMediaPath(from: localPath) else {
-            return MediaPathResolution(relativePath: nil, fileName: nil, existsInArchive: false)
+            return MediaPathResolution(relativePath: nil, fileURL: nil, fileName: nil, existsInArchive: false)
         }
 
         let archiveRoot = archiveRootURL.standardizedFileURL
@@ -959,12 +965,14 @@ final class WhatsAppDatabase {
             isInsideArchive(candidate, archiveRoot: archiveRoot)
                 && FileManager.default.fileExists(atPath: candidate.path)
         } ?? archiveRoot.appendingPathComponent(relativePath).standardizedFileURL
+        let existsInArchive = isInsideArchive(candidate, archiveRoot: archiveRoot)
+            && FileManager.default.fileExists(atPath: candidate.path)
 
         return MediaPathResolution(
             relativePath: relativePath,
+            fileURL: existsInArchive ? candidate : nil,
             fileName: candidate.lastPathComponent,
-            existsInArchive: isInsideArchive(candidate, archiveRoot: archiveRoot)
-                && FileManager.default.fileExists(atPath: candidate.path)
+            existsInArchive: existsInArchive
         )
     }
 

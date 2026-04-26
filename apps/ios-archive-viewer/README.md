@@ -27,12 +27,13 @@ Build and run with full Xcode on an iOS simulator or device. Command Line Tools 
 - Merges duplicate chat sessions only when they share a strong identifier, such as the same `ZCONTACTJID` or the same unambiguous ContactsV2 identity.
 - Classifies unresolved duplicate-title entries conservatively so real separate conversations stay visible while technical archive fragments do not clutter normal browsing.
 - Discovers `ZWAMEDIAITEM` metadata when the table and columns are available.
-- Shows text messages and conservative media/system placeholders.
+- Shows text messages, inline photos, tap-to-play video previews, simple audio playback, and conservative placeholders for unsupported media/system rows.
 - Checks whether referenced media files appear available under the selected archive root.
 - Avoids showing raw JIDs or internal sender identifiers in the normal message UI.
 - Shows safely extracted phone numbers for unsaved group senders when the sender JID can be reduced to digits only.
 
-The app does not render photos, videos, audio, thumbnails, or binary media yet.
+Media files stay local. The app renders only visible message attachments lazily
+and keeps missing or unresolved files as placeholders.
 
 ## Current State
 
@@ -50,6 +51,14 @@ The app does not render photos, videos, audio, thumbnails, or binary media yet.
 - Shows clearer placeholders for empty-text media messages, such as photo, video, audio, or generic media attachments.
 - Attempts safe relative media path resolution under the selected archive root without loading media files.
 - Keeps the database read-only.
+
+### Milestone 4 Chat Media Rendering
+
+- Renders available photo attachments inline after downsampling.
+- Shows available videos as tap-to-play attachments with lazy thumbnails when thumbnail generation succeeds.
+- Plays available audio and voice attachments with a simple play/pause control.
+- Keeps unsupported, missing, or unreadable media as placeholders.
+- Loads media only for visible rows and does not scan or preload all archive media.
 
 ### Milestone 2.5 Full-History Pagination
 
@@ -71,7 +80,8 @@ The app does not load every message at once because large WhatsApp chats can con
 - Chat sorting prefers the latest real user-visible conversation row when possible and excludes known system-notice message types from the primary latest-date calculation. It falls back to broader activity dates only when no relevant message date is available.
 - Split sessions can exist in old archives. The viewer merges sessions with strong identity evidence, but does not merge rows by title alone because that can combine unrelated people with the same display name.
 - Duplicate-title rows with real user-visible text, media, or call evidence stay visible as separate conversations. Duplicate/system-only rows and tiny no-visible-message archive fragments are hidden from normal browsing and chat-title search instead of being merged or deleted. Uncertain larger archive entries remain visible with a cautious label.
-- Media path resolution checks several archive-root-relative layouts, including `Media/` and `Message/Media/`, without loading media binaries.
+- Media path resolution checks several archive-root-relative layouts, including `Media/` and `Message/Media/`. The normal UI does not print full private media paths.
+- Media rendering is lazy. Images are downsampled before display, video thumbnails are generated only for visible video rows, and audio playback starts only after the user taps play.
 
 ## Development Data
 
@@ -100,11 +110,16 @@ The app also has an Open Archive action that can select either an extracted arch
 - Confirm ordering remains oldest-to-newest.
 - Confirm sender direction and dates remain correct.
 - Confirm media placeholders still appear.
+- Confirm available photos render inline without large layout jumps.
+- Confirm available videos open in the video preview only after tapping.
+- Confirm available audio or voice rows can play and pause.
+- Confirm missing or unreadable media remains a clean placeholder.
 - Confirm call and system rows use neutral labels instead of generic unsupported text where possible.
 - Confirm the viewer does not auto-scroll back to newest after loading older messages.
 - Confirm raw/debug identifiers are not shown in the normal message UI.
 - Confirm unresolved group senders show "Unknown sender" instead of raw opaque tokens.
 - Confirm chat list dates for duplicate-title conversations come from user-visible text, media, or call rows rather than security/system-only fragments.
+- Confirm media rendering does not break automatic older-message loading.
 - Avoid printing private message contents or full private filesystem paths during debugging.
 
 ## Large Archive Transfer Notes
@@ -114,7 +129,7 @@ Real extracted WhatsApp archives can be tens of GB and can contain more than 100
 Recommended current development workflow:
 
 - Start with only `ChatStorage.sqlite` and any SQLite sidecars to validate chat browsing and full-history pagination.
-- Use a small media subset when testing media path discovery or future rendering work.
+- Use a small media subset when testing media rendering changes.
 - Avoid repeatedly transferring the full archive during development.
 - Transfer the full raw media archive only when the full media set is needed.
 
@@ -136,8 +151,8 @@ Packaging may still be useful to test because one large file can be easier to tr
 
 ## Limitations
 
-- Media rendering is not implemented yet.
-- Thumbnails and binary media are not loaded into memory yet.
+- The per-chat media library is not implemented yet.
+- Document, link-preview, location, contact-card, and sticker rendering remain placeholders.
 - ContactsV2 enrichment is intentionally conservative and may not resolve every historical contact edge case yet.
 - ContactsV2 improves identity resolution, but duplicate-title sessions can still represent either real separate chats or archive fragments that need conservative classification.
 - Persistent archive bookmarks and polished import management are future work.

@@ -50,10 +50,12 @@ enum MediaAttachmentKind: String, Hashable {
 struct MediaMetadata: Hashable {
     let itemID: Int64?
     let localPath: String?
+    let fileURL: URL?
     let fileName: String?
     let title: String?
     let mimeType: String?
     let fileSize: Int64?
+    let durationSeconds: Double?
     let isFileAvailableInArchive: Bool
     let kind: MediaAttachmentKind
 }

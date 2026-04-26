@@ -46,7 +46,7 @@ The viewer uses fields needed for:
 - message text;
 - message date;
 - message and group-event type when available;
-- media local path, title, size, URL, vCard, location, and inferred attachment kind when available.
+- media local path, title, size, URL, vCard, location, duration, resolved availability, and inferred attachment kind when available.
 
 ## Ordering and Pagination
 
@@ -98,7 +98,10 @@ dates.
 The viewer classifies message rows conservatively from available message type,
 group-event type, and media metadata:
 
-- photos, videos, audio, documents, contacts, locations, stickers, and link previews are shown as placeholders;
+- available photos are rendered inline after downsampling;
+- available videos are shown as tap-to-play attachments with lazy thumbnails when thumbnail generation succeeds;
+- available audio and voice rows get a simple play/pause control;
+- documents, contacts, locations, stickers, and link previews are shown as placeholders;
 - likely call rows are labeled as `VOICE CALL` when the message type evidence supports it;
 - known system-notice rows are labeled as system messages;
 - deleted rows are labeled as deleted messages when the message type supports it;
@@ -118,14 +121,22 @@ fragment classification afterward.
 ## Media State
 
 Media metadata and safe relative path discovery are implemented. The viewer can
-show placeholders and determine whether referenced files appear available under
-the selected archive root.
+determine whether referenced files appear available under the selected archive
+root and keeps a resolved local file URL in memory for available attachments.
 
 Path resolution is archive-root-relative and checks common extracted layouts
 such as `Media/` and `Message/Media/`. It does not print full private media
-paths by default and does not load media binaries.
+paths by default.
 
-Media rendering is not implemented yet. The viewer does not load thumbnails, photos, videos, audio files, or other media binaries into memory.
+Media rendering is lazy and row-scoped. Photo rows downsample the referenced
+image before display. Video rows generate thumbnails only for visible rows and
+open playback only after the user taps the attachment. Audio rows create a
+player only after the user taps play, and the shared playback controller stops
+the previous audio row before starting another.
+
+The viewer does not scan or preload all media globally. Missing, unavailable, or
+unsupported media stays as a placeholder. The per-chat media library is not
+implemented yet.
 
 ## Not Yet Used
 
