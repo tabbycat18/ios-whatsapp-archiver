@@ -97,8 +97,8 @@ The app does not load every message at once because large WhatsApp chats can con
 - Chat search filters loaded chat titles only. In-chat search filters loaded message text, including media captions stored on the message row.
 - Raw JIDs and internal sender identifiers are hidden in the normal UI.
 - Group sender names use friendly names when the archive provides one, including profile push names stored in `ChatStorage.sqlite` and optional ContactsV2 names. Unsaved senders may show a safely extracted phone number only from classic phone-based WhatsApp JIDs. `@lid` identifiers and unresolved sender tokens are treated as opaque, so the UI shows "Unknown sender" rather than risk showing a wrong name or number.
-- Message classification is conservative. Known media placeholders, likely voice call rows, deleted rows, and system notices are labeled without exposing raw database identifiers. Unknown mappings stay generic instead of guessing unsupported WhatsApp internals.
-- Chat sorting prefers the latest real user-visible conversation row when possible and excludes known system-notice message types from the primary latest-date calculation. It falls back to broader activity dates only when no relevant message date is available.
+- Message classification is conservative. Known media placeholders, likely voice call rows, deleted rows, and system notices are labeled without exposing raw database identifiers. Location placeholders require reliable location metadata, and instant video/video-message rows are treated as playable video media when file, MIME, duration, or other video evidence exists. Unknown mappings stay generic instead of guessing unsupported WhatsApp internals.
+- Chat sorting prefers the latest real user-visible conversation row when possible and excludes known system-notice message types from the primary latest-date calculation. Security-code/system notices do not make a normal chat appear newer than its last real conversation row. It falls back to broader activity dates only when no relevant message date is available.
 - Split sessions can exist in old archives. The viewer merges sessions with strong identity evidence, but does not merge rows by title alone because that can combine unrelated people with the same display name.
 - Duplicate-title rows with real user-visible text, media, or call evidence stay visible as separate conversations. Duplicate/system-only rows and tiny no-visible-message archive fragments are hidden from normal browsing and chat-title search instead of being merged or deleted. Uncertain larger archive entries remain visible with a cautious label.
 - Status/story rows can be stored separately from direct chat messages. The viewer excludes reliably detected status/story rows from normal chat message loading and keeps status/story-only sessions in a separate Stories section. It does not classify by date alone.
@@ -106,7 +106,7 @@ The app does not load every message at once because large WhatsApp chats can con
 - Profile picture resolution is local and best-effort. It only uses image files from profile/avatar-looking archive paths and falls back to initials when no safe match is found.
 - Chat wallpaper resolution checks generic archive-root files named `current_wallpaper.jpg` and `current_wallpaper_dark.jpg`; dark mode prefers the dark companion when both are present.
 - Media rendering is lazy. Images are downsampled before display, video thumbnails are generated only for visible video rows, and audio playback starts only after the user taps play.
-- Contact-card rendering requires reliable vCard metadata. Rows with video media evidence, including instant video notes, are treated as playable video media rather than contact cards.
+- Contact-card rendering requires reliable vCard metadata. Location rendering requires reliable location metadata. Rows with video media evidence, including instant video notes, are treated as playable video media rather than contact cards or location placeholders.
 - The Chat Info media view queries photo/video/document media for the selected chat/session directly from SQLite, includes related merged session IDs, excludes status/story rows, includes deliberately sent audio in the All view while keeping voice-message audio in chat rows, prioritizes locally available renderable media, supports tap or drag multi-select sharing/export for available files, and caps each filtered fetch. It is not a full archive-wide media library.
 
 ## Development Data
@@ -188,7 +188,7 @@ does not currently provide a packaged non-Xcode install path for normal users.
 - Confirm photo preview pinch-to-zoom works.
 - Confirm photo and video preview sharing opens the system share sheet.
 - Confirm available videos open in the video preview only after tapping.
-- Confirm instant video/video-message rows are not shown as contact cards and can be opened from the chat row.
+- Confirm instant video/video-message rows are not shown as contact cards or Location placeholders and can be opened from the chat row.
 - Confirm available audio or voice rows can play and pause.
 - Confirm available audio or voice rows can be shared from the chat row.
 - Confirm PDF/document rows show safe titles, type, size, open in the system preview, and can be shared.
@@ -207,6 +207,7 @@ does not currently provide a packaged non-Xcode install path for normal users.
 - Confirm raw/debug identifiers are not shown in the normal message UI.
 - Confirm unresolved group senders show "Unknown sender" instead of raw opaque tokens.
 - Confirm chat list dates for duplicate-title conversations come from user-visible text, media, or call rows rather than security/system-only fragments.
+- Confirm security-code/system notices do not push a normal chat to the top of the chat list.
 - Confirm media rendering does not break automatic older-message loading.
 - Confirm detected status/story-only entries appear under Stories rather than as normal chats.
 - Confirm Chat Info -> Media shows available All, Photos, Videos, and Docs items before missing placeholders when the archive contains local files, and does not show Stories rows.

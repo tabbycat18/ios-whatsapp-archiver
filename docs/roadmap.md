@@ -19,6 +19,8 @@
 - Photo preview zoom and photo/video local share-sheet support.
 - PDF and common document attachment rows with system preview/share support.
 - First lightweight Chat Info media view with per-chat photo/video/document filters and available local media prioritized ahead of missing placeholders.
+- Instant video/video-message rows with video evidence render as playable video rather than contact-card or location placeholders.
+- Security-code/system notices are excluded from normal chat-list latest-date sorting.
 - Local saved archive library with security-scoped bookmark reopening, multi-archive switching, relinking, and remove-record support.
 - Two-slot archive selection for WhatsApp and WhatsApp Business, with local labels and relinking/removal that does not delete archive files.
 - Captions on photo, video, audio, and document messages rendered under the attachment in the same bubble.

@@ -620,6 +620,34 @@ final class WhatsAppDatabase {
     }
 
     func fetchChats() throws -> [ChatSummary] {
+        let latestUserVisibleDateSQL = """
+            (
+                SELECT m.ZMESSAGEDATE
+                FROM ZWAMESSAGE m
+                WHERE m.ZCHATSESSION = c.Z_PK
+                  AND \(userVisibleMessageSQL(messageAlias: "m", chatAlias: "c"))
+                ORDER BY m.ZMESSAGEDATE DESC, m.Z_PK DESC
+                LIMIT 1
+            )
+            """
+        let latestAnyDateSQL = """
+            COALESCE(
+                lm.ZMESSAGEDATE,
+                CASE
+                    WHEN c.ZLASTMESSAGEDATE BETWEEN 0 AND 1500000000
+                    THEN c.ZLASTMESSAGEDATE
+                    ELSE NULL
+                END
+            )
+            """
+        let systemMessageCountSQL = """
+            (
+                SELECT COUNT(*)
+                FROM ZWAMESSAGE sm
+                WHERE sm.ZCHATSESSION = c.Z_PK
+                  AND \(systemMessageSQL(alias: "sm"))
+            )
+            """
         let sql = """
             SELECT
                 c.Z_PK,
@@ -633,10 +661,13 @@ final class WhatsAppDatabase {
                     THEN c.ZLASTMESSAGEDATE
                     ELSE NULL
                 END AS sanitized_last_message_date,
-                lm.ZMESSAGEDATE AS last_message_pointer_date
+                lm.ZMESSAGEDATE AS last_message_pointer_date,
+                \(latestUserVisibleDateSQL) AS latest_user_visible_message_date,
+                \(latestAnyDateSQL) AS latest_any_message_date,
+                \(systemMessageCountSQL) AS system_message_count
             FROM ZWACHATSESSION c
             LEFT JOIN ZWAMESSAGE lm ON lm.Z_PK = c.ZLASTMESSAGE
-            ORDER BY COALESCE(last_message_pointer_date, sanitized_last_message_date, 0) DESC, c.Z_PK ASC
+            ORDER BY COALESCE(latest_user_visible_message_date, latest_any_message_date, sanitized_last_message_date, 0) DESC, c.Z_PK ASC
             """
 
         let statement = try prepare(sql)
@@ -657,8 +688,13 @@ final class WhatsAppDatabase {
             let messageCount = max(Int(sqlite3_column_int64(statement, 5)), 0)
             let isStatusStorySession = contactJID?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == "status@broadcast"
             let statusStoryMessageCount = isStatusStorySession ? max(messageCount, 1) : 0
-            let latestAnyMessageDate = date(statement, 7)
-            let fallbackMessageDate = latestAnyMessageDate ?? date(statement, 6)
+            let latestUserVisibleMessageDate = isStatusStorySession ? nil : date(statement, 8)
+            let latestAnyMessageDate = date(statement, 9)
+            let fallbackMessageDate = latestUserVisibleMessageDate ?? latestAnyMessageDate ?? date(statement, 7) ?? date(statement, 6)
+            let systemMessageCount = isStatusStorySession ? 0 : Int(sqlite3_column_int64(statement, 10))
+            let userVisibleMessageCount = latestUserVisibleMessageDate == nil
+                ? 0
+                : max(messageCount - systemMessageCount - statusStoryMessageCount, 1)
 
             rows.append(
                 ChatSummaryRow(
@@ -673,10 +709,10 @@ final class WhatsAppDatabase {
                     title: title,
                     profilePhotoURL: nil,
                     messageCount: isStatusStorySession ? max(messageCount, 1) : messageCount,
-                    userVisibleMessageCount: isStatusStorySession ? 0 : messageCount,
-                    systemMessageCount: 0,
+                    userVisibleMessageCount: isStatusStorySession ? 0 : userVisibleMessageCount,
+                    systemMessageCount: systemMessageCount,
                     statusStoryMessageCount: statusStoryMessageCount,
-                    latestUserVisibleMessageDate: isStatusStorySession ? nil : latestAnyMessageDate,
+                    latestUserVisibleMessageDate: latestUserVisibleMessageDate,
                     latestAnyMessageDate: latestAnyMessageDate,
                     fallbackMessageDate: fallbackMessageDate
                 )
@@ -830,10 +866,16 @@ final class WhatsAppDatabase {
     }
 
     private func systemMessageSQL(alias: String) -> String {
-        guard messageColumns.contains("ZMESSAGETYPE") else {
-            return "0"
+        var predicates: [String] = []
+        if messageColumns.contains("ZMESSAGETYPE") {
+            predicates.append("\(alias).ZMESSAGETYPE IN (6, 10)")
         }
-        return "(\(alias).ZMESSAGETYPE IN (6, 10))"
+        if messageColumns.contains("ZTEXT") {
+            let text = "lower(COALESCE(\(alias).ZTEXT, ''))"
+            predicates.append("(\(text) LIKE '%security code%' AND \(text) LIKE '%changed%' AND \(text) LIKE '%learn more%')")
+        }
+        guard !predicates.isEmpty else { return "0" }
+        return "(\(predicates.joined(separator: " OR ")))"
     }
 
     private func statusStoryMessageSQL(messageAlias: String, chatAlias: String) -> String {
@@ -1723,7 +1765,10 @@ final class WhatsAppDatabase {
             return isVoiceMessageAudio(input) ? .voiceMessage : .audio
         }
         if input.messageType == 5 {
-            return .location
+            if hasVideoEvidence(input: input, mimeType: mimeType, fileName: fileName) {
+                return .videoMessage
+            }
+            return hasNonzeroLocation(latitude: input.latitude, longitude: input.longitude) ? .location : .media
         }
         if input.messageType == 15 {
             return .sticker

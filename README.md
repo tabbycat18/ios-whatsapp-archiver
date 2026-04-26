@@ -47,6 +47,7 @@ Working now:
 - Read large chats incrementally by scrolling upward to load older messages.
 - Render available photo attachments inline.
 - Open available video attachments in a tap-to-play video preview.
+- Treat instant video/video-message rows as video when video evidence is present, even if the raw row otherwise resembles a location placeholder.
 - Play available audio and voice attachments with a simple play/pause control and share them from the chat row.
 - Show PDF and common document attachments as document rows, with local preview and sharing when the file resolves.
 - Show captions/text attached to photo, video, audio, or document rows under the media in the same bubble.
@@ -56,6 +57,7 @@ Working now:
 - Share photos and videos from their local preview sheets without uploading them.
 - Keep missing or unsupported media as placeholders.
 - Show conservative system/call placeholders without exposing raw sender IDs.
+- Keep security-code/system notices from driving normal chat-list recency.
 - Use `ContactsV2.sqlite` when available for conservative contact-name and split-session resolution.
 - Keep real duplicate-title conversations separate while hiding technical system-only or no-visible-message archive fragments from normal browsing.
 - Detect whether referenced media files appear available in the selected archive.

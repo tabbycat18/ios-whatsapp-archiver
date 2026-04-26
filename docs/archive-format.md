@@ -92,7 +92,9 @@ The chat list prefers the latest relevant user-visible message date for each
 chat. Relevant rows are currently text rows, media rows, and likely call rows.
 Known system-notice message types are excluded from that primary latest date so
 notices such as security-code changes do not make a chat appear newer than the
-last real conversation row. If no relevant message date is available, visible
+last real conversation row. The app does not use the raw chat-session
+`ZLASTMESSAGE` pointer as the normal-chat sort date when that pointer references
+a system/security notice. If no relevant message date is available, visible
 uncertain archive entries may fall back to archive activity dates, but
 system-only and tiny no-visible-message fragments are hidden from normal
 browsing.
@@ -152,13 +154,18 @@ group-event type, and media metadata:
 
 - available photos are rendered inline after downsampling;
 - available videos are shown as tap-to-play attachments with lazy thumbnails when thumbnail generation succeeds;
-- instant video/video-message rows are treated as video media when file, MIME, duration, or message-type evidence supports it;
+- instant video/video-message rows are treated as video media when file, MIME,
+  duration, or message-type evidence supports it, including rows that otherwise
+  resemble location placeholders;
 - available audio and voice rows get a simple play/pause control and a direct share action;
 - available documents, including PDFs and common office/text/archive files, are shown as document rows with safe title, type, size, system preview, and sharing when the local file resolves;
 - non-empty captions on photo, video, audio, and document rows are rendered directly under the media in the same bubble;
 - reliably detected status/story media is marked as status/story media and kept
   separate from normal direct-chat rows;
-- contacts, locations, stickers, and link previews are shown as placeholders;
+- contacts, stickers, and link previews are shown as placeholders;
+- location placeholders require reliable location metadata such as non-empty
+  latitude/longitude values; video evidence takes priority over location
+  placeholder classification;
 - likely call rows are displayed conservatively as `Voice call` when the message type evidence supports it;
 - known system-notice rows are labeled as system messages;
 - deleted rows are labeled as deleted messages when the message type supports it;
@@ -206,8 +213,9 @@ a fully synthetic subtle pattern, not a copied WhatsApp asset.
 
 The viewer does not scan or preload all media globally. Missing or unavailable
 media stays as a placeholder, while unsupported metadata-only rows are kept out
-of the Chat Info media grid. Contact cards require reliable vCard metadata; rows
-with video evidence are classified as video media before contact-card fallback.
+of the Chat Info media grid. Contact cards require reliable vCard metadata, and
+locations require reliable location metadata. Rows with video evidence are
+classified as video media before contact-card or location fallback.
 The Chat Info media view queries photo/video/document media
 for the selected chat and related merged session IDs directly from SQLite,
 applies filters for all previewable media, photos, videos, and documents,
