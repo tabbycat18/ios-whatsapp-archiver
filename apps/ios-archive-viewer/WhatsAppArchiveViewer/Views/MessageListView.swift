@@ -204,6 +204,7 @@ private extension MessageRow {
 @MainActor
 private final class AudioPlaybackController: ObservableObject {
     @Published private(set) var playingMessageID: Int64?
+    @Published private(set) var pausedMessageID: Int64?
     @Published private(set) var currentTimeSeconds: Double = 0
     @Published private(set) var durationSeconds: Double?
 
@@ -226,7 +227,12 @@ private final class AudioPlaybackController: ObservableObject {
 
     func toggle(messageID: Int64, url: URL) {
         if playingMessageID == messageID {
-            stop()
+            pause()
+            return
+        }
+
+        if pausedMessageID == messageID, player != nil {
+            resume(messageID: messageID)
             return
         }
 
@@ -236,6 +242,7 @@ private final class AudioPlaybackController: ObservableObject {
         let player = AVPlayer(playerItem: item)
         self.player = player
         playingMessageID = messageID
+        pausedMessageID = nil
         durationSeconds = nil
         currentTimeSeconds = 0
         endObserver = NotificationCenter.default.addObserver(
@@ -259,7 +266,7 @@ private final class AudioPlaybackController: ObservableObject {
     }
 
     func seek(messageID: Int64, to seconds: Double) {
-        guard playingMessageID == messageID, let player else { return }
+        guard (playingMessageID == messageID || pausedMessageID == messageID), let player else { return }
         let clampedSeconds = max(0, min(seconds, durationSeconds ?? seconds))
         currentTimeSeconds = clampedSeconds
         player.seek(to: CMTime(seconds: clampedSeconds, preferredTimescale: 600))
@@ -273,12 +280,26 @@ private final class AudioPlaybackController: ObservableObject {
         player?.pause()
         player = nil
         playingMessageID = nil
+        pausedMessageID = nil
         currentTimeSeconds = 0
         durationSeconds = nil
         if let endObserver {
             NotificationCenter.default.removeObserver(endObserver)
             self.endObserver = nil
         }
+    }
+
+    private func pause() {
+        player?.pause()
+        pausedMessageID = playingMessageID
+        playingMessageID = nil
+    }
+
+    private func resume(messageID: Int64) {
+        prepareMediaPlaybackSession()
+        playingMessageID = messageID
+        pausedMessageID = nil
+        player?.play()
     }
 
     private func updateProgress(currentTime: Double, item: AVPlayerItem?) {
@@ -697,7 +718,7 @@ private struct AudioAttachmentView: View {
                 scrubberValue = newValue
             }
             .onChange(of: audioPlayback.playingMessageID) { _, playingMessageID in
-                guard playingMessageID != messageID else { return }
+                guard playingMessageID != messageID, audioPlayback.pausedMessageID != messageID else { return }
                 scrubberValue = 0
                 isScrubbing = false
             }
@@ -705,14 +726,14 @@ private struct AudioAttachmentView: View {
     }
 
     private var currentTimeSeconds: Double {
-        guard audioPlayback.isPlaying(messageID) else {
+        guard audioPlayback.isPlaying(messageID) || audioPlayback.pausedMessageID == messageID else {
             return 0
         }
         return audioPlayback.currentTimeSeconds
     }
 
     private var scrubberDuration: Double {
-        audioPlayback.isPlaying(messageID)
+        (audioPlayback.isPlaying(messageID) || audioPlayback.pausedMessageID == messageID)
             ? (audioPlayback.durationSeconds ?? media.durationSeconds ?? 0)
             : (media.durationSeconds ?? 0)
     }
@@ -721,7 +742,9 @@ private struct AudioAttachmentView: View {
         if isScrubbing {
             return scrubberValue
         }
-        return audioPlayback.isPlaying(messageID) ? audioPlayback.currentTimeSeconds : 0
+        return (audioPlayback.isPlaying(messageID) || audioPlayback.pausedMessageID == messageID)
+            ? audioPlayback.currentTimeSeconds
+            : 0
     }
 
     private func handleScrubEditingChanged(_ editing: Bool) {
