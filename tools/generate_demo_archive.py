@@ -436,7 +436,7 @@ def recreate_fixture_root() -> None:
     assert_safe_fixture_root()
     if FIXTURE_ROOT.exists():
         shutil.rmtree(FIXTURE_ROOT)
-    for subdir in ["Media", "Message/Media", "Wallpapers", "Stories", "Status"]:
+    for subdir in ["Media", "Message/Media", "Wallpapers", "Stories", "Status", "Profile Pictures"]:
         (FIXTURE_ROOT / subdir).mkdir(parents=True, exist_ok=True)
 
 
@@ -616,6 +616,42 @@ def write_media_files() -> list[dict]:
     return manifest
 
 
+def write_profile_picture_files(chats: list[Chat]) -> list[dict]:
+    palette = ((47, 111, 128), (130, 170, 104), (223, 171, 85))
+    manifest: list[dict] = []
+
+    for key, character in CHARACTERS.items():
+        jid = character["jid"]
+        rel_path = Path("Profile Pictures") / f"{jid}.jpg"
+        write_png(FIXTURE_ROOT / rel_path, character["name"], "Synthetic profile picture", palette)
+        manifest.append(
+            {
+                "id": key,
+                "title": character["name"],
+                "jid": jid,
+                "path": str(rel_path),
+                "synthetic": True,
+            }
+        )
+
+    for chat in chats:
+        if chat.chat_type != "group":
+            continue
+        rel_path = Path("Profile Pictures") / f"{chat.jid}.jpg"
+        write_png(FIXTURE_ROOT / rel_path, chat.title, "Synthetic group picture", palette)
+        manifest.append(
+            {
+                "id": chat.key,
+                "title": chat.title,
+                "jid": chat.jid,
+                "path": str(rel_path),
+                "synthetic": True,
+            }
+        )
+
+    return manifest
+
+
 def lines_to_messages(chat: Chat, start: datetime, sender_lines: list[tuple[str, str, dict | None]]) -> None:
     for index, (sender, text, options) in enumerate(sender_lines):
         options = options or {}
@@ -653,7 +689,7 @@ def build_chats() -> list[Chat]:
         Chat("studio", "Green Corner Studio", "one-to-one", CHARACTERS["studio"]["jid"], ["alex", "studio"]),
         Chat("lake_weekend", "Lake Weekend", "group", "demo-lake-weekend@g.us", ["alex", "maya", "samir", "nina", "theo", "leo"]),
         Chat("office_snacks", "Office Snacks", "group", "demo-office-snacks@g.us", ["alex", "theo", "samir", "maya"]),
-        Chat("status", "Stories / Status", "status", "status@broadcast", ["alex", "maya", "samir"]),
+        Chat("status", "Stories", "status", "status@broadcast", ["alex", "maya", "samir"]),
     ]
     by_key = {chat.key: chat for chat in chats}
 
@@ -1218,8 +1254,9 @@ source alone is not a one-tap iPhone install path.
 - photos, videos, audio, voice memos, stickers, and contact cards
 - PDFs/documents
 - media captions
-- Stories / Status rows via `status@broadcast`
+- Stories rows via `status@broadcast`
 - wallpaper via `current_wallpaper.jpg`
+- synthetic profile pictures via `Profile Pictures/`
 - Chat Info / Media filters
 - intentionally missing media behavior
 
@@ -1408,7 +1445,13 @@ def validate_fixture(chats: list[Chat], media_manifest: list[dict]) -> dict:
     return validation
 
 
-def write_manifest(chats: list[Chat], media_manifest: list[dict], messages: list[dict], validation: dict) -> None:
+def write_manifest(
+    chats: list[Chat],
+    media_manifest: list[dict],
+    profile_picture_manifest: list[dict],
+    messages: list[dict],
+    validation: dict,
+) -> None:
     conversations = []
     for chat in chats:
         if chat.chat_type == "status":
@@ -1430,11 +1473,12 @@ def write_manifest(chats: list[Chat], media_manifest: list[dict], messages: list
         "characters": CHARACTERS,
         "conversations": conversations,
         "status_story_session": {
-            "title": "Stories / Status",
+            "title": "Stories",
             "message_count": len(next(chat for chat in chats if chat.key == "status").messages),
             "detection": "status@broadcast",
         },
         "media_manifest": media_manifest,
+        "profile_picture_manifest": profile_picture_manifest,
         "messages": messages,
         "validation": validation,
         "expected_message_counts": {
@@ -1451,11 +1495,12 @@ def main() -> None:
     recreate_fixture_root()
     media_manifest = write_media_files()
     chats = build_chats()
+    profile_picture_manifest = write_profile_picture_files(chats)
     messages = create_chat_storage(chats)
     create_contacts_v2()
     validation = validate_fixture(chats, media_manifest)
     write_readme(validation)
-    write_manifest(chats, media_manifest, messages, validation)
+    write_manifest(chats, media_manifest, profile_picture_manifest, messages, validation)
     if not validation["passed"]:
         print(json.dumps(validation, indent=2))
         raise SystemExit(1)

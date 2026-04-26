@@ -335,7 +335,7 @@ private struct ChatInfoView: View {
                     LabeledContent("Title", value: chat.title)
                     LabeledContent("Messages", value: chat.messageCount.formatted())
                     if chat.classification == .statusStoryFragment {
-                        LabeledContent("Type", value: "Stories / Status")
+                        LabeledContent("Type", value: "Stories")
                     }
                 }
 
@@ -398,7 +398,7 @@ private struct ChatInfoView: View {
                     }
                 }
             }
-            .navigationTitle(chat.classification == .statusStoryFragment ? "Stories / Status" : "Chat Info")
+            .navigationTitle(chat.classification == .statusStoryFragment ? "Stories" : "Chat Info")
             #if os(iOS)
             .navigationBarTitleDisplayMode(.inline)
             #endif

@@ -29,7 +29,7 @@
 ## Next
 
 - Continue auditing WhatsApp private message-type mappings with public fixtures where possible.
-- Expand the Stories / Status area into a richer media browser if more archive shapes are validated.
+- Expand the Stories area into a richer media browser if more archive shapes are validated.
 - Continue validating ContactsV2-backed phone-JID and `@lid` migration handling for split one-to-one chats without unsafe title-only merging. ContactsV2 improves identity resolution, but it does not solve every split-session or archive-fragment case yet.
 - Add a lightweight debug-only way to inspect hidden technical archive fragments if future diagnostics need it.
 - Finish large archive transfer experiment results with the

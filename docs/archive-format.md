@@ -26,6 +26,7 @@ Common files and folders:
 - `ContactsV2.sqlite`
 - `current_wallpaper.jpg`
 - `current_wallpaper_dark.jpg`
+- profile/avatar cache folders when WhatsApp includes them in the shared-container backup
 - `Media/`
 - `Message/`
 
@@ -69,6 +70,12 @@ root:
 - `current_wallpaper_dark.jpg`
 
 If one is present, it is loaded lazily and used as the message-list background.
+
+The viewer can also use local profile/avatar cache images when they are present
+in the selected archive. Resolution is best-effort and conservative: the app
+checks known profile/avatar cache folders by contact or group identifier instead
+of scanning the full media tree, and chats fall back to generated initials when
+no safe match is found.
 
 ## Ordering and Pagination
 
@@ -127,7 +134,7 @@ can overmatch archive layouts that are not yet validated. The viewer also does
 not use recency, such as "last 48 hours", as product logic.
 
 When every row in a session is reliably detected as status/story data, that
-session is grouped into a separate Stories / Status section rather than listed
+session is grouped into a separate Stories section rather than listed
 as a normal conversation. Those rows are excluded from normal chat message
 loading and from normal chat latest-message dates. Mixed sessions keep direct
 messages in the chat while detected status/story rows are kept out of inline

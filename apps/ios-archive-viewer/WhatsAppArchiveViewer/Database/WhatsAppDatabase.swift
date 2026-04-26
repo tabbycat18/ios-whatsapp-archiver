@@ -48,6 +48,7 @@ private struct ChatSummaryRow {
     let contactIdentifier: String?
     let partnerName: String?
     let title: String
+    let profilePhotoURL: URL?
     let messageCount: Int
     let userVisibleMessageCount: Int
     let systemMessageCount: Int
@@ -84,12 +85,131 @@ private struct ChatSummaryDraft {
     let contactIdentifier: String?
     let partnerName: String?
     let title: String
+    let profilePhotoURL: URL?
     let detailText: String
     let latestUserVisibleMessageDate: Date?
     let latestAnyMessageDate: Date?
     let fallbackMessageDate: Date?
     let searchableTitle: String
     let activity: ChatActivityMetrics
+}
+
+private final class ProfilePhotoResolver {
+    private let archiveRootURL: URL
+    private let fileManager: FileManager
+    private var resolvedURLsByCacheKey: [String: URL?] = [:]
+
+    init(archiveRootURL: URL, fileManager: FileManager = .default) {
+        self.archiveRootURL = archiveRootURL.standardizedFileURL
+        self.fileManager = fileManager
+    }
+
+    func profilePhotoURL(contactJID: String?, contactIdentifier: String?) -> URL? {
+        let candidateFileNames = candidateFileNames(contactJID: contactJID, contactIdentifier: contactIdentifier)
+        guard !candidateFileNames.isEmpty else { return nil }
+
+        let cacheKey = candidateFileNames.joined(separator: "|")
+        if let cachedURL = resolvedURLsByCacheKey[cacheKey] {
+            return cachedURL
+        }
+
+        let resolvedURL = resolveProfilePhotoURL(candidateFileNames: candidateFileNames)
+        resolvedURLsByCacheKey[cacheKey] = resolvedURL
+        return resolvedURL
+    }
+
+    private func resolveProfilePhotoURL(candidateFileNames: [String]) -> URL? {
+        for directory in Self.profileDirectories {
+            let directoryURL = archiveRootURL.appendingPathComponent(directory, isDirectory: true)
+            for fileName in candidateFileNames {
+                for fileExtension in Self.imageExtensions {
+                    let candidate = directoryURL
+                        .appendingPathComponent(fileName)
+                        .appendingPathExtension(fileExtension)
+                        .standardizedFileURL
+                    if isReadableFile(candidate) {
+                        return candidate
+                    }
+                }
+            }
+        }
+        return nil
+    }
+
+    private func isReadableFile(_ url: URL) -> Bool {
+        guard fileManager.fileExists(atPath: url.path),
+              let values = try? url.resourceValues(forKeys: [.isRegularFileKey, .isReadableKey]),
+              values.isRegularFile == true,
+              values.isReadable != false
+        else {
+            return false
+        }
+        return true
+    }
+
+    private func candidateFileNames(contactJID: String?, contactIdentifier: String?) -> [String] {
+        var names: [String] = []
+
+        if let jid = contactJID?.trimmingCharacters(in: .whitespacesAndNewlines), !jid.isEmpty {
+            names.append(jid)
+            names.append(fileSystemSafeToken(jid))
+            names.append(normalizedToken(jid))
+            let localPart = jid.split(separator: "@", maxSplits: 1).first.map(String.init) ?? jid
+            names.append(localPart)
+            names.append(fileSystemSafeToken(localPart))
+            names.append(normalizedToken(localPart))
+            let localDigits = localPart.filter(\.isNumber)
+            if localDigits.count >= 7 {
+                names.append(String(localDigits))
+            }
+        }
+
+        if let identifier = contactIdentifier?.trimmingCharacters(in: .whitespacesAndNewlines), !identifier.isEmpty {
+            names.append(identifier)
+            names.append(fileSystemSafeToken(identifier))
+            names.append(normalizedToken(identifier))
+            let identifierDigits = identifier.filter(\.isNumber)
+            if identifierDigits.count >= 7 {
+                names.append(String(identifierDigits))
+            }
+        }
+
+        var seen = Set<String>()
+        return names
+            .filter { $0.count >= 5 }
+            .filter { seen.insert($0).inserted }
+            .sorted { $0.count > $1.count }
+    }
+
+    private func fileSystemSafeToken(_ value: String) -> String {
+        value.map { character in
+            character == "/" || character == ":" ? "_" : character
+        }
+        .map(String.init)
+        .joined()
+    }
+
+    private func normalizedToken(_ value: String) -> String {
+        value
+            .lowercased()
+            .unicodeScalars
+            .filter { CharacterSet.alphanumerics.contains($0) }
+            .map(String.init)
+            .joined()
+    }
+
+    private static let profileDirectories = [
+        "Profile Pictures",
+        "ProfilePictures",
+        "Profile Photos",
+        "ProfilePhotos",
+        "Profiles",
+        "Profile",
+        "Avatars",
+        "Media/Profile Pictures",
+        "Media/ProfilePictures"
+    ]
+    private static let imageExtensions = ["jpg", "jpeg", "png", "heic", "heif"]
 }
 
 private final class ContactsV2Resolver {
@@ -332,6 +452,7 @@ final class WhatsAppDatabase {
     private var mediaSchema: MediaSchema?
     private var canJoinProfilePushNames = false
     private var contactsResolver: ContactsV2Resolver?
+    private lazy var profilePhotoResolver = ProfilePhotoResolver(archiveRootURL: archiveRootURL)
 
     init(databaseURL: URL, archiveRootURL: URL? = nil, securityScopedURL: URL? = nil) throws {
         self.databaseURL = databaseURL
@@ -443,6 +564,12 @@ final class WhatsAppDatabase {
                 ?? (isGroupJID(contactJID) ? "Group chat" : "Unknown chat")
             let messageCount = Int(sqlite3_column_int64(statement, 7))
             let statusStoryMessageCount = Int(sqlite3_column_int64(statement, 13))
+            let profilePhotoURL = statusStoryMessageCount == messageCount && messageCount > 0
+                ? nil
+                : profilePhotoResolver.profilePhotoURL(
+                    contactJID: contactJID,
+                    contactIdentifier: contactIdentifier
+                )
             let latestUserVisibleMessageDate = date(statement, 14)
             let latestAnyMessageDate = date(statement, 15)
             let fallbackMessageDate = latestUserVisibleMessageDate ?? date(statement, 16) ?? latestAnyMessageDate ?? date(statement, 6)
@@ -457,6 +584,7 @@ final class WhatsAppDatabase {
                     contactIdentifier: contactIdentifier,
                     partnerName: partnerName,
                     title: title,
+                    profilePhotoURL: profilePhotoURL,
                     messageCount: messageCount,
                     userVisibleMessageCount: Int(sqlite3_column_int64(statement, 8)),
                     systemMessageCount: Int(sqlite3_column_int64(statement, 12)),
@@ -979,12 +1107,15 @@ final class WhatsAppDatabase {
                 contactJID: primary.contactJID,
                 contactIdentifier: primary.contactIdentifier,
                 partnerName: primary.partnerName,
-                title: statusStoryMessageCount == messageCount && messageCount > 0 ? "Stories / Status" : primary.title,
+                title: statusStoryMessageCount == messageCount && messageCount > 0 ? "Stories" : primary.title,
+                profilePhotoURL: statusStoryMessageCount == messageCount && messageCount > 0
+                    ? nil
+                    : sortedGroup.compactMap(\.profilePhotoURL).first,
                 detailText: detailText,
                 latestUserVisibleMessageDate: latestUserVisibleMessageDate,
                 latestAnyMessageDate: latestAnyMessageDate,
                 fallbackMessageDate: fallbackMessageDate,
-                searchableTitle: statusStoryMessageCount == messageCount && messageCount > 0 ? "Stories Status" : primary.title,
+                searchableTitle: statusStoryMessageCount == messageCount && messageCount > 0 ? "Stories" : primary.title,
                 activity: ChatActivityMetrics(
                     messageCount: messageCount,
                     userVisibleMessageCount: userVisibleMessageCount,
@@ -1025,7 +1156,8 @@ final class WhatsAppDatabase {
                 messageCount: draft.activity.messageCount,
                 latestMessageDate: latestDisplayDate(for: draft, classification: classification),
                 searchableTitle: draft.searchableTitle,
-                classification: classification
+                classification: classification,
+                profilePhotoURL: draft.profilePhotoURL
             )
         }
 

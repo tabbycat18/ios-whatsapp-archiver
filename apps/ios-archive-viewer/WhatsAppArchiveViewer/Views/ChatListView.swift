@@ -1,5 +1,6 @@
 import SwiftUI
 import UniformTypeIdentifiers
+import ImageIO
 
 struct ChatListView: View {
     @EnvironmentObject private var store: ArchiveStore
@@ -88,7 +89,7 @@ struct ChatListView: View {
                 } else {
                     List(selection: $store.selectedChat) {
                         if !filteredStatusStoryChats.isEmpty {
-                            Section("Stories / Status") {
+                            Section("Stories") {
                                 ForEach(filteredStatusStoryChats) { chat in
                                     NavigationLink(value: chat) {
                                         ChatRowView(chat: chat)
@@ -708,7 +709,7 @@ private struct ChatRowView: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            ChatAvatarView(title: chat.title)
+            ChatAvatarView(title: chat.title, imageURL: chat.profilePhotoURL)
 
             VStack(alignment: .leading, spacing: 4) {
                 Text(chat.title)
@@ -823,6 +824,10 @@ private final class ChatListDateFormatter {
 
 private struct ChatAvatarView: View {
     let title: String
+    let imageURL: URL?
+    @State private var image: CGImage?
+    @State private var didFailImageLoad = false
+    @State private var loadedImageURL: URL?
 
     private var initials: String? {
         Self.initials(from: title)
@@ -837,7 +842,11 @@ private struct ChatAvatarView: View {
             Circle()
                 .fill(paletteColor.gradient)
 
-            if let initials {
+            if let image {
+                Image(decorative: image, scale: 1, orientation: .up)
+                    .resizable()
+                    .scaledToFill()
+            } else if let initials {
                 Text(initials)
                     .font(.system(size: 16, weight: .semibold))
                     .foregroundStyle(.white)
@@ -849,7 +858,33 @@ private struct ChatAvatarView: View {
             }
         }
         .frame(width: 44, height: 44)
+        .clipShape(Circle())
+        .task(id: imageURL) {
+            await loadImageIfNeeded()
+        }
         .accessibilityHidden(true)
+    }
+
+    private func loadImageIfNeeded() async {
+        if loadedImageURL != imageURL {
+            image = nil
+            didFailImageLoad = false
+            loadedImageURL = imageURL
+        }
+
+        guard image == nil, !didFailImageLoad, let imageURL else {
+            return
+        }
+
+        let loadedImage = await Task.detached(priority: .utility) {
+            downsampleAvatarImage(at: imageURL, maxPixelSize: 120)
+        }.value
+
+        if let loadedImage {
+            image = loadedImage
+        } else {
+            didFailImageLoad = true
+        }
     }
 
     private static let palette: [Color] = [
@@ -882,4 +917,20 @@ private struct ChatAvatarView: View {
         }
         return abs(scalarTotal) % palette.count
     }
+}
+
+private func downsampleAvatarImage(at url: URL, maxPixelSize: CGFloat) -> CGImage? {
+    let options = [kCGImageSourceShouldCache: false] as CFDictionary
+    guard let source = CGImageSourceCreateWithURL(url as CFURL, options) else {
+        return nil
+    }
+
+    let downsampleOptions = [
+        kCGImageSourceCreateThumbnailFromImageAlways: true,
+        kCGImageSourceShouldCacheImmediately: true,
+        kCGImageSourceCreateThumbnailWithTransform: true,
+        kCGImageSourceThumbnailMaxPixelSize: maxPixelSize
+    ] as CFDictionary
+
+    return CGImageSourceCreateThumbnailAtIndex(source, 0, downsampleOptions)
 }

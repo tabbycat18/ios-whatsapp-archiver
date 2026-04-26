@@ -22,6 +22,7 @@ Build and run with full Xcode on an iOS simulator or device. Command Line Tools 
 - Saves app-local archive records so selected archives can be reopened after relaunch without selecting the folder again.
 - Supports two saved archive slots: WhatsApp and WhatsApp Business.
 - Removes saved archive records without deleting the underlying archive files.
+- Shows local profile pictures in the chat list when profile/avatar cache files are present in the selected archive.
 - Opens SQLite with `SQLITE_OPEN_READONLY`.
 - Sets `PRAGMA query_only = ON`.
 - Loads chat sessions from `ZWACHATSESSION`.
@@ -31,7 +32,7 @@ Build and run with full Xcode on an iOS simulator or device. Command Line Tools 
 - Merges duplicate chat sessions only when they share a strong identifier, such as the same `ZCONTACTJID` or the same unambiguous ContactsV2 identity.
 - Classifies unresolved duplicate-title entries conservatively so real separate conversations stay visible while technical archive fragments do not clutter normal browsing.
 - Classifies likely WhatsApp Status/Stories rows only when reliable message/session evidence is present, currently `status@broadcast`.
-- Separates detected status/story-only fragments into a Stories / Status section instead of showing them as normal conversations.
+- Separates detected status/story-only fragments into a Stories section instead of showing them as normal conversations.
 - Discovers `ZWAMEDIAITEM` metadata when the table and columns are available.
 - Shows text messages, inline photos, tap-to-play video previews, simple audio playback, document attachment rows, and conservative placeholders for unsupported media/system rows.
 - Shows text captions attached to photo, video, audio, and document message rows under the media in the same bubble.
@@ -100,8 +101,9 @@ The app does not load every message at once because large WhatsApp chats can con
 - Chat sorting prefers the latest real user-visible conversation row when possible and excludes known system-notice message types from the primary latest-date calculation. It falls back to broader activity dates only when no relevant message date is available.
 - Split sessions can exist in old archives. The viewer merges sessions with strong identity evidence, but does not merge rows by title alone because that can combine unrelated people with the same display name.
 - Duplicate-title rows with real user-visible text, media, or call evidence stay visible as separate conversations. Duplicate/system-only rows and tiny no-visible-message archive fragments are hidden from normal browsing and chat-title search instead of being merged or deleted. Uncertain larger archive entries remain visible with a cautious label.
-- Status/story rows can be stored separately from direct chat messages. The viewer excludes reliably detected status/story rows from normal chat message loading and keeps status/story-only sessions in a separate Stories / Status section. It does not classify by date alone.
+- Status/story rows can be stored separately from direct chat messages. The viewer excludes reliably detected status/story rows from normal chat message loading and keeps status/story-only sessions in a separate Stories section. It does not classify by date alone.
 - Media path resolution checks several archive-root-relative layouts, including `Media/` and `Message/Media/`. The normal UI does not print full private media paths.
+- Profile picture resolution is local and best-effort. It only uses image files from profile/avatar-looking archive paths and falls back to initials when no safe match is found.
 - Chat wallpaper resolution checks generic archive-root files named `current_wallpaper.jpg` and `current_wallpaper_dark.jpg`.
 - Media rendering is lazy. Images are downsampled before display, video thumbnails are generated only for visible video rows, and audio playback starts only after the user taps play.
 - Contact-card rendering requires reliable vCard metadata. Rows with video media evidence, including instant video notes, are treated as playable video media rather than contact cards.
@@ -206,8 +208,8 @@ does not currently provide a packaged non-Xcode install path for normal users.
 - Confirm unresolved group senders show "Unknown sender" instead of raw opaque tokens.
 - Confirm chat list dates for duplicate-title conversations come from user-visible text, media, or call rows rather than security/system-only fragments.
 - Confirm media rendering does not break automatic older-message loading.
-- Confirm detected status/story-only entries appear under Stories / Status rather than as normal chats.
-- Confirm Chat Info -> Media shows available All, Photos, Videos, and Docs items before missing placeholders when the archive contains local files, and does not show Stories / Status rows.
+- Confirm detected status/story-only entries appear under Stories rather than as normal chats.
+- Confirm Chat Info -> Media shows available All, Photos, Videos, and Docs items before missing placeholders when the archive contains local files, and does not show Stories rows.
 - Confirm Chat Info -> Media can tap-select or drag-select multiple available items, select all shown available items, and share/export them together.
 - Avoid printing private message contents or full private filesystem paths during debugging.
 
