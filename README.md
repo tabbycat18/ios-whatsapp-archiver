@@ -39,6 +39,7 @@ Working now:
 - Search chat titles in the loaded chat list.
 - Read large chats incrementally by scrolling upward to load older messages.
 - Show media metadata and placeholders.
+- Show conservative system/call placeholders without exposing raw sender IDs.
 - Detect whether referenced media files appear available in the selected archive.
 
 Not implemented yet:

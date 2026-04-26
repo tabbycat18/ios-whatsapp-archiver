@@ -27,6 +27,7 @@ Build and run with full Xcode on an iOS simulator or device. Command Line Tools 
 - Shows text messages and conservative media/system placeholders.
 - Checks whether referenced media files appear available under the selected archive root.
 - Avoids showing raw JIDs or internal sender identifiers in the normal message UI.
+- Shows safely extracted phone numbers for unsaved group senders when the sender JID can be reduced to digits only.
 
 The app does not render photos, videos, audio, thumbnails, or binary media yet.
 
@@ -62,9 +63,10 @@ The app does not load every message at once because large WhatsApp chats can con
 
 - Chat search filters loaded chat titles only. It does not search message contents.
 - Raw JIDs and internal sender identifiers are hidden in the normal UI.
-- Group sender names use friendly names when the archive provides one; otherwise the UI shows "Unknown sender".
-- Message classification is conservative. Unknown mappings stay generic instead of guessing unsupported WhatsApp internals.
-- Chat sorting uses the chat's last-message pointer date when available, then falls back to the maximum message date and a sanitized session date. This may still differ from WhatsApp where the app uses private ranking logic that has not been mapped.
+- Group sender names use friendly names when the archive provides one. Unsaved senders may show a safely extracted phone number; otherwise the UI shows "Unknown sender".
+- Message classification is conservative. Known media placeholders, likely call rows, deleted rows, and system notices are labeled without exposing raw database identifiers. Unknown mappings stay generic instead of guessing unsupported WhatsApp internals.
+- Chat sorting prefers the latest real user-visible conversation row when possible and excludes known system-notice message types from the primary latest-date calculation. It falls back to broader activity dates only when no relevant message date is available.
+- Media path resolution checks several archive-root-relative layouts, including `Media/` and `Message/Media/`, without loading media binaries.
 
 ## Development Data
 
@@ -92,6 +94,7 @@ The app also has an Open Archive action that can select either an extracted arch
 - Confirm ordering remains oldest-to-newest.
 - Confirm sender direction and dates remain correct.
 - Confirm media placeholders still appear.
+- Confirm call and system rows use neutral labels instead of generic unsupported text where possible.
 - Confirm the viewer does not auto-scroll back to newest after loading older messages.
 - Confirm raw/debug identifiers are not shown in the normal message UI.
 - Avoid printing private message contents or full private filesystem paths during debugging.

@@ -9,8 +9,10 @@ enum MediaAttachmentKind: String, Hashable {
     case sticker
     case document
     case linkPreview
+    case call
     case callOrSystem
     case system
+    case deleted
     case media
 
     var placeholderText: String {
@@ -31,10 +33,14 @@ enum MediaAttachmentKind: String, Hashable {
             return "Document attachment"
         case .linkPreview:
             return "Link preview"
+        case .call:
+            return "Call"
         case .callOrSystem:
             return "Call or system message"
         case .system:
             return "System message"
+        case .deleted:
+            return "Deleted message"
         case .media:
             return "Media attachment"
         }
@@ -59,6 +65,7 @@ struct MessageRow: Identifiable, Hashable {
     let pushName: String?
     let groupMemberContactName: String?
     let groupMemberFirstName: String?
+    let groupMemberJID: String?
     let text: String?
     let messageDate: Date?
     let messageType: Int?
@@ -74,6 +81,35 @@ struct MessageRow: Identifiable, Hashable {
         DisplayNameSanitizer.friendlyName(pushName)
             ?? DisplayNameSanitizer.friendlyName(groupMemberContactName)
             ?? DisplayNameSanitizer.friendlyName(groupMemberFirstName)
+    }
+
+    var safeSenderPhoneNumber: String? {
+        DisplayNameSanitizer.safePhoneNumber(from: groupMemberJID)
+            ?? DisplayNameSanitizer.safePhoneNumber(from: senderJID)
+    }
+
+    var nonTextPlaceholderText: String? {
+        if let media {
+            return media.kind.placeholderText
+        }
+        if Self.isCallMessageType(messageType) {
+            return MediaAttachmentKind.call.placeholderText
+        }
+        if Self.isSystemMessageType(messageType) {
+            return MediaAttachmentKind.system.placeholderText
+        }
+        if messageType == 12 {
+            return MediaAttachmentKind.deleted.placeholderText
+        }
+        return nil
+    }
+
+    private static func isSystemMessageType(_ value: Int?) -> Bool {
+        value == 6 || value == 10
+    }
+
+    private static func isCallMessageType(_ value: Int?) -> Bool {
+        value == 59 || value == 66
     }
 }
 
@@ -116,5 +152,27 @@ enum DisplayNameSanitizer {
             return true
         }
         return false
+    }
+
+    static func safePhoneNumber(from value: String?) -> String? {
+        guard var candidate = value?.trimmingCharacters(in: .whitespacesAndNewlines), !candidate.isEmpty else {
+            return nil
+        }
+
+        if let atIndex = candidate.firstIndex(of: "@") {
+            candidate = String(candidate[..<atIndex])
+        }
+        if let slashIndex = candidate.firstIndex(of: "/") {
+            candidate = String(candidate[..<slashIndex])
+        }
+        if let colonIndex = candidate.firstIndex(of: ":") {
+            candidate = String(candidate[..<colonIndex])
+        }
+
+        let digits = candidate.filter(\.isNumber)
+        guard digits.count >= 7, digits.count <= 15, digits.count == candidate.count else {
+            return nil
+        }
+        return "+\(digits)"
     }
 }

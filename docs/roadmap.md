@@ -11,10 +11,12 @@
 - Message dates, ordering, and sender direction validation.
 - Media metadata and path discovery merged on `main`.
 - Full-history pagination branch with latest 500 messages initially and older batches loaded on demand.
+- Chat title search, compact message UI, conservative system/call labels, and safer group sender fallbacks on the pagination branch.
 
 ## Next
 
 - Merge the Milestone 2.5 pagination PR.
+- Continue auditing WhatsApp private message-type mappings with public fixtures where possible.
 - Finish large archive transfer experiment results with the
   [packaged archive transfer experiments](transfer-experiments.md).
 - Add packaged archive import support.

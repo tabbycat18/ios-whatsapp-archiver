@@ -115,6 +115,19 @@ final class WhatsAppDatabase {
     }
 
     func fetchChats() throws -> [ChatSummary] {
+        let latestRelevantMessageDateSQL: String
+        if messageColumns.contains("ZMESSAGETYPE") {
+            latestRelevantMessageDateSQL = """
+                CASE
+                    WHEN COALESCE(m.ZMESSAGETYPE, -1) NOT IN (6, 10)
+                    THEN m.ZMESSAGEDATE
+                    ELSE NULL
+                END
+                """
+        } else {
+            latestRelevantMessageDateSQL = "m.ZMESSAGEDATE"
+        }
+
         let sql = """
             SELECT
                 c.Z_PK,
@@ -129,7 +142,8 @@ final class WhatsAppDatabase {
                     ELSE NULL
                 END AS sanitized_last_message_date,
                 COUNT(m.Z_PK) AS message_count,
-                MAX(m.ZMESSAGEDATE) AS latest_message_date,
+                MAX(\(latestRelevantMessageDateSQL)) AS latest_relevant_message_date,
+                MAX(m.ZMESSAGEDATE) AS latest_any_message_date,
                 lm.ZMESSAGEDATE AS last_message_pointer_date
             FROM ZWACHATSESSION c
             LEFT JOIN ZWAMESSAGE m ON m.ZCHATSESSION = c.Z_PK
@@ -142,7 +156,7 @@ final class WhatsAppDatabase {
                 c.ZLASTMESSAGEDATE,
                 c.ZMESSAGECOUNTER,
                 lm.ZMESSAGEDATE
-            ORDER BY COALESCE(last_message_pointer_date, latest_message_date, sanitized_last_message_date, 0) DESC, c.Z_PK ASC
+            ORDER BY COALESCE(latest_relevant_message_date, last_message_pointer_date, latest_any_message_date, sanitized_last_message_date, 0) DESC, c.Z_PK ASC
             """
 
         let statement = try prepare(sql)
@@ -158,7 +172,7 @@ final class WhatsAppDatabase {
             let title = DisplayNameSanitizer.friendlyName(partnerName)
                 ?? DisplayNameSanitizer.friendlyName(contactIdentifier)
                 ?? (isGroupJID(contactJID) ? "Group chat" : "Unknown chat")
-            let latestMessageDate = date(statement, 9) ?? date(statement, 8) ?? date(statement, 6)
+            let latestMessageDate = date(statement, 8) ?? date(statement, 10) ?? date(statement, 9) ?? date(statement, 6)
 
             chats.append(
                 ChatSummary(
@@ -247,6 +261,7 @@ final class WhatsAppDatabase {
             m.ZPUSHNAME,
             gm.ZCONTACTNAME AS group_member_contact_name,
             gm.ZFIRSTNAME AS group_member_first_name,
+            gm.ZMEMBERJID AS group_member_jid,
             m.ZTEXT,
             m.ZMESSAGEDATE,
             \(messageTypeSelectSQL()) AS message_type,
@@ -259,11 +274,11 @@ final class WhatsAppDatabase {
         var messages: [MessageRow] = []
         var stepResult = sqlite3_step(statement)
         while stepResult == SQLITE_ROW {
-            let messageType = int(statement, 8)
-            let groupEventType = int(statement, 9)
+            let messageType = int(statement, 9)
+            let groupEventType = int(statement, 10)
             let media = mediaMetadata(
                 from: statement,
-                startingAt: 10,
+                startingAt: 11,
                 messageType: messageType,
                 groupEventType: groupEventType
             )
@@ -275,8 +290,9 @@ final class WhatsAppDatabase {
                     pushName: string(statement, 3),
                     groupMemberContactName: string(statement, 4),
                     groupMemberFirstName: string(statement, 5),
-                    text: string(statement, 6),
-                    messageDate: date(statement, 7),
+                    groupMemberJID: string(statement, 6),
+                    text: string(statement, 7),
+                    messageDate: date(statement, 8),
                     messageType: messageType,
                     groupEventType: groupEventType,
                     media: media
@@ -457,11 +473,22 @@ final class WhatsAppDatabase {
     }
 
     private func mediaPathCandidates(for relativePath: String, in archiveRoot: URL) -> [URL] {
-        var candidates = [archiveRoot.appendingPathComponent(relativePath).standardizedFileURL]
+        var candidatePaths = [relativePath]
         if relativePath.hasPrefix("Media/") {
-            candidates.append(archiveRoot.appendingPathComponent("Message/\(relativePath)").standardizedFileURL)
+            candidatePaths.append("Message/\(relativePath)")
+        } else if relativePath.hasPrefix("Message/Media/") {
+            candidatePaths.append(String(relativePath.dropFirst("Message/".count)))
+        } else if !relativePath.hasPrefix("Message/") {
+            candidatePaths.append("Media/\(relativePath)")
+            candidatePaths.append("Message/\(relativePath)")
+            candidatePaths.append("Message/Media/\(relativePath)")
         }
-        return candidates
+
+        var seen = Set<String>()
+        return candidatePaths.compactMap { path in
+            guard seen.insert(path).inserted else { return nil }
+            return archiveRoot.appendingPathComponent(path).standardizedFileURL
+        }
     }
 
     private func isInsideArchive(_ candidate: URL, archiveRoot: URL) -> Bool {
@@ -503,8 +530,14 @@ final class WhatsAppDatabase {
         mimeType: String?,
         fileName: String?
     ) -> MediaAttachmentKind {
+        if input.messageType == 59 || input.messageType == 66 {
+            return .call
+        }
         if input.messageType == 10 || input.messageType == 6 {
             return .system
+        }
+        if input.messageType == 12 {
+            return .deleted
         }
         if input.messageType == 1 {
             return .photo

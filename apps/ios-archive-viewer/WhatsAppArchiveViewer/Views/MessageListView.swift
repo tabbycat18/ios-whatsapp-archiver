@@ -143,17 +143,14 @@ private struct MessageBubbleView: View {
             return "You"
         }
         if isGroupChat {
-            return message.friendlySenderName ?? "Unknown sender"
+            return message.friendlySenderName ?? message.safeSenderPhoneNumber ?? "Unknown sender"
         }
         return nil
     }
 
     private var displayText: String {
         guard let text = message.text?.trimmingCharacters(in: .whitespacesAndNewlines), !text.isEmpty else {
-            if let media = message.media {
-                return media.kind.placeholderText
-            }
-            return "Message not supported yet"
+            return message.nonTextPlaceholderText ?? "Unsupported message"
         }
         return text
     }
