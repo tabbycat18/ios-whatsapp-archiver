@@ -53,6 +53,7 @@ struct MediaMetadata: Hashable {
     let fileURL: URL?
     let fileName: String?
     let title: String?
+    let mediaURL: String?
     let vCardName: String?
     let vCardString: String?
     let mimeType: String?
@@ -66,6 +67,26 @@ struct MediaMetadata: Hashable {
             ?? DisplayNameSanitizer.friendlyName(title)
             ?? Self.vCardField(named: "FN", in: vCardString)
             ?? Self.vCardNameComponents(in: vCardString)
+    }
+
+    var linkPreviewURL: URL? {
+        Self.normalizedWebURL(from: mediaURL)
+            ?? Self.normalizedWebURL(from: title)
+    }
+
+    static func normalizedWebURL(from value: String?) -> URL? {
+        guard let value = value?.trimmingCharacters(in: .whitespacesAndNewlines), !value.isEmpty else {
+            return nil
+        }
+
+        let candidate = value.contains("://") ? value : "https://\(value)"
+        guard let url = URL(string: candidate),
+              let scheme = url.scheme?.lowercased(),
+              scheme == "http" || scheme == "https",
+              url.host?.isEmpty == false else {
+            return nil
+        }
+        return url
     }
 
     private static func vCardField(named fieldName: String, in vCardString: String?) -> String? {

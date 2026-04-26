@@ -426,10 +426,12 @@ private struct MessageContentView: View {
         VStack(alignment: message.isFromMe ? .trailing : .leading, spacing: 6) {
             if let media = message.media, shouldShowAttachment(for: media) {
                 attachmentView(for: media)
+            } else if let displayText, let url = MessageLinkDetector.firstWebURL(in: displayText) {
+                LinkPreviewAttachmentView(media: nil, fallbackURL: url)
             }
 
             if let displayText {
-                Text(displayText)
+                LinkedMessageText(text: displayText)
                     .textSelection(.enabled)
             } else if message.media == nil {
                 Text(message.nonTextPlaceholderText ?? "Unsupported message")
@@ -447,9 +449,9 @@ private struct MessageContentView: View {
 
     private func shouldShowAttachment(for media: MediaMetadata) -> Bool {
         switch media.kind {
-        case .photo, .video, .audio:
+        case .photo, .video, .audio, .linkPreview:
             return true
-        case .contact, .location, .sticker, .document, .linkPreview, .call, .callOrSystem, .system, .deleted, .media:
+        case .contact, .location, .sticker, .document, .call, .callOrSystem, .system, .deleted, .media:
             return displayText == nil
         }
     }
@@ -465,10 +467,130 @@ private struct MessageContentView: View {
             AudioAttachmentView(messageID: message.id, media: media)
         case .contact:
             ContactAttachmentView(media: media)
+        case .linkPreview:
+            LinkPreviewAttachmentView(media: media, fallbackURL: displayText.flatMap(MessageLinkDetector.firstWebURL(in:)))
         default:
             Text(media.kind.placeholderText)
                 .textSelection(.enabled)
         }
+    }
+}
+
+private struct LinkedMessageText: View {
+    let text: String
+
+    var body: some View {
+        Text(attributedText)
+    }
+
+    private var attributedText: AttributedString {
+        var attributed = AttributedString(text)
+
+        for match in MessageLinkDetector.webLinks(in: text) {
+            guard let range = Range(match.range, in: text),
+                  let attributedRange = Range(range, in: attributed) else {
+                continue
+            }
+            attributed[attributedRange].link = match.url
+            attributed[attributedRange].foregroundColor = .accentColor
+        }
+
+        return attributed
+    }
+}
+
+private struct LinkPreviewAttachmentView: View {
+    let media: MediaMetadata?
+    let fallbackURL: URL?
+
+    private var previewURL: URL? {
+        media?.linkPreviewURL
+            ?? fallbackURL
+            ?? MessageLinkDetector.firstWebURL(in: media?.title)
+    }
+
+    private var title: String {
+        guard let mediaTitle = media?.title?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !mediaTitle.isEmpty,
+              MediaMetadata.normalizedWebURL(from: mediaTitle) == nil else {
+            return previewURL?.host(percentEncoded: false) ?? "Link"
+        }
+        return mediaTitle
+    }
+
+    private var subtitle: String {
+        previewURL?.host(percentEncoded: false) ?? previewURL?.absoluteString ?? "Link preview"
+    }
+
+    var body: some View {
+        if let previewURL {
+            Link(destination: previewURL) {
+                previewCard
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Open link preview")
+        } else {
+            previewCard
+        }
+    }
+
+    private var previewCard: some View {
+        HStack(spacing: 10) {
+            RoundedRectangle(cornerRadius: 2)
+                .fill(Color.accentColor.opacity(0.72))
+                .frame(width: 4)
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text(title)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.primary)
+                    .lineLimit(2)
+
+                Text(subtitle)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+
+            Spacer(minLength: 0)
+
+            Image(systemName: "link")
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: 260, alignment: .leading)
+        .padding(10)
+        .background(Color.secondary.opacity(0.08))
+        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+    }
+}
+
+private enum MessageLinkDetector {
+    struct Match {
+        let range: NSRange
+        let url: URL
+    }
+
+    private static let detector = try? NSDataDetector(types: NSTextCheckingResult.CheckingType.link.rawValue)
+
+    static func firstWebURL(in text: String?) -> URL? {
+        webLinks(in: text).first?.url
+    }
+
+    static func webLinks(in text: String?) -> [Match] {
+        guard let text, !text.isEmpty, let detector else {
+            return []
+        }
+
+        let fullRange = NSRange(text.startIndex..<text.endIndex, in: text)
+        return detector
+            .matches(in: text, options: [], range: fullRange)
+            .compactMap { result in
+                guard let url = MediaMetadata.normalizedWebURL(from: result.url?.absoluteString) else {
+                    return nil
+                }
+                return Match(range: result.range, url: url)
+            }
     }
 }
 
