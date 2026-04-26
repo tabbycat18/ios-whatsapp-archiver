@@ -302,8 +302,8 @@ private struct ArchiveSlotCardView: View {
                     Text(statusText)
                         .font(.subheadline)
                         .foregroundStyle(statusColor)
-                        .lineLimit(2)
-                        .fixedSize(horizontal: false, vertical: true)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.88)
 
                     if needsRelink {
                         Text("Archive needs reselecting")
@@ -353,7 +353,7 @@ private struct ArchiveSlotCardView: View {
                     title: "Relink",
                     systemImage: "link",
                     style: .secondary,
-                    width: 96,
+                    width: 116,
                     action: onRelink
                 )
                 .disabled(isOpening)
@@ -367,17 +367,13 @@ private struct ArchiveSlotCardView: View {
                         Label("Remove", systemImage: "trash")
                     }
                 } label: {
-                    HStack(spacing: 6) {
-                        Image(systemName: "ellipsis.circle")
-                        Text("More")
-                            .lineLimit(1)
-                    }
-                    .font(.subheadline.weight(.semibold))
-                    .frame(width: 82)
-                    .frame(minHeight: ArchiveActionButton.height)
+                    ArchiveActionPillLabel(
+                        title: "More",
+                        systemImage: "ellipsis.circle",
+                        style: .secondary,
+                        width: 104
+                    )
                 }
-                .buttonStyle(.bordered)
-                .controlSize(.regular)
                 .disabled(isOpening)
             }
         }
@@ -532,29 +528,23 @@ private struct ArchiveIconActionButton: View {
             guard !showsProgress else { return }
             action()
         } label: {
-            Group {
-                if showsProgress {
-                    ProgressView()
-                        .controlSize(.small)
-                        .tint(.white)
-                } else {
-                    Image(systemName: systemImage)
-                        .font(.system(size: 17, weight: .semibold))
-                }
-            }
-            .frame(width: 72)
-            .frame(minHeight: ArchiveActionButton.height)
-            .contentShape(Rectangle())
+            ArchiveActionPillLabel(
+                title: nil,
+                systemImage: systemImage,
+                showsProgress: showsProgress,
+                style: .primary,
+                width: 72
+            )
         }
-        .buttonStyle(.borderedProminent)
-        .controlSize(.regular)
-        .tint(.green)
+        .buttonStyle(.plain)
         .accessibilityLabel(accessibilityTitle)
         .allowsHitTesting(!showsProgress)
     }
 }
 
 private struct ArchiveActionButton: View {
+    @Environment(\.isEnabled) private var isEnabled
+
     enum Style {
         case primary
         case secondary
@@ -571,36 +561,73 @@ private struct ArchiveActionButton: View {
     let action: () -> Void
 
     var body: some View {
-        let button = Button(action: action) {
-            HStack(spacing: 7) {
-                if showsProgress {
-                    ProgressView()
-                        .controlSize(.small)
-                } else if let systemImage {
-                    Image(systemName: systemImage)
-                }
+        Button(action: action) {
+            ArchiveActionPillLabel(
+                title: title,
+                systemImage: systemImage,
+                showsProgress: showsProgress,
+                style: style,
+                width: width,
+                maxWidth: maxWidth
+            )
+        }
+        .buttonStyle(.plain)
+        .opacity(isEnabled ? 1 : 0.45)
+        .accessibilityLabel(title)
+    }
+}
 
+private struct ArchiveActionPillLabel: View {
+    @Environment(\.colorScheme) private var colorScheme
+
+    let title: String?
+    var systemImage: String?
+    var showsProgress = false
+    let style: ArchiveActionButton.Style
+    var width: CGFloat?
+    var maxWidth: CGFloat?
+
+    var body: some View {
+        HStack(spacing: title == nil ? 0 : 7) {
+            if showsProgress {
+                ProgressView()
+                    .controlSize(.small)
+                    .tint(foregroundColor)
+            } else if let systemImage {
+                Image(systemName: systemImage)
+                    .font(.system(size: 17, weight: .semibold))
+            }
+
+            if let title {
                 Text(title)
                     .lineLimit(1)
                     .minimumScaleFactor(0.9)
             }
-            .font(.subheadline.weight(.semibold))
-            .frame(width: width)
-            .frame(maxWidth: maxWidth)
-            .frame(minHeight: Self.height)
-            .contentShape(Rectangle())
         }
+        .font(.subheadline.weight(.semibold))
+        .foregroundStyle(foregroundColor)
+        .frame(width: width)
+        .frame(maxWidth: maxWidth)
+        .frame(height: ArchiveActionButton.height)
+        .background(backgroundColor, in: Capsule(style: .continuous))
+        .contentShape(Capsule(style: .continuous))
+    }
 
+    private var foregroundColor: Color {
         switch style {
         case .primary:
-            button
-                .buttonStyle(.borderedProminent)
-                .controlSize(.regular)
-                .tint(.green)
+            return .white
         case .secondary:
-            button
-                .buttonStyle(.bordered)
-                .controlSize(.regular)
+            return .accentColor
+        }
+    }
+
+    private var backgroundColor: Color {
+        switch style {
+        case .primary:
+            return .green
+        case .secondary:
+            return colorScheme == .dark ? Color.white.opacity(0.14) : Color.black.opacity(0.07)
         }
     }
 }
