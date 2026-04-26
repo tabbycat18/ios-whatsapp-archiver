@@ -49,7 +49,7 @@ The viewer uses fields needed for:
 - message date;
 - message and group-event type when available;
 - status/story evidence from message/session identifiers such as
-  `status@broadcast`, plus conservative status/story media-folder evidence;
+  `status@broadcast`;
 - media local path, title, size, URL, vCard, location, duration, resolved availability, and inferred attachment kind when available.
 
 The viewer also looks for generic chat wallpaper files at the selected archive
@@ -109,10 +109,11 @@ dates.
 
 WhatsApp Status/Stories media can appear in `ChatStorage.sqlite` as rows that
 are not direct messages in a normal chat. The current viewer detects these rows
-conservatively using reliable archive evidence, primarily `status@broadcast` in
-message/session JID fields and, where present, status/story folder components in
-media paths. The viewer does not use recency, such as "last 48 hours", as product
-logic.
+conservatively using reliable archive evidence, currently `status@broadcast` in
+message/session JID fields. Path names can be useful diagnostic clues during an
+audit, but path-only evidence is not used as runtime product logic because it can
+overmatch archive layouts that are not yet validated. The viewer also does not
+use recency, such as "last 48 hours", as product logic.
 
 When every row in a session is reliably detected as status/story data, that
 session is grouped into a separate Stories / Status section rather than listed
@@ -121,8 +122,8 @@ loading and from normal chat latest-message dates. Mixed sessions keep direct
 messages in the chat while detected status/story rows are kept out of inline
 conversation rendering.
 
-Detection remains intentionally narrow. Rows without status/story schema,
-identifier, or path evidence are not guessed into this category.
+Detection remains intentionally narrow. Rows without status/story identifier
+evidence are not guessed into this category.
 
 ## Message Classification
 

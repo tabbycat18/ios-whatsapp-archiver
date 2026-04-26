@@ -15,7 +15,7 @@
 - Duplicate-title archive entries are classified so real separate conversations stay visible while system-only or tiny no-visible-message fragments are hidden from normal browsing.
 - First chat media rendering path with inline photos, tap-to-play video previews, and simple audio playback.
 - Chat wallpaper rendering from generic archive-root `current_wallpaper.jpg` files.
-- Conservative WhatsApp Status/Stories detection from schema/path/session evidence, with status/story-only fragments separated from normal chats.
+- Conservative WhatsApp Status/Stories detection from `status@broadcast` schema/session evidence, with status/story-only fragments separated from normal chats.
 - Photo preview zoom and photo/video local share-sheet support.
 - First lightweight Chat Info media view with per-chat filters.
 

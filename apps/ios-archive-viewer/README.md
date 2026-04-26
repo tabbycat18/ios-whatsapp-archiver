@@ -26,7 +26,7 @@ Build and run with full Xcode on an iOS simulator or device. Command Line Tools 
 - Uses `ContactsV2.sqlite` when available to improve contact names and link phone-JID/`@lid` sessions only when they map to the same contact row.
 - Merges duplicate chat sessions only when they share a strong identifier, such as the same `ZCONTACTJID` or the same unambiguous ContactsV2 identity.
 - Classifies unresolved duplicate-title entries conservatively so real separate conversations stay visible while technical archive fragments do not clutter normal browsing.
-- Classifies likely WhatsApp Status/Stories rows only when reliable message/session/path evidence is present, such as `status@broadcast` or status/story media folders.
+- Classifies likely WhatsApp Status/Stories rows only when reliable message/session evidence is present, currently `status@broadcast`.
 - Separates detected status/story-only fragments into a Stories / Status section instead of showing them as normal conversations.
 - Discovers `ZWAMEDIAITEM` metadata when the table and columns are available.
 - Shows text messages, inline photos, tap-to-play video previews, simple audio playback, and conservative placeholders for unsupported media/system rows.

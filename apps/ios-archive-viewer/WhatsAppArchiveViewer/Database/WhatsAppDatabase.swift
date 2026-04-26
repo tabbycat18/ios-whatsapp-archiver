@@ -539,44 +539,12 @@ final class WhatsAppDatabase {
 
     private func statusStoryMessageSQL(messageAlias: String, chatAlias: String) -> String {
         var predicates: [String] = []
-        predicates.append("\(chatAlias).ZCONTACTJID = 'status@broadcast'")
         if messageColumns.contains("ZFROMJID") {
             predicates.append("\(messageAlias).ZFROMJID = 'status@broadcast'")
         }
-        if messageColumns.contains("ZTOJID") {
-            predicates.append("\(messageAlias).ZTOJID = 'status@broadcast'")
-        }
-        if messageColumns.contains("ZMEDIASECTIONID") {
-            predicates.append(statusStoryPathSQL("\(messageAlias).ZMEDIASECTIONID"))
-        }
-        if mediaSchema?.canJoinMessages == true {
-            predicates.append(
-                """
-                EXISTS (
-                    SELECT 1
-                    FROM ZWAMEDIAITEM status_media
-                    WHERE status_media.ZMESSAGE = \(messageAlias).Z_PK
-                      AND \(statusStoryPathSQL("status_media.ZMEDIALOCALPATH"))
-                )
-                """
-            )
-        }
+        predicates.append("\(chatAlias).ZCONTACTJID = 'status@broadcast'")
+        guard !predicates.isEmpty else { return "0" }
         return "(\(predicates.joined(separator: " OR ")))"
-    }
-
-    private func statusStoryPathSQL(_ expression: String) -> String {
-        let lowerPath = "lower(COALESCE(\(expression), ''))"
-        return """
-        (\(lowerPath) LIKE 'status/%'
-        OR \(lowerPath) LIKE 'statuses/%'
-        OR \(lowerPath) LIKE 'stories/%'
-        OR \(lowerPath) LIKE 'story/%'
-        OR \(lowerPath) LIKE '%/.statuses/%'
-        OR \(lowerPath) LIKE '%/statuses/%'
-        OR \(lowerPath) LIKE '%/status/%'
-        OR \(lowerPath) LIKE '%/stories/%'
-        OR \(lowerPath) LIKE '%/story/%')
-        """
     }
 
     func fetchMessages(
