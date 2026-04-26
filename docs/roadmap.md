@@ -23,6 +23,7 @@
 - Add first image rendering path.
 - Add video and audio rendering.
 - Add `ContactsV2.sqlite` enrichment for better names and contact metadata.
+- Expand group sender enrichment where ChatStorage push names are unavailable.
 - Add polished archive import and persistent bookmark flow.
 - Add a non-Xcode distribution path.
 - Improve performance for very large archives and media-heavy chats.

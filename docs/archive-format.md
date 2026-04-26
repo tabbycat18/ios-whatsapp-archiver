@@ -40,6 +40,7 @@ The viewer uses fields needed for:
 - latest message date;
 - sender direction;
 - sanitized sender label;
+- profile push-name fallback from `ZWAPROFILEPUSHNAME` when the sender JID matches a group member;
 - safe phone-number fallback for unsaved group senders when it can be extracted from a classic phone-based sender JID without exposing the JID;
 - message text;
 - message date;
@@ -71,7 +72,7 @@ The viewer classifies message rows conservatively from available message type,
 group-event type, and media metadata:
 
 - photos, videos, audio, documents, contacts, locations, stickers, and link previews are shown as placeholders;
-- likely call rows are labeled as voice calls when the message type evidence supports it;
+- likely call rows are labeled as `VOICE CALL` when the message type evidence supports it;
 - known system-notice rows are labeled as system messages;
 - deleted rows are labeled as deleted messages when the message type supports it;
 - unknown mappings remain generic instead of exposing internal identifiers.
@@ -79,7 +80,7 @@ group-event type, and media metadata:
 The exact private WhatsApp meaning of every type value is not fully mapped.
 `@lid` identifiers are treated as opaque internal identifiers and are not
 converted to phone numbers. Unsaved group senders can remain "Unknown sender"
-when no friendly name or safe phone-based JID is available.
+when no friendly name, profile push name, or safe phone-based JID is available.
 
 ## Media State
 

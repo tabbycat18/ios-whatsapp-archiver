@@ -34,7 +34,7 @@ enum MediaAttachmentKind: String, Hashable {
         case .linkPreview:
             return "Link preview"
         case .call:
-            return "Voice call"
+            return "VOICE CALL"
         case .callOrSystem:
             return "Call or system message"
         case .system:
@@ -66,6 +66,7 @@ struct MessageRow: Identifiable, Hashable {
     let groupMemberContactName: String?
     let groupMemberFirstName: String?
     let groupMemberJID: String?
+    let profilePushName: String?
     let text: String?
     let messageDate: Date?
     let messageType: Int?
@@ -78,9 +79,10 @@ struct MessageRow: Identifiable, Hashable {
     }
 
     var friendlySenderName: String? {
-        DisplayNameSanitizer.friendlyName(pushName)
-            ?? DisplayNameSanitizer.friendlyName(groupMemberContactName)
+        DisplayNameSanitizer.friendlyName(groupMemberContactName)
             ?? DisplayNameSanitizer.friendlyName(groupMemberFirstName)
+            ?? DisplayNameSanitizer.friendlyName(pushName)
+            ?? DisplayNameSanitizer.friendlyName(profilePushName)
     }
 
     var safeSenderPhoneNumber: String? {
@@ -140,6 +142,14 @@ enum DisplayNameSanitizer {
             return true
         }
         if trimmed.range(of: #"^[+0-9 ()-]{6,}$"#, options: .regularExpression) != nil {
+            return true
+        }
+        if trimmed.count >= 6,
+           trimmed.count <= 22,
+           trimmed.range(of: #"^[A-Za-z0-9]+$"#, options: .regularExpression) != nil,
+           trimmed.range(of: #"[A-Z]"#, options: .regularExpression) != nil,
+           trimmed.range(of: #"[a-z]"#, options: .regularExpression) != nil,
+           trimmed.range(of: #"[0-9]"#, options: .regularExpression) != nil {
             return true
         }
         if trimmed.count >= 12,

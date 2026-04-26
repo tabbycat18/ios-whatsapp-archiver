@@ -65,6 +65,7 @@ final class WhatsAppDatabase {
     private var database: OpaquePointer?
     private var messageColumns: Set<String> = []
     private var mediaSchema: MediaSchema?
+    private var canJoinProfilePushNames = false
 
     init(databaseURL: URL, archiveRootURL: URL? = nil, securityScopedURL: URL? = nil) throws {
         self.databaseURL = databaseURL
@@ -93,6 +94,7 @@ final class WhatsAppDatabase {
             try validateSchema()
             messageColumns = try columns(in: "ZWAMESSAGE")
             mediaSchema = try discoverMediaSchema()
+            canJoinProfilePushNames = try discoverProfilePushNameJoin()
         } catch {
             if let database {
                 sqlite3_close(database)
@@ -262,6 +264,7 @@ final class WhatsAppDatabase {
             gm.ZCONTACTNAME AS group_member_contact_name,
             gm.ZFIRSTNAME AS group_member_first_name,
             gm.ZMEMBERJID AS group_member_jid,
+            \(profilePushNameSelectSQL()) AS profile_push_name,
             m.ZTEXT,
             m.ZMESSAGEDATE,
             \(messageTypeSelectSQL()) AS message_type,
@@ -274,11 +277,11 @@ final class WhatsAppDatabase {
         var messages: [MessageRow] = []
         var stepResult = sqlite3_step(statement)
         while stepResult == SQLITE_ROW {
-            let messageType = int(statement, 9)
-            let groupEventType = int(statement, 10)
+            let messageType = int(statement, 10)
+            let groupEventType = int(statement, 11)
             let media = mediaMetadata(
                 from: statement,
-                startingAt: 11,
+                startingAt: 12,
                 messageType: messageType,
                 groupEventType: groupEventType
             )
@@ -291,8 +294,9 @@ final class WhatsAppDatabase {
                     groupMemberContactName: string(statement, 4),
                     groupMemberFirstName: string(statement, 5),
                     groupMemberJID: string(statement, 6),
-                    text: string(statement, 7),
-                    messageDate: date(statement, 8),
+                    profilePushName: string(statement, 7),
+                    text: string(statement, 8),
+                    messageDate: date(statement, 9),
                     messageType: messageType,
                     groupEventType: groupEventType,
                     media: media
@@ -348,6 +352,14 @@ final class WhatsAppDatabase {
         return MediaSchema(columns: try columns(in: "ZWAMEDIAITEM"))
     }
 
+    private func discoverProfilePushNameJoin() throws -> Bool {
+        guard try tableExists("ZWAPROFILEPUSHNAME") else {
+            return false
+        }
+        let columns = try columns(in: "ZWAPROFILEPUSHNAME")
+        return columns.contains("ZJID") && columns.contains("ZPUSHNAME")
+    }
+
     private func messageTypeSelectSQL() -> String {
         if messageColumns.contains("ZMESSAGETYPE") {
             return "m.ZMESSAGETYPE"
@@ -398,7 +410,14 @@ final class WhatsAppDatabase {
     }
 
     private func groupMemberJoinSQL() -> String {
-        "LEFT JOIN ZWAGROUPMEMBER gm ON gm.Z_PK = m.ZGROUPMEMBER"
+        let profileJoin = canJoinProfilePushNames
+            ? "\n            LEFT JOIN ZWAPROFILEPUSHNAME pp ON pp.ZJID = gm.ZMEMBERJID"
+            : ""
+        return "LEFT JOIN ZWAGROUPMEMBER gm ON gm.Z_PK = m.ZGROUPMEMBER\(profileJoin)"
+    }
+
+    private func profilePushNameSelectSQL() -> String {
+        canJoinProfilePushNames ? "pp.ZPUSHNAME" : "NULL"
     }
 
     private func mediaMetadata(
