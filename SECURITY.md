@@ -5,6 +5,7 @@ This project handles local files that may contain highly sensitive personal data
 ## Supported Use
 
 - Run tools only on backups and archives you are authorized to access.
+- Do not open untrusted WhatsApp databases, backup manifests, extracted archives, or generated exports.
 - Keep extracted archives outside version control.
 - Review staged files before every commit.
 

@@ -1,6 +1,6 @@
-# ios-whatsapp-archiver
+# iOS WhatsApp Archiver
 
-ios-whatsapp-archiver is a local, read-only iPhone WhatsApp archive extractor and viewer. It is not affiliated with WhatsApp or Meta.
+iOS WhatsApp Archiver is a local, read-only iPhone WhatsApp backup extractor and archive viewer for your own extracted iPhone backups. It is not affiliated with WhatsApp or Meta.
 
 The project has two parts:
 
@@ -23,7 +23,7 @@ There is no cloud upload, no server component, and no code path intended to modi
 - No voice note, photo, or video display yet.
 - No `ContactsV2.sqlite` enrichment yet.
 - No polished import persistence yet.
-- No pagination UI beyond the latest 500 messages.
+- Latest 500 messages per selected chat only; no pagination UI yet.
 
 ## Repository Layout
 
@@ -36,7 +36,11 @@ test-fixtures/              Public fixture policy
 
 ## Privacy Warning
 
-Never commit extracted backups, WhatsApp databases, media folders, or generated exports. In particular, do not commit `ChatStorage.sqlite`, `ContactsV2.sqlite`, `Media/`, `Message/`, `data/`, `exports/`, or generated HTML files.
+Never commit extracted backups, WhatsApp databases, media folders, generated exports, or private chat data. In particular, do not commit `ChatStorage.sqlite`, `ContactsV2.sqlite`, `Media/`, `Message/`, `data/`, `exports/`, or generated HTML files.
+
+## Acknowledgement
+
+This project was initially prototyped in a fork of `andreas-mausch/whatsapp-viewer`, an MIT-licensed Android WhatsApp database viewer. The current project is a separate iPhone backup extractor and SwiftUI archive viewer.
 
 ## Quick Start
 

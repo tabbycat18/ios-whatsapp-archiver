@@ -6,6 +6,7 @@ ios-whatsapp-archiver is designed for local, read-only inspection of an iPhone W
 - No server is included.
 - The SwiftUI viewer opens `ChatStorage.sqlite` read-only and sets `PRAGMA query_only = ON`.
 - Extraction and export tools run on local files selected by the user.
+- Open only backups and databases you trust and are authorized to inspect.
 
 ## Sensitive Files
 
