@@ -8,4 +8,8 @@ struct ChatSummary: Identifiable, Hashable {
     let title: String
     let messageCount: Int
     let latestMessageDate: Date?
+
+    var isGroupChat: Bool {
+        contactJID?.contains("@g.us") == true
+    }
 }

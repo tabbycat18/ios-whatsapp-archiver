@@ -25,6 +25,7 @@ Build and run with full Xcode on an iOS simulator or device. Command Line Tools 
 - Discovers `ZWAMEDIAITEM` metadata when the table and columns are available.
 - Shows text messages and media placeholders.
 - Checks whether referenced media files appear available under the selected archive root.
+- Avoids showing raw JIDs or internal sender identifiers in the normal message UI.
 
 The app does not render photos, videos, audio, thumbnails, or binary media yet.
 
@@ -82,6 +83,7 @@ The app also has an Open Archive action that can select either an extracted arch
 - Confirm sender direction and dates remain correct.
 - Confirm media placeholders still appear.
 - Confirm the viewer does not auto-scroll back to newest after loading older messages.
+- Confirm raw/debug identifiers are not shown in the normal message UI.
 - Avoid printing private message contents or full private filesystem paths during debugging.
 
 ## Large Archive Transfer Notes

@@ -103,18 +103,9 @@ private struct ChatRowView: View {
                     .foregroundStyle(.secondary)
             }
 
-            HStack {
-                if let contactJID = chat.contactJID, !contactJID.isEmpty {
-                    Text(contactJID)
-                        .lineLimit(1)
-                }
-
-                Spacer()
-
-                Text("\(chat.messageCount.formatted()) messages")
-            }
-            .font(.subheadline)
-            .foregroundStyle(.secondary)
+            Text("\(chat.messageCount.formatted()) messages")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
         }
         .padding(.vertical, 4)
     }

@@ -111,6 +111,11 @@ final class WhatsAppDatabase {
                 c.ZPARTNERNAME,
                 c.ZLASTMESSAGEDATE,
                 c.ZMESSAGECOUNTER,
+                CASE
+                    WHEN c.ZLASTMESSAGEDATE BETWEEN 0 AND 1500000000
+                    THEN c.ZLASTMESSAGEDATE
+                    ELSE NULL
+                END AS sanitized_last_message_date,
                 COUNT(m.Z_PK) AS message_count,
                 MAX(m.ZMESSAGEDATE) AS latest_message_date
             FROM ZWACHATSESSION c
@@ -122,7 +127,7 @@ final class WhatsAppDatabase {
                 c.ZPARTNERNAME,
                 c.ZLASTMESSAGEDATE,
                 c.ZMESSAGECOUNTER
-            ORDER BY COALESCE(latest_message_date, c.ZLASTMESSAGEDATE, 0) DESC, c.Z_PK ASC
+            ORDER BY COALESCE(latest_message_date, sanitized_last_message_date, 0) DESC, c.Z_PK ASC
             """
 
         let statement = try prepare(sql)
@@ -135,15 +140,11 @@ final class WhatsAppDatabase {
             let contactJID = string(statement, 1)
             let contactIdentifier = string(statement, 2)
             let partnerName = string(statement, 3)
-            let fallbackTitle = "Chat \(id)"
-            let title = [partnerName, contactIdentifier, contactJID]
-                .compactMap { value in
-                    guard let value, !value.isEmpty else { return nil }
-                    return value
-                }
-                .first ?? fallbackTitle
+            let title = friendlyDisplayName(partnerName)
+                ?? friendlyDisplayName(contactIdentifier)
+                ?? (isGroupJID(contactJID) ? "Group chat" : "Unknown chat")
 
-            let latestMessageDate = date(statement, 7) ?? date(statement, 4)
+            let latestMessageDate = date(statement, 8) ?? date(statement, 6)
             chats.append(
                 ChatSummary(
                     id: id,
@@ -151,7 +152,7 @@ final class WhatsAppDatabase {
                     contactIdentifier: contactIdentifier,
                     partnerName: partnerName,
                     title: title,
-                    messageCount: Int(sqlite3_column_int64(statement, 6)),
+                    messageCount: Int(sqlite3_column_int64(statement, 7)),
                     latestMessageDate: latestMessageDate
                 )
             )
@@ -160,6 +161,34 @@ final class WhatsAppDatabase {
 
         try throwIfStatementFailed(stepResult)
         return chats
+    }
+
+    private func friendlyDisplayName(_ value: String?) -> String? {
+        guard let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines), !trimmed.isEmpty else {
+            return nil
+        }
+        guard !looksLikeRawIdentifier(trimmed) else {
+            return nil
+        }
+        return trimmed
+    }
+
+    private func isGroupJID(_ value: String?) -> Bool {
+        value?.contains("@g.us") == true
+    }
+
+    private func looksLikeRawIdentifier(_ value: String) -> Bool {
+        if value.contains("@") {
+            return true
+        }
+        if value.range(of: #"^[+0-9 ()-]{6,}$"#, options: .regularExpression) != nil {
+            return true
+        }
+        if value.count >= 16,
+           value.range(of: #"^[A-Za-z0-9+/=_-]+$"#, options: .regularExpression) != nil {
+            return true
+        }
+        return false
     }
 
     func fetchMessages(chatID: Int64, limit: Int = 500) throws -> [MessageRow] {

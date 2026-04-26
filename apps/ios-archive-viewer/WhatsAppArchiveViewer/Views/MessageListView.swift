@@ -11,29 +11,21 @@ struct MessageListView: View {
     @State private var latestScrolledGeneration: Int?
     @State private var didCompleteInitialScroll = false
     @State private var lastOlderLoadTriggerMessageID: Int64?
+    private let olderLoadThreshold = 8
 
     var body: some View {
         VStack(spacing: 0) {
             ScrollViewReader { proxy in
                 List {
-                    olderPaginationSentinel
+                    olderPaginationStatus
 
-                    Section {
-                        ForEach(messages) { message in
-                            MessageBubbleView(message: message)
-                                .id(message.id)
-                                .listRowSeparator(.hidden)
-                        }
-                    } header: {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(chat.title)
-                                .font(.headline)
-                            Text(summaryText)
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-                        .textCase(nil)
-                        .padding(.vertical, 6)
+                    ForEach(Array(messages.enumerated()), id: \.element.id) { index, message in
+                        MessageBubbleView(message: message, isGroupChat: chat.isGroupChat)
+                            .id(message.id)
+                            .listRowSeparator(.hidden)
+                            .onAppear {
+                                loadOlderMessagesIfNeeded(appearingAt: index)
+                            }
                     }
                 }
                 .listStyle(.plain)
@@ -48,34 +40,38 @@ struct MessageListView: View {
             }
         }
         .navigationTitle(chat.title)
+        #if os(iOS)
+        .navigationBarTitleDisplayMode(.inline)
+        #endif
     }
 
     @ViewBuilder
-    private var olderPaginationSentinel: some View {
-        VStack(spacing: 6) {
-            if isLoadingOlder {
-                ProgressView()
-                    .controlSize(.small)
-            }
+    private var olderPaginationStatus: some View {
+        if isLoadingOlder || olderMessagesErrorMessage != nil {
+            HStack(spacing: 8) {
+                Spacer(minLength: 0)
 
-            if let olderMessagesErrorMessage, !olderMessagesErrorMessage.isEmpty {
-                Text(olderMessagesErrorMessage)
-                    .font(.caption)
-                    .foregroundStyle(.red)
-                    .multilineTextAlignment(.leading)
-            }
-        }
-        .frame(maxWidth: .infinity)
-        .frame(minHeight: isLoadingOlder || olderMessagesErrorMessage != nil ? 28 : 1)
-        .listRowSeparator(.hidden)
-        .onAppear(perform: loadOlderMessagesIfNeeded)
-    }
+                if isLoadingOlder {
+                    ProgressView()
+                        .controlSize(.small)
+                }
 
-    private var summaryText: String {
-        if messages.count < chat.messageCount {
-            return "Showing \(messages.count.formatted()) of \(chat.messageCount.formatted()) messages"
+                if let olderMessagesErrorMessage, !olderMessagesErrorMessage.isEmpty {
+                    Text(olderMessagesErrorMessage)
+                        .font(.caption)
+                        .foregroundStyle(.red)
+                        .multilineTextAlignment(.center)
+                } else if isLoadingOlder {
+                    Text("Loading older messages...")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+
+                Spacer(minLength: 0)
+            }
+            .padding(.vertical, 4)
+            .listRowSeparator(.hidden)
         }
-        return "Showing \(messages.count.formatted()) messages"
     }
 
     private func scrollToLatestMessageIfNeeded(using proxy: ScrollViewProxy, animated: Bool) {
@@ -94,8 +90,9 @@ struct MessageListView: View {
         }
     }
 
-    private func loadOlderMessagesIfNeeded() {
+    private func loadOlderMessagesIfNeeded(appearingAt index: Int) {
         guard didCompleteInitialScroll, hasMoreOlderMessages, !isLoadingOlder else { return }
+        guard index < olderLoadThreshold else { return }
         guard let oldestMessageID = messages.first?.id else { return }
         guard lastOlderLoadTriggerMessageID != oldestMessageID else { return }
         lastOlderLoadTriggerMessageID = oldestMessageID
@@ -105,6 +102,7 @@ struct MessageListView: View {
 
 private struct MessageBubbleView: View {
     let message: MessageRow
+    let isGroupChat: Bool
 
     var body: some View {
         HStack {
@@ -113,9 +111,11 @@ private struct MessageBubbleView: View {
             }
 
             VStack(alignment: message.isFromMe ? .trailing : .leading, spacing: 4) {
-                Text(senderLabel)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                if let senderLabel {
+                    Text(senderLabel)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
 
                 Text(displayText)
                     .padding(.horizontal, 12)
@@ -138,21 +138,48 @@ private struct MessageBubbleView: View {
         .padding(.vertical, 3)
     }
 
-    private var senderLabel: String {
+    private var senderLabel: String? {
         if message.isFromMe {
             return "You"
         }
-        return message.pushName?.isEmpty == false ? message.pushName! : (message.senderJID ?? "Them")
+        if isGroupChat {
+            return friendlySenderName(message.pushName) ?? "Unknown sender"
+        }
+        return nil
     }
 
     private var displayText: String {
-        guard let text = message.text, !text.isEmpty else {
+        guard let text = message.text?.trimmingCharacters(in: .whitespacesAndNewlines), !text.isEmpty else {
             if let media = message.media {
                 return media.kind.placeholderText
             }
-            return "Unsupported message"
+            return "Message not supported yet"
         }
         return text
+    }
+
+    private func friendlySenderName(_ value: String?) -> String? {
+        guard let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines), !trimmed.isEmpty else {
+            return nil
+        }
+        guard !looksLikeRawIdentifier(trimmed) else {
+            return nil
+        }
+        return trimmed
+    }
+
+    private func looksLikeRawIdentifier(_ value: String) -> Bool {
+        if value.contains("@") {
+            return true
+        }
+        if value.range(of: #"^[+0-9 ()-]{6,}$"#, options: .regularExpression) != nil {
+            return true
+        }
+        if value.count >= 16,
+           value.range(of: #"^[A-Za-z0-9+/=_-]+$"#, options: .regularExpression) != nil {
+            return true
+        }
+        return false
     }
 
     private static let dateFormatter: DateFormatter = {
