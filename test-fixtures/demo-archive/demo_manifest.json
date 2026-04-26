@@ -487,6 +487,15 @@
       "kind": "wallpaper",
       "label": "DEMO WALLPAPER",
       "path": "Wallpapers/wallpaper_demo_green_gradient.jpg"
+    },
+    {
+      "available": true,
+      "caption": "synthetic dark wallpaper",
+      "created": true,
+      "filename": "wallpaper_demo_dark_grid.jpg",
+      "kind": "wallpaper_dark",
+      "label": "DEMO DARK WALL",
+      "path": "Wallpapers/wallpaper_demo_dark_grid.jpg"
     }
   ],
   "messages": [
@@ -3534,12 +3543,13 @@
   },
   "synthetic_notice": "Fully synthetic demo fixture. Contains no real WhatsApp data, no real private messages, no real tickets, no real receipts, and no real addresses.",
   "validation": {
-    "available_media_files": 25,
+    "available_media_files": 26,
     "failures": [],
-    "fixture_size_bytes": 217473,
+    "file_count": 33,
+    "fixture_size_bytes": 333577,
     "group_chats": 2,
     "lake_weekend_messages": 69,
-    "media_items": 27,
+    "media_items": 28,
     "missing_media_references": 1,
     "normal_conversations": 10,
     "one_to_one_chats": 8,

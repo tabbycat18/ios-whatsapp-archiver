@@ -19,6 +19,7 @@
 - Photo preview zoom and photo/video local share-sheet support.
 - PDF and common document attachment rows with system preview/share support.
 - First lightweight Chat Info media view with per-chat filters and available local media prioritized ahead of missing placeholders.
+- Synthetic public demo archive fixture for previewing the app without private WhatsApp data.
 
 ## Next
 
@@ -36,7 +37,7 @@
 - Add polished archive import and persistent bookmark flow.
 - Add a non-Xcode distribution path.
 - Improve performance for very large archives and media-heavy chats.
-- Add synthetic public test fixtures with no private WhatsApp data.
+- Add broader fixture-backed UI and database regression tests around the synthetic demo archive.
 
 ## Non-Technical User Goal
 

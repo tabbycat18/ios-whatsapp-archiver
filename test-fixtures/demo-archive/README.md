@@ -73,4 +73,4 @@ unavailable-thumbnail behavior; they are not intended to be real playable clips.
 - Status/story sessions: 1
 - Messages: 202
 - Lake Weekend messages: 69
-- Fixture size: 217473 bytes
+- Fixture size: 333577 bytes

@@ -210,6 +210,7 @@ MEDIA_LIBRARY = {
     "status_maya_snacks.jpg": {"kind": "status_photo", "path": "Stories/status_maya_snacks.jpg", "caption": "snacks secured", "label": "SNACKS SECURED", "available": True},
     "status_samir_pdf_done.jpg": {"kind": "status_photo", "path": "Stories/status_samir_pdf_done.jpg", "caption": "PDF finally sent", "label": "PDF DONE", "available": True},
     "wallpaper_demo_green_gradient.jpg": {"kind": "wallpaper", "path": "Wallpapers/wallpaper_demo_green_gradient.jpg", "caption": "synthetic wallpaper", "label": "DEMO WALLPAPER", "available": True},
+    "wallpaper_demo_dark_grid.jpg": {"kind": "wallpaper_dark", "path": "Wallpapers/wallpaper_demo_dark_grid.jpg", "caption": "synthetic dark wallpaper", "label": "DEMO DARK WALL", "available": True},
 }
 
 @dataclass
@@ -422,10 +423,12 @@ def write_media_files() -> list[dict]:
             manifest.append({**meta, "filename": filename, "created": False})
             continue
         kind = meta["kind"]
-        if kind in {"photo", "sticker", "status_photo", "wallpaper"}:
+        if kind in {"photo", "sticker", "status_photo", "wallpaper", "wallpaper_dark"}:
             write_png(path, meta["label"], meta.get("caption", ""), palette)
             if kind == "wallpaper":
                 shutil.copyfile(path, FIXTURE_ROOT / "current_wallpaper.jpg")
+            elif kind == "wallpaper_dark":
+                shutil.copyfile(path, FIXTURE_ROOT / "current_wallpaper_dark.jpg")
         elif kind == "document":
             write_pdf(
                 path,
@@ -1063,6 +1066,14 @@ unavailable-thumbnail behavior; they are not intended to be real playable clips.
 - Fixture size: {validation["fixture_size_bytes"]} bytes
 """
     (FIXTURE_ROOT / "README.md").write_text(readme, encoding="utf-8")
+    (FIXTURE_ROOT / "Message" / "README.md").write_text(
+        "# Synthetic Message Folder\n\n"
+        "This directory is part of the generated synthetic demo archive layout. "
+        "It contains no private WhatsApp data. Current demo media references use "
+        "`Media/`, but the directory is present because some extracted iOS archive "
+        "layouts also include `Message/`.\n",
+        encoding="utf-8",
+    )
 
 
 def validate_fixture(chats: list[Chat], media_manifest: list[dict]) -> dict:
@@ -1222,6 +1233,11 @@ def validate_fixture(chats: list[Chat], media_manifest: list[dict]) -> dict:
     return validation
 
 
+def fixture_file_stats() -> tuple[int, int]:
+    files = [path for path in FIXTURE_ROOT.rglob("*") if path.is_file()]
+    return len(files), sum(path.stat().st_size for path in files)
+
+
 def write_manifest(chats: list[Chat], media_manifest: list[dict], messages: list[dict], validation: dict) -> None:
     conversations = []
     for chat in chats:
@@ -1268,8 +1284,17 @@ def main() -> None:
     messages = create_chat_storage(chats)
     create_contacts_v2()
     validation = validate_fixture(chats, media_manifest)
-    write_readme(validation)
-    write_manifest(chats, media_manifest, messages, validation)
+    for _ in range(3):
+        write_readme(validation)
+        write_manifest(chats, media_manifest, messages, validation)
+        file_count, fixture_size = fixture_file_stats()
+        if (
+            validation.get("file_count") == file_count
+            and validation.get("fixture_size_bytes") == fixture_size
+        ):
+            break
+        validation["file_count"] = file_count
+        validation["fixture_size_bytes"] = fixture_size
     if not validation["passed"]:
         print(json.dumps(validation, indent=2))
         raise SystemExit(1)

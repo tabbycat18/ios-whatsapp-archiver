@@ -4,6 +4,19 @@ This is a native SwiftUI iPhone and iPad app for local, read-only inspection of 
 
 Private WhatsApp data must not be committed. Keep `ChatStorage.sqlite`, `ContactsV2.sqlite`, `Media/`, `Message/`, and generated exports under ignored local data folders.
 
+## Demo Archive
+
+The repository includes a small synthetic preview archive at
+`test-fixtures/demo-archive/`. It is generated with:
+
+```bash
+python3 tools/generate_demo_archive.py
+```
+
+The fixture is fictional and contains generated placeholder media only. In the
+viewer, choose Add Archive and select the `test-fixtures/demo-archive/` folder
+so media, status/story rows, and wallpaper resolve from the archive root.
+
 ## Open in Xcode
 
 Open the project from the repository root:
