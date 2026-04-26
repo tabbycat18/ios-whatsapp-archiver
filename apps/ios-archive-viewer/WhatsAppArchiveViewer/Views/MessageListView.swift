@@ -16,7 +16,26 @@ struct MessageListView: View {
     @State private var latestScrolledGeneration: Int?
     @State private var didCompleteInitialScroll = false
     @State private var lastOlderLoadTriggerMessageID: Int64?
+    @State private var messageSearchText = ""
     private let olderLoadThreshold = 8
+
+    private var trimmedMessageSearchText: String {
+        messageSearchText.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private var isSearchingMessages: Bool {
+        !trimmedMessageSearchText.isEmpty
+    }
+
+    private var displayedMessages: [(offset: Int, element: MessageRow)] {
+        let enumeratedMessages = Array(messages.enumerated())
+        guard isSearchingMessages else {
+            return enumeratedMessages
+        }
+        return enumeratedMessages.filter { _, message in
+            message.matchesSearch(trimmedMessageSearchText)
+        }
+    }
 
     var body: some View {
         ZStack {
@@ -24,17 +43,21 @@ struct MessageListView: View {
 
             ScrollViewReader { proxy in
                 List {
-                    olderPaginationStatus
+                    if isSearchingMessages, displayedMessages.isEmpty {
+                        noMessageSearchResults
+                    } else {
+                        olderPaginationStatus
 
-                    ForEach(Array(messages.enumerated()), id: \.element.id) { index, message in
-                        MessageBubbleView(message: message, isGroupChat: chat.isGroupChat)
-                            .environmentObject(audioPlayback)
-                            .id(message.id)
-                            .listRowSeparator(.hidden)
-                            .listRowInsets(EdgeInsets(top: 1, leading: 16, bottom: 1, trailing: 16))
-                            .listRowBackground(Color.clear)
-                            .onAppear {
-                                loadOlderMessagesIfNeeded(appearingAt: index)
+                        ForEach(displayedMessages, id: \.element.id) { index, message in
+                            MessageBubbleView(message: message, isGroupChat: chat.isGroupChat)
+                                .environmentObject(audioPlayback)
+                                .id(message.id)
+                                .listRowSeparator(.hidden)
+                                .listRowInsets(EdgeInsets(top: 1, leading: 16, bottom: 1, trailing: 16))
+                                .listRowBackground(Color.clear)
+                                .onAppear {
+                                    loadOlderMessagesIfNeeded(appearingAt: index)
+                                }
                             }
                     }
                 }
@@ -52,14 +75,25 @@ struct MessageListView: View {
             }
         }
         .navigationTitle(chat.title)
+        .searchable(text: $messageSearchText, prompt: "Search messages")
         #if os(iOS)
         .navigationBarTitleDisplayMode(.inline)
         #endif
     }
 
+    private var noMessageSearchResults: some View {
+        Text("No loaded messages match")
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 12)
+            .listRowSeparator(.hidden)
+            .listRowBackground(Color.clear)
+    }
+
     @ViewBuilder
     private var olderPaginationStatus: some View {
-        if isLoadingOlder || olderMessagesErrorMessage != nil {
+        if !isSearchingMessages, isLoadingOlder || olderMessagesErrorMessage != nil {
             HStack(spacing: 8) {
                 Spacer(minLength: 0)
 
@@ -104,6 +138,7 @@ struct MessageListView: View {
     }
 
     private func loadOlderMessagesIfNeeded(appearingAt index: Int) {
+        guard !isSearchingMessages else { return }
         guard didCompleteInitialScroll, hasMoreOlderMessages, !isLoadingOlder else { return }
         guard index < olderLoadThreshold else { return }
         guard let oldestMessageID = messages.first?.id else { return }
@@ -149,6 +184,20 @@ private struct ChatWallpaperBackgroundView: View {
         } else {
             didFail = true
         }
+    }
+}
+
+private extension MessageRow {
+    func matchesSearch(_ query: String) -> Bool {
+        guard !query.isEmpty else { return true }
+        return [
+            text,
+            nonTextPlaceholderText,
+            friendlySenderName,
+            safeSenderPhoneNumber
+        ]
+        .compactMap { $0 }
+        .contains { $0.localizedStandardContains(query) }
     }
 }
 
