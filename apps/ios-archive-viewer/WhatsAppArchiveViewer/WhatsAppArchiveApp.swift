@@ -43,6 +43,9 @@ final class ArchiveStore: ObservableObject {
     @Published var archiveName = "No Archive"
 
     let messageLimit = 500
+    private var messageFetchLimit: Int {
+        messageLimit + 1
+    }
 
     private let importedArchiveFolderName = "ImportedArchive"
     private var database: WhatsAppDatabase?
@@ -99,9 +102,9 @@ final class ArchiveStore: ObservableObject {
     func loadMessages(for chat: ChatSummary) {
         guard let database else { return }
         do {
-            let loadedMessages = try database.fetchMessages(chatID: chat.id, limit: messageLimit)
-            messages = loadedMessages
-            hasMoreOlderMessages = loadedMessages.count < chat.messageCount
+            let loadedMessages = try database.fetchMessages(chatID: chat.id, limit: messageFetchLimit)
+            hasMoreOlderMessages = loadedMessages.count > messageLimit
+            messages = hasMoreOlderMessages ? Array(loadedMessages.dropFirst()) : loadedMessages
             olderMessagesErrorMessage = nil
             isLoadingOlder = false
             initialMessageLoadGeneration += 1
@@ -128,10 +131,11 @@ final class ArchiveStore: ObservableObject {
             let olderMessages = try database.fetchOlderMessages(
                 chatID: chat.id,
                 before: cursor,
-                limit: messageLimit
+                limit: messageFetchLimit
             )
-            messages.insert(contentsOf: olderMessages, at: 0)
-            hasMoreOlderMessages = !olderMessages.isEmpty && messages.count < chat.messageCount
+            hasMoreOlderMessages = olderMessages.count > messageLimit
+            let visibleOlderMessages = hasMoreOlderMessages ? Array(olderMessages.dropFirst()) : olderMessages
+            messages.insert(contentsOf: visibleOlderMessages, at: 0)
             olderMessagesErrorMessage = nil
             errorMessage = nil
         } catch {

@@ -10,55 +10,76 @@ struct MessageListView: View {
     let onLoadOlderMessages: () -> Void
 
     var body: some View {
-        ScrollViewReader { proxy in
-            List {
-                Section {
-                    if hasMoreOlderMessages || olderMessagesErrorMessage != nil {
-                        paginationControls
-                    }
+        VStack(spacing: 0) {
+            paginationHeader
 
-                    ForEach(messages) { message in
-                        MessageBubbleView(message: message)
-                            .id(message.id)
-                            .listRowSeparator(.hidden)
+            Divider()
+
+            ScrollViewReader { proxy in
+                List {
+                    Section {
+                        ForEach(messages) { message in
+                            MessageBubbleView(message: message)
+                                .id(message.id)
+                                .listRowSeparator(.hidden)
+                        }
+                    } header: {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(chat.title)
+                                .font(.headline)
+                            Text(summaryText)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                        .textCase(nil)
+                        .padding(.vertical, 6)
                     }
-                } header: {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(chat.title)
-                            .font(.headline)
-                        Text(summaryText)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                    .textCase(nil)
-                    .padding(.vertical, 6)
                 }
-            }
-            .listStyle(.plain)
-            .onAppear {
-                scrollToLatestMessage(using: proxy, animated: false)
-            }
-            .onChange(of: initialMessageLoadGeneration) { _, _ in
-                scrollToLatestMessage(using: proxy, animated: false)
+                .listStyle(.plain)
+                .onAppear {
+                    scrollToLatestMessage(using: proxy, animated: false)
+                }
+                .onChange(of: initialMessageLoadGeneration) { _, _ in
+                    scrollToLatestMessage(using: proxy, animated: false)
+                }
             }
         }
         .navigationTitle(chat.title)
     }
 
     @ViewBuilder
-    private var paginationControls: some View {
-        VStack(alignment: .center, spacing: 8) {
-            if hasMoreOlderMessages {
-                Button {
-                    onLoadOlderMessages()
-                } label: {
-                    Label(
-                        isLoadingOlder ? "Loading older messages..." : "Load older messages",
-                        systemImage: "arrow.up.circle"
-                    )
+    private var paginationHeader: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .center, spacing: 12) {
+                Text(summaryText)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+
+                Spacer()
+
+                if hasMoreOlderMessages {
+                    Button {
+                        onLoadOlderMessages()
+                    } label: {
+                        HStack(spacing: 6) {
+                            if isLoadingOlder {
+                                ProgressView()
+                                    .controlSize(.small)
+                            } else {
+                                Image(systemName: "arrow.up.circle")
+                            }
+                            Text(isLoadingOlder ? "Loading older messages..." : "Load older messages")
+                        }
+                    }
+                    .disabled(isLoadingOlder)
+                    .buttonStyle(.borderedProminent)
                 }
-                .disabled(isLoadingOlder)
-                .buttonStyle(.bordered)
+            }
+
+            if hasMoreOlderMessages {
+                Text("Older messages are available.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
 
             if let olderMessagesErrorMessage {
@@ -68,15 +89,16 @@ struct MessageListView: View {
                     .multilineTextAlignment(.center)
             }
         }
-        .frame(maxWidth: .infinity)
-        .listRowSeparator(.hidden)
+        .padding(.horizontal)
+        .padding(.vertical, 10)
+        .background(.bar)
     }
 
     private var summaryText: String {
         if messages.count < chat.messageCount {
             return "Showing \(messages.count.formatted()) of \(chat.messageCount.formatted()) messages"
         }
-        return "\(chat.messageCount.formatted()) messages"
+        return "Showing \(messages.count.formatted()) messages"
     }
 
     private func scrollToLatestMessage(using proxy: ScrollViewProxy, animated: Bool) {
