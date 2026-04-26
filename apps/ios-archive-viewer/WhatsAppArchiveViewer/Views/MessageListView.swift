@@ -391,29 +391,39 @@ private struct VideoPlaybackItem: Identifiable {
 }
 
 private struct VideoPlayerSheet: View {
-    let url: URL
-    @State private var player: AVPlayer?
+    @StateObject private var controller: VideoPlaybackController
+
+    init(url: URL) {
+        _controller = StateObject(wrappedValue: VideoPlaybackController(url: url))
+    }
 
     var body: some View {
-        Group {
-            if let player {
-                VideoPlayer(player: player)
-                    .ignoresSafeArea()
-            } else {
-                AttachmentPlaceholderView(title: "Video unavailable", systemImage: "video")
-                    .padding()
-            }
-        }
+        VideoPlayer(player: controller.player)
+            .ignoresSafeArea()
         .onAppear {
-            prepareMediaPlaybackSession()
-            let player = AVPlayer(url: url)
-            self.player = player
-            player.play()
+            controller.play()
         }
         .onDisappear {
-            player?.pause()
-            player = nil
+            controller.pause()
         }
+    }
+}
+
+@MainActor
+private final class VideoPlaybackController: ObservableObject {
+    let player: AVPlayer
+
+    init(url: URL) {
+        self.player = AVPlayer(url: url)
+    }
+
+    func play() {
+        prepareMediaPlaybackSession()
+        player.play()
+    }
+
+    func pause() {
+        player.pause()
     }
 }
 
