@@ -42,8 +42,8 @@ Working now:
 - Open available video attachments in a tap-to-play video preview.
 - Play available audio and voice attachments with a simple play/pause control.
 - Use the extracted WhatsApp chat wallpaper as the message background when `current_wallpaper.jpg` is present at the archive root.
-- Detect WhatsApp Status/Stories rows when message/session evidence such as `status@broadcast` or status/story media folders is present, and keep them out of normal direct-chat browsing.
-- Show a lightweight Chat Info screen with per-chat media filters for all media, photos, videos, and detected Stories/Status media.
+- Detect WhatsApp Status/Stories rows only from reliable message/session evidence such as `status@broadcast`, and keep them out of normal direct-chat browsing.
+- Show a lightweight Chat Info screen with per-chat media filters for all media, photos, videos, and detected Stories/Status media, with available local media prioritized.
 - Share photos and videos from their local preview sheets without uploading them.
 - Keep missing or unsupported media as placeholders.
 - Show conservative system/call placeholders without exposing raw sender IDs.

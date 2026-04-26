@@ -34,7 +34,7 @@ enum MediaAttachmentKind: String, Hashable {
         case .linkPreview:
             return "Link preview"
         case .call:
-            return "VOICE CALL"
+            return "Voice call"
         case .callOrSystem:
             return "Call or system message"
         case .system:
@@ -65,6 +65,7 @@ struct MediaMetadata: Hashable {
     let fileSize: Int64?
     let durationSeconds: Double?
     let isFileAvailableInArchive: Bool
+    let isFileReadableInArchive: Bool
     let kind: MediaAttachmentKind
     let source: MediaAttachmentSource
 
@@ -172,6 +173,10 @@ struct MessageRow: Identifiable, Hashable {
         return nil
     }
 
+    var isVoiceCallEvent: Bool {
+        media?.kind == .call || Self.isCallMessageType(messageType)
+    }
+
     private static func isSystemMessageType(_ value: Int?) -> Bool {
         value == 6 || value == 10
     }
@@ -208,6 +213,28 @@ struct ChatMediaItem: Identifiable, Hashable {
     let messageID: Int64
     let messageDate: Date?
     let media: MediaMetadata
+}
+
+struct ChatMediaLoadSummary: Hashable {
+    let totalRowsMatchingFilter: Int
+    let rowsScanned: Int
+    let displayedRows: Int
+    let rowsWithLocalPath: Int
+    let photoRows: Int
+    let videoRows: Int
+    let audioRows: Int
+    let otherRows: Int
+    let resolvedFileURLRows: Int
+    let existingFileRows: Int
+    let readableFileRows: Int
+    let missingOrUnresolvedRows: Int
+    let statusStoryRowsExcluded: Int
+    let queryCapMayHideRows: Bool
+}
+
+struct ChatMediaLibraryPage: Hashable {
+    let items: [ChatMediaItem]
+    let summary: ChatMediaLoadSummary
 }
 
 struct MessagePaginationCursor: Hashable {

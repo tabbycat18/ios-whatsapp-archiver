@@ -178,12 +178,13 @@ Chat wallpaper rendering is also lazy. The viewer downscales
 before using it as the message background. Wallpaper files are not copied into
 Git and full local paths are not shown in the normal UI.
 
-The viewer does not scan or preload all media globally. Missing, unavailable, or
-unsupported media stays as a placeholder. The first Chat Info media view queries
-media for the selected chat/session directly from SQLite, applies simple filters
-for all media, photos, videos, and detected Stories / Status, and caps each fetch
-so it does not become an archive-wide media scan. A richer media library remains
-future work.
+The viewer does not scan or preload all media globally. Missing or unavailable
+media stays as a placeholder, while unsupported metadata-only rows are kept out
+of the Chat Info media grid. The Chat Info media view queries media for the
+selected chat and related merged session IDs directly from SQLite, applies
+filters for all renderable media, photos, videos, and reliably detected Stories
+/ Status, prioritizes rows with local files, and caps each fetch so it does not
+become an archive-wide media scan. A richer media library remains future work.
 
 ## Not Yet Used
 

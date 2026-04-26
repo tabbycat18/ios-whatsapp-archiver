@@ -31,6 +31,7 @@ Build and run with full Xcode on an iOS simulator or device. Command Line Tools 
 - Discovers `ZWAMEDIAITEM` metadata when the table and columns are available.
 - Shows text messages, inline photos, tap-to-play video previews, simple audio playback, and conservative placeholders for unsupported media/system rows.
 - Opens a lightweight Chat Info view with per-chat media filters for all media, photos, videos, and detected Stories / Status.
+- Prioritizes locally available media in Chat Info while keeping missing or unresolved items as placeholders.
 - Checks whether referenced media files appear available under the selected archive root.
 - Uses the extracted WhatsApp chat wallpaper as the message background when a generic wallpaper file is present at the selected archive root.
 - Avoids showing raw JIDs or internal sender identifiers in the normal message UI.
@@ -67,7 +68,7 @@ sharing uses local file URLs through the system share sheet.
 - Loads media only for visible rows and does not scan or preload all archive media.
 - Supports pinch-to-zoom in the photo preview on iOS.
 - Shares photos and videos from the preview sheets through the system share sheet.
-- Provides a first lightweight Chat Info media view backed by direct per-chat SQLite queries.
+- Provides a first lightweight Chat Info media view backed by direct per-chat SQLite queries, with local files prioritized before unavailable placeholders.
 
 ### Milestone 2.5 Full-History Pagination
 
@@ -93,7 +94,7 @@ The app does not load every message at once because large WhatsApp chats can con
 - Media path resolution checks several archive-root-relative layouts, including `Media/` and `Message/Media/`. The normal UI does not print full private media paths.
 - Chat wallpaper resolution checks generic archive-root files named `current_wallpaper.jpg` and `current_wallpaper_dark.jpg`.
 - Media rendering is lazy. Images are downsampled before display, video thumbnails are generated only for visible video rows, and audio playback starts only after the user taps play.
-- The Chat Info media view queries media for the selected chat/session directly from SQLite and caps each filtered fetch. It is not a full archive-wide media library.
+- The Chat Info media view queries media for the selected chat/session directly from SQLite, includes related merged session IDs, prioritizes locally available renderable media, and caps each filtered fetch. It is not a full archive-wide media library.
 
 ## Development Data
 
@@ -136,6 +137,7 @@ The app also has an Open Archive action that can select either an extracted arch
 - Confirm chat list dates for duplicate-title conversations come from user-visible text, media, or call rows rather than security/system-only fragments.
 - Confirm media rendering does not break automatic older-message loading.
 - Confirm detected status/story-only entries appear under Stories / Status rather than as normal chats.
+- Confirm Chat Info -> Media shows available All, Photos, and Videos items before missing placeholders when the archive contains local files.
 - Avoid printing private message contents or full private filesystem paths during debugging.
 
 ## Large Archive Transfer Notes
@@ -167,7 +169,7 @@ Packaging may still be useful to test because one large file can be easier to tr
 
 ## Limitations
 
-- The Chat Info media view is intentionally lightweight and capped per filtered query; a full media library with richer browsing remains future work.
+- The Chat Info media view is intentionally lightweight and capped per filtered query; it prioritizes available local media but is not a complete archive-wide media browser.
 - Document, link-preview, location, contact-card, and sticker rendering remain placeholders.
 - ContactsV2 enrichment is intentionally conservative and may not resolve every historical contact edge case yet.
 - ContactsV2 improves identity resolution, but duplicate-title sessions can still represent either real separate chats or archive fragments that need conservative classification.

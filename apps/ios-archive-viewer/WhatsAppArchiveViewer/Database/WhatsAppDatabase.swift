@@ -24,6 +24,7 @@ private struct MediaPathResolution {
     let fileURL: URL?
     let fileName: String?
     let existsInArchive: Bool
+    let isReadable: Bool
 }
 
 private struct MediaClassificationInput {
@@ -523,6 +524,41 @@ final class WhatsAppDatabase {
         """
     }
 
+    private func audioMediaSQL() -> String {
+        let path = "lower(COALESCE(mi.ZMEDIALOCALPATH, mi.ZMEDIAURL, mi.ZTITLE, ''))"
+        return """
+        (m.ZMESSAGETYPE = 3
+        OR \(path) LIKE '%.aac'
+        OR \(path) LIKE '%.caf'
+        OR \(path) LIKE '%.m4a'
+        OR \(path) LIKE '%.mp3'
+        OR \(path) LIKE '%.ogg'
+        OR \(path) LIKE '%.opus'
+        OR \(path) LIKE '%.wav')
+        """
+    }
+
+    private func documentMediaSQL() -> String {
+        let path = "lower(COALESCE(mi.ZMEDIALOCALPATH, mi.ZMEDIAURL, mi.ZTITLE, ''))"
+        return """
+        (m.ZMESSAGETYPE = 8
+        OR \(path) LIKE '%.pdf'
+        OR \(path) LIKE '%.doc'
+        OR \(path) LIKE '%.docx'
+        OR \(path) LIKE '%.xls'
+        OR \(path) LIKE '%.xlsx'
+        OR \(path) LIKE '%.ppt'
+        OR \(path) LIKE '%.pptx'
+        OR \(path) LIKE '%.txt'
+        OR \(path) LIKE '%.rtf'
+        OR \(path) LIKE '%.zip')
+        """
+    }
+
+    private func mediaLibraryCandidateSQL() -> String {
+        "(\(photoMediaSQL()) OR \(videoMediaSQL()) OR \(audioMediaSQL()) OR \(documentMediaSQL()))"
+    }
+
     private func callMessageSQL(alias: String) -> String {
         guard messageColumns.contains("ZMESSAGETYPE") else {
             return "0"
@@ -628,25 +664,73 @@ final class WhatsAppDatabase {
         includeStatusStoriesInAll: Bool,
         limit: Int = 300
     ) throws -> [ChatMediaItem] {
+        try fetchChatMediaLibraryPage(
+            sessionIDs: sessionIDs,
+            filter: filter,
+            includeStatusStoriesInAll: includeStatusStoriesInAll,
+            limit: limit
+        ).items
+    }
+
+    func fetchChatMediaLibraryPage(
+        sessionIDs: [Int64],
+        filter: ChatMediaFilter,
+        includeStatusStoriesInAll: Bool,
+        limit: Int = 300
+    ) throws -> ChatMediaLibraryPage {
         guard mediaSchema?.canJoinMessages == true else {
-            return []
+            return ChatMediaLibraryPage(
+                items: [],
+                summary: ChatMediaLoadSummary(
+                    totalRowsMatchingFilter: 0,
+                    rowsScanned: 0,
+                    displayedRows: 0,
+                    rowsWithLocalPath: 0,
+                    photoRows: 0,
+                    videoRows: 0,
+                    audioRows: 0,
+                    otherRows: 0,
+                    resolvedFileURLRows: 0,
+                    existingFileRows: 0,
+                    readableFileRows: 0,
+                    missingOrUnresolvedRows: 0,
+                    statusStoryRowsExcluded: 0,
+                    queryCapMayHideRows: false
+                )
+            )
         }
 
         let sessionIDs = normalizedSessionIDs(sessionIDs)
         let placeholders = sessionPlaceholders(for: sessionIDs)
         let statusStorySQL = statusStoryMessageSQL(messageAlias: "m", chatAlias: "c")
+        let candidateSQL = mediaLibraryCandidateSQL()
         let filterSQL: String
         switch filter {
         case .all:
-            filterSQL = includeStatusStoriesInAll ? "1" : "NOT \(statusStorySQL)"
+            filterSQL = includeStatusStoriesInAll
+                ? candidateSQL
+                : "NOT \(statusStorySQL) AND \(candidateSQL)"
         case .photos:
             filterSQL = "NOT \(statusStorySQL) AND \(photoMediaSQL())"
         case .videos:
             filterSQL = "NOT \(statusStorySQL) AND \(videoMediaSQL())"
         case .statusStories:
-            filterSQL = statusStorySQL
+            filterSQL = "\(statusStorySQL) AND \(candidateSQL)"
         }
 
+        let totalRowsMatchingFilter = try countMediaRows(
+            sessionIDs: sessionIDs,
+            placeholders: placeholders,
+            filterSQL: filterSQL
+        )
+        let statusStoryRowsExcluded = filter == .statusStories
+            ? 0
+            : try countMediaRows(
+                sessionIDs: sessionIDs,
+                placeholders: placeholders,
+                filterSQL: statusStorySQL
+            )
+        let scanLimit = max(limit, min(limit * 10, 5_000))
         let sql = """
             SELECT
                 m.Z_PK,
@@ -661,16 +745,23 @@ final class WhatsAppDatabase {
             WHERE m.ZCHATSESSION IN (\(placeholders))
               AND mi.Z_PK IS NOT NULL
               AND \(filterSQL)
-            ORDER BY m.ZMESSAGEDATE DESC, m.Z_PK DESC
+            ORDER BY
+                CASE
+                    WHEN mi.ZMEDIALOCALPATH IS NOT NULL AND TRIM(mi.ZMEDIALOCALPATH) <> '' THEN 0
+                    ELSE 1
+                END,
+                m.ZMESSAGEDATE DESC,
+                m.Z_PK DESC
             LIMIT ?
             """
 
         let statement = try prepare(sql)
         defer { sqlite3_finalize(statement) }
         bindSessionIDs(sessionIDs, to: statement)
-        sqlite3_bind_int(statement, Int32(sessionIDs.count + 1), Int32(limit))
+        sqlite3_bind_int(statement, Int32(sessionIDs.count + 1), Int32(scanLimit))
 
         var items: [ChatMediaItem] = []
+        var scannedMedia: [MediaMetadata] = []
         var stepResult = sqlite3_step(statement)
         while stepResult == SQLITE_ROW {
             let messageID = sqlite3_column_int64(statement, 0)
@@ -682,6 +773,12 @@ final class WhatsAppDatabase {
                 groupEventType: int(statement, 3),
                 source: isStatusStory ? .statusStory : .normal
             ) else {
+                stepResult = sqlite3_step(statement)
+                continue
+            }
+            scannedMedia.append(media)
+
+            guard shouldIncludeInMediaLibrary(media, filter: filter, includeStatusStoriesInAll: includeStatusStoriesInAll) else {
                 stepResult = sqlite3_step(statement)
                 continue
             }
@@ -698,7 +795,125 @@ final class WhatsAppDatabase {
         }
 
         try throwIfStatementFailed(stepResult)
-        return items
+        let sortedItems = prioritizedMediaLibraryItems(items, limit: limit)
+        return ChatMediaLibraryPage(
+            items: sortedItems,
+            summary: mediaLoadSummary(
+                totalRowsMatchingFilter: totalRowsMatchingFilter,
+                rowsScanned: scannedMedia.count,
+                displayedItems: sortedItems,
+                statusStoryRowsExcluded: statusStoryRowsExcluded,
+                scanLimit: scanLimit
+            )
+        )
+    }
+
+    private func countMediaRows(
+        sessionIDs: [Int64],
+        placeholders: String,
+        filterSQL: String
+    ) throws -> Int {
+        let sql = """
+            SELECT COUNT(*)
+            FROM ZWAMESSAGE m
+            \(chatSessionJoinSQL())
+            \(mediaJoinSQL())
+            WHERE m.ZCHATSESSION IN (\(placeholders))
+              AND mi.Z_PK IS NOT NULL
+              AND \(filterSQL)
+            """
+        let statement = try prepare(sql)
+        defer { sqlite3_finalize(statement) }
+        bindSessionIDs(sessionIDs, to: statement)
+        let result = sqlite3_step(statement)
+        guard result == SQLITE_ROW else {
+            try throwIfStatementFailed(result)
+            return 0
+        }
+        return Int(sqlite3_column_int64(statement, 0))
+    }
+
+    private func shouldIncludeInMediaLibrary(
+        _ media: MediaMetadata,
+        filter: ChatMediaFilter,
+        includeStatusStoriesInAll: Bool
+    ) -> Bool {
+        switch filter {
+        case .all:
+            guard includeStatusStoriesInAll || media.source != .statusStory else {
+                return false
+            }
+            return isMediaLibraryDisplayable(media.kind)
+        case .photos:
+            return media.source != .statusStory && media.kind == .photo
+        case .videos:
+            return media.source != .statusStory && media.kind == .video
+        case .statusStories:
+            return media.source == .statusStory && isMediaLibraryDisplayable(media.kind)
+        }
+    }
+
+    private func isMediaLibraryDisplayable(_ kind: MediaAttachmentKind) -> Bool {
+        switch kind {
+        case .photo, .video, .audio, .sticker, .document:
+            return true
+        case .contact, .location, .linkPreview, .call, .callOrSystem, .system, .deleted, .media:
+            return false
+        }
+    }
+
+    private func prioritizedMediaLibraryItems(_ items: [ChatMediaItem], limit: Int) -> [ChatMediaItem] {
+        Array(
+            items.sorted { lhs, rhs in
+                if lhs.media.isFileAvailableInArchive != rhs.media.isFileAvailableInArchive {
+                    return lhs.media.isFileAvailableInArchive
+                }
+                switch (lhs.messageDate, rhs.messageDate) {
+                case let (lhsDate?, rhsDate?):
+                    if lhsDate != rhsDate {
+                        return lhsDate > rhsDate
+                    }
+                case (_?, nil):
+                    return true
+                case (nil, _?):
+                    return false
+                case (nil, nil):
+                    break
+                }
+                return lhs.messageID > rhs.messageID
+            }
+            .prefix(limit)
+        )
+    }
+
+    private func mediaLoadSummary(
+        totalRowsMatchingFilter: Int,
+        rowsScanned: Int,
+        displayedItems: [ChatMediaItem],
+        statusStoryRowsExcluded: Int,
+        scanLimit: Int
+    ) -> ChatMediaLoadSummary {
+        ChatMediaLoadSummary(
+            totalRowsMatchingFilter: totalRowsMatchingFilter,
+            rowsScanned: rowsScanned,
+            displayedRows: displayedItems.count,
+            rowsWithLocalPath: displayedItems.filter { $0.media.localPath?.isEmpty == false }.count,
+            photoRows: displayedItems.filter { $0.media.kind == .photo || $0.media.kind == .sticker }.count,
+            videoRows: displayedItems.filter { $0.media.kind == .video }.count,
+            audioRows: displayedItems.filter { $0.media.kind == .audio }.count,
+            otherRows: displayedItems.filter { item in
+                item.media.kind != .photo
+                    && item.media.kind != .sticker
+                    && item.media.kind != .video
+                    && item.media.kind != .audio
+            }.count,
+            resolvedFileURLRows: displayedItems.filter { $0.media.fileURL != nil }.count,
+            existingFileRows: displayedItems.filter(\.media.isFileAvailableInArchive).count,
+            readableFileRows: displayedItems.filter(\.media.isFileReadableInArchive).count,
+            missingOrUnresolvedRows: displayedItems.filter { !$0.media.isFileAvailableInArchive || $0.media.fileURL == nil }.count,
+            statusStoryRowsExcluded: statusStoryRowsExcluded,
+            queryCapMayHideRows: totalRowsMatchingFilter > rowsScanned && rowsScanned >= scanLimit
+        )
     }
 
     private func mergedChatSummaries(from rows: [ChatSummaryRow]) -> [ChatSummary] {
@@ -1122,6 +1337,7 @@ final class WhatsAppDatabase {
             fileSize: fileSize,
             durationSeconds: durationSeconds,
             isFileAvailableInArchive: resolution.existsInArchive,
+            isFileReadableInArchive: resolution.isReadable,
             kind: kind,
             source: source
         )
@@ -1129,7 +1345,7 @@ final class WhatsAppDatabase {
 
     private func resolveMediaPath(_ localPath: String?) -> MediaPathResolution {
         guard let relativePath = normalizedRelativeMediaPath(from: localPath) else {
-            return MediaPathResolution(relativePath: nil, fileURL: nil, fileName: nil, existsInArchive: false)
+            return MediaPathResolution(relativePath: nil, fileURL: nil, fileName: nil, existsInArchive: false, isReadable: false)
         }
 
         let archiveRoot = archiveRootURL.standardizedFileURL
@@ -1140,12 +1356,14 @@ final class WhatsAppDatabase {
         } ?? archiveRoot.appendingPathComponent(relativePath).standardizedFileURL
         let existsInArchive = isInsideArchive(candidate, archiveRoot: archiveRoot)
             && FileManager.default.fileExists(atPath: candidate.path)
+        let isReadable = existsInArchive && FileManager.default.isReadableFile(atPath: candidate.path)
 
         return MediaPathResolution(
             relativePath: relativePath,
             fileURL: existsInArchive ? candidate : nil,
             fileName: candidate.lastPathComponent,
-            existsInArchive: existsInArchive
+            existsInArchive: existsInArchive,
+            isReadable: isReadable
         )
     }
 

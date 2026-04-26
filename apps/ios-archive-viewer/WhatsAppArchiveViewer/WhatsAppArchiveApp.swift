@@ -160,8 +160,32 @@ final class ArchiveStore: ObservableObject {
     }
 
     func mediaItems(for chat: ChatSummary, filter: ChatMediaFilter) throws -> [ChatMediaItem] {
-        guard let database else { return [] }
-        return try database.fetchChatMediaItems(
+        try mediaLibraryPage(for: chat, filter: filter).items
+    }
+
+    func mediaLibraryPage(for chat: ChatSummary, filter: ChatMediaFilter) throws -> ChatMediaLibraryPage {
+        guard let database else {
+            return ChatMediaLibraryPage(
+                items: [],
+                summary: ChatMediaLoadSummary(
+                    totalRowsMatchingFilter: 0,
+                    rowsScanned: 0,
+                    displayedRows: 0,
+                    rowsWithLocalPath: 0,
+                    photoRows: 0,
+                    videoRows: 0,
+                    audioRows: 0,
+                    otherRows: 0,
+                    resolvedFileURLRows: 0,
+                    existingFileRows: 0,
+                    readableFileRows: 0,
+                    missingOrUnresolvedRows: 0,
+                    statusStoryRowsExcluded: 0,
+                    queryCapMayHideRows: false
+                )
+            )
+        }
+        return try database.fetchChatMediaLibraryPage(
             sessionIDs: chat.sessionIDs,
             filter: filter,
             includeStatusStoriesInAll: chat.classification == .statusStoryFragment

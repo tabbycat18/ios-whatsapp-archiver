@@ -17,7 +17,7 @@
 - Chat wallpaper rendering from generic archive-root `current_wallpaper.jpg` files.
 - Conservative WhatsApp Status/Stories detection from `status@broadcast` schema/session evidence, with status/story-only fragments separated from normal chats.
 - Photo preview zoom and photo/video local share-sheet support.
-- First lightweight Chat Info media view with per-chat filters.
+- First lightweight Chat Info media view with per-chat filters and available local media prioritized ahead of missing placeholders.
 
 ## Next
 

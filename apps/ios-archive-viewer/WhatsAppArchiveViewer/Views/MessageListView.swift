@@ -251,7 +251,9 @@ private struct ChatInfoView: View {
     let chat: ChatSummary
     @State private var selectedFilter: ChatMediaFilter = .all
     @State private var mediaItems: [ChatMediaItem] = []
+    @State private var mediaSummary: ChatMediaLoadSummary?
     @State private var mediaLoadError: String?
+    @State private var thumbnailFailureIDs = Set<String>()
 
     private var mediaTaskID: String {
         "\(chat.id)-\(selectedFilter.rawValue)"
@@ -285,12 +287,20 @@ private struct ChatInfoView: View {
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     } else {
+                        if let summaryText {
+                            Text(summaryText)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+
                         LazyVGrid(
                             columns: [GridItem(.adaptive(minimum: 104), spacing: 8)],
                             spacing: 8
                         ) {
                             ForEach(mediaItems) { item in
-                                ChatInfoMediaTile(item: item)
+                                ChatInfoMediaTile(item: item) {
+                                    thumbnailFailureIDs.insert(item.id)
+                                }
                             }
                         }
                         .padding(.vertical, 4)
@@ -314,22 +324,52 @@ private struct ChatInfoView: View {
         }
     }
 
+    private var summaryText: String? {
+        guard let mediaSummary else { return nil }
+        var parts = ["Showing \(mediaSummary.displayedRows.formatted()) items"]
+        if mediaSummary.missingOrUnresolvedRows > 0 {
+            parts.append("\(mediaSummary.missingOrUnresolvedRows.formatted()) unavailable")
+        }
+        if !thumbnailFailureIDs.isEmpty {
+            parts.append("\(thumbnailFailureIDs.count.formatted()) thumbnail failed")
+        }
+        return parts.joined(separator: " • ")
+    }
+
     private func loadMediaItems() {
         do {
-            mediaItems = try store.mediaItems(for: chat, filter: selectedFilter)
+            let page = try store.mediaLibraryPage(for: chat, filter: selectedFilter)
+            mediaItems = page.items
+            mediaSummary = page.summary
+            thumbnailFailureIDs = []
             mediaLoadError = nil
+            logMediaSummary(page.summary)
         } catch {
             mediaItems = []
+            mediaSummary = nil
+            thumbnailFailureIDs = []
             mediaLoadError = "Could not load media."
         }
+    }
+
+    private func logMediaSummary(_ summary: ChatMediaLoadSummary) {
+        #if DEBUG
+        print(
+            """
+            Media library counts: filter=\(selectedFilter.rawValue) matching=\(summary.totalRowsMatchingFilter) scanned=\(summary.rowsScanned) displayed=\(summary.displayedRows) local=\(summary.rowsWithLocalPath) photo=\(summary.photoRows) video=\(summary.videoRows) audio=\(summary.audioRows) other=\(summary.otherRows) resolved=\(summary.resolvedFileURLRows) exists=\(summary.existingFileRows) readable=\(summary.readableFileRows) missing=\(summary.missingOrUnresolvedRows) statusExcluded=\(summary.statusStoryRowsExcluded) capMayHideRows=\(summary.queryCapMayHideRows)
+            """
+        )
+        #endif
     }
 }
 
 private struct ChatInfoMediaTile: View {
     let item: ChatMediaItem
+    let onThumbnailFailed: () -> Void
     @StateObject private var playbackController = VideoPlaybackController()
     @State private var thumbnail: CGImage?
     @State private var didFailThumbnail = false
+    @State private var didReportThumbnailFailure = false
     @State private var photoPreviewItem: PhotoPreviewItem?
     @State private var isVideoPresented = false
 
@@ -371,7 +411,11 @@ private struct ChatInfoMediaTile: View {
 
     @ViewBuilder
     private var thumbnailContent: some View {
-        if let thumbnail {
+        if item.media.fileURL == nil || !item.media.isFileAvailableInArchive {
+            Image(systemName: systemImageName)
+                .font(.title2)
+                .foregroundStyle(.secondary)
+        } else if let thumbnail {
             Image(decorative: thumbnail, scale: 1, orientation: .up)
                 .resizable()
                 .scaledToFill()
@@ -433,6 +477,10 @@ private struct ChatInfoMediaTile: View {
             thumbnail = loadedThumbnail
         } else {
             didFailThumbnail = true
+            if !didReportThumbnailFailure {
+                didReportThumbnailFailure = true
+                onThumbnailFailed()
+            }
         }
     }
 }
