@@ -226,7 +226,7 @@ private struct MessageContentView: View {
 
     var body: some View {
         VStack(alignment: message.isFromMe ? .trailing : .leading, spacing: 6) {
-            if let media = message.media {
+            if let media = message.media, shouldShowAttachment(for: media) {
                 attachmentView(for: media)
             }
 
@@ -245,6 +245,15 @@ private struct MessageContentView: View {
             return nil
         }
         return text
+    }
+
+    private func shouldShowAttachment(for media: MediaMetadata) -> Bool {
+        switch media.kind {
+        case .photo, .video, .audio:
+            return true
+        case .contact, .location, .sticker, .document, .linkPreview, .call, .callOrSystem, .system, .deleted, .media:
+            return displayText == nil
+        }
     }
 
     @ViewBuilder
