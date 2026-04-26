@@ -19,6 +19,7 @@ struct MessageListView: View {
     @State private var messageSearchText = ""
     @State private var latestScrolledSearchQuery = ""
     private let olderLoadThreshold = 8
+    private let bottomSpacerID = "message-list-bottom-spacer"
 
     private var trimmedMessageSearchText: String {
         messageSearchText.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -60,6 +61,8 @@ struct MessageListView: View {
                                     loadOlderMessagesIfNeeded(appearingAt: index)
                                 }
                             }
+
+                        messageListBottomSpacer
                     }
                 }
                 .listStyle(.plain)
@@ -98,6 +101,15 @@ struct MessageListView: View {
             .listRowBackground(Color.clear)
     }
 
+    private var messageListBottomSpacer: some View {
+        Color.clear
+            .frame(height: 64)
+            .id(bottomSpacerID)
+            .listRowSeparator(.hidden)
+            .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
+            .listRowBackground(Color.clear)
+    }
+
     @ViewBuilder
     private var olderPaginationStatus: some View {
         if !isSearchingMessages, isLoadingOlder || olderMessagesErrorMessage != nil {
@@ -131,14 +143,14 @@ struct MessageListView: View {
     private func scrollToLatestMessageIfNeeded(using proxy: ScrollViewProxy, animated: Bool) {
         guard latestScrolledGeneration != initialMessageLoadGeneration else { return }
         latestScrolledGeneration = initialMessageLoadGeneration
-        guard let latestMessageID = messages.last?.id else { return }
+        guard !messages.isEmpty else { return }
         DispatchQueue.main.async {
             if animated {
                 withAnimation {
-                    proxy.scrollTo(latestMessageID, anchor: .bottom)
+                    proxy.scrollTo(bottomSpacerID, anchor: .bottom)
                 }
             } else {
-                proxy.scrollTo(latestMessageID, anchor: .bottom)
+                proxy.scrollTo(bottomSpacerID, anchor: .bottom)
             }
             didCompleteInitialScroll = true
         }
@@ -160,11 +172,11 @@ struct MessageListView: View {
             return
         }
         guard latestScrolledSearchQuery != trimmedMessageSearchText else { return }
-        latestScrolledSearchQuery = trimmedMessageSearchText
         guard let firstResultID = displayedMessages.first?.element.id else { return }
+        latestScrolledSearchQuery = trimmedMessageSearchText
         DispatchQueue.main.async {
             withAnimation {
-                proxy.scrollTo(firstResultID, anchor: .top)
+                proxy.scrollTo(firstResultID, anchor: UnitPoint(x: 0.5, y: 0.24))
             }
         }
     }
