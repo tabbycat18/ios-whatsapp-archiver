@@ -463,10 +463,72 @@ private struct MessageContentView: View {
             VideoAttachmentView(media: media)
         case .audio:
             AudioAttachmentView(messageID: message.id, media: media)
+        case .contact:
+            ContactAttachmentView(media: media)
         default:
             Text(media.kind.placeholderText)
                 .textSelection(.enabled)
         }
+    }
+}
+
+private struct ContactAttachmentView: View {
+    let media: MediaMetadata
+
+    private var displayName: String {
+        media.contactDisplayName ?? "Shared contact"
+    }
+
+    private var initials: String? {
+        let letters = displayName
+            .split(whereSeparator: { !$0.isLetter && !$0.isNumber })
+            .compactMap { word -> String? in
+                guard let letter = word.first(where: \.isLetter) else { return nil }
+                return String(letter)
+                    .folding(options: [.diacriticInsensitive, .caseInsensitive], locale: .current)
+                    .uppercased()
+            }
+            .prefix(2)
+            .joined()
+        return letters.isEmpty ? nil : letters
+    }
+
+    var body: some View {
+        HStack(spacing: 10) {
+            ZStack {
+                Circle()
+                    .fill(Color.accentColor.opacity(0.18))
+
+                if let initials {
+                    Text(initials)
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(Color.accentColor)
+                } else {
+                    Image(systemName: "person.crop.circle.fill")
+                        .font(.system(size: 24))
+                        .foregroundStyle(Color.accentColor)
+                }
+            }
+            .frame(width: 38, height: 38)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(displayName)
+                    .font(.subheadline.weight(.semibold))
+                    .lineLimit(2)
+                    .textSelection(.enabled)
+
+                Text("Contact card")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            Spacer(minLength: 0)
+        }
+        .frame(maxWidth: 260, alignment: .leading)
+        .padding(10)
+        .background(Color.secondary.opacity(0.08))
+        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .accessibilityElement(children: .combine)
     }
 }
 

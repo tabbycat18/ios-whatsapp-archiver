@@ -946,6 +946,8 @@ final class WhatsAppDatabase {
             fileURL: resolution.fileURL,
             fileName: fileName,
             title: title,
+            vCardName: vCardName,
+            vCardString: vCardString,
             mimeType: mimeType,
             fileSize: fileSize,
             durationSeconds: durationSeconds,

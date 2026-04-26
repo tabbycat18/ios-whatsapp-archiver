@@ -53,11 +53,45 @@ struct MediaMetadata: Hashable {
     let fileURL: URL?
     let fileName: String?
     let title: String?
+    let vCardName: String?
+    let vCardString: String?
     let mimeType: String?
     let fileSize: Int64?
     let durationSeconds: Double?
     let isFileAvailableInArchive: Bool
     let kind: MediaAttachmentKind
+
+    var contactDisplayName: String? {
+        DisplayNameSanitizer.friendlyName(vCardName)
+            ?? DisplayNameSanitizer.friendlyName(title)
+            ?? Self.vCardField(named: "FN", in: vCardString)
+            ?? Self.vCardNameComponents(in: vCardString)
+    }
+
+    private static func vCardField(named fieldName: String, in vCardString: String?) -> String? {
+        guard let vCardString else { return nil }
+        return vCardString
+            .split(whereSeparator: \.isNewline)
+            .compactMap { line in
+                let parts = line.split(separator: ":", maxSplits: 1, omittingEmptySubsequences: false)
+                guard parts.count == 2 else { return nil }
+                let key = parts[0].split(separator: ";", maxSplits: 1).first?.uppercased()
+                guard key == fieldName else { return nil }
+                let value = parts[1].replacingOccurrences(of: "\\;", with: ";")
+                return DisplayNameSanitizer.friendlyName(value)
+            }
+            .first
+    }
+
+    private static func vCardNameComponents(in vCardString: String?) -> String? {
+        guard let rawName = vCardField(named: "N", in: vCardString) else { return nil }
+        let components = rawName
+            .split(separator: ";")
+            .map { String($0).trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+        let displayName = components.reversed().joined(separator: " ")
+        return DisplayNameSanitizer.friendlyName(displayName)
+    }
 }
 
 struct MessageRow: Identifiable, Hashable {
