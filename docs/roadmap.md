@@ -1,18 +1,30 @@
 # Roadmap
 
-## Validated Milestone 1
+## Completed
 
-- Open real `ChatStorage.sqlite`.
-- Load chat list.
-- Open large chats.
-- Preserve message dates, order, and sender direction.
-- Keep the app responsive by loading the latest 500 messages.
+- Clean public repo split from the original Android viewer prototype.
+- Local iPhone backup extraction tool.
+- Native SwiftUI iPhone/iPad archive viewer.
+- Real `ChatStorage.sqlite` browsing.
+- Chat list loading from `ZWACHATSESSION`.
+- Per-chat message loading from `ZWAMESSAGE`.
+- Message dates, ordering, and sender direction validation.
+- Media metadata and path discovery merged on `main`.
+- Full-history pagination branch with latest 500 messages initially and older batches loaded on demand.
 
-## Follow-Up Work
+## Next
 
-- Validate media metadata discovery against real and synthetic schemas.
-- Render photos, videos, voice notes, and generic attachments.
-- Add `ContactsV2.sqlite` enrichment.
-- Add polished archive import persistence.
-- Add pagination or incremental loading beyond the latest 500 messages.
-- Add public synthetic fixtures that contain no private WhatsApp data.
+- Merge the Milestone 2.5 pagination PR.
+- Add first image rendering path.
+- Add video rendering.
+- Add audio and voice-note rendering.
+- Add `ContactsV2.sqlite` enrichment for better names and contact metadata.
+- Add polished archive import and persistent bookmark flow.
+- Improve performance for very large archives and media-heavy chats.
+- Add synthetic public test fixtures with no private WhatsApp data.
+
+## Maintainer Notes
+
+- `prototype-media-metadata-discovery` was superseded by `46c73eb Add media metadata discovery` on `main`.
+- Do not delete prototype branches as part of normal documentation or milestone work.
+- Keep private archives, exports, and generated HTML out of version control.

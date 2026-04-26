@@ -1,12 +1,65 @@
 # iOS WhatsApp Archive Viewer
 
-This is a new native SwiftUI app for local, read-only inspection of an extracted iOS WhatsApp archive. It is isolated from the original Windows/C++ Android `msgstore.db` viewer.
+This is a native SwiftUI iPhone and iPad app for local, read-only inspection of an extracted iOS WhatsApp archive. It is isolated from the original Windows/C++ Android `msgstore.db` viewer.
 
 Private WhatsApp data must not be committed. Keep `ChatStorage.sqlite`, `ContactsV2.sqlite`, `Media/`, `Message/`, and generated exports under ignored local data folders.
 
+## Open in Xcode
+
+Open the project from the repository root:
+
+```bash
+open apps/ios-archive-viewer/WhatsAppArchiveViewer.xcodeproj
+```
+
+Build and run with full Xcode on an iOS simulator or device. Command Line Tools alone are not enough for simulator builds.
+
+## What the App Does
+
+- Opens an extracted archive folder containing `ChatStorage.sqlite`, or `ChatStorage.sqlite` directly.
+- Copies `ChatStorage.sqlite` and SQLite sidecars into the app sandbox before opening them.
+- Opens SQLite with `SQLITE_OPEN_READONLY`.
+- Sets `PRAGMA query_only = ON`.
+- Loads chat sessions from `ZWACHATSESSION`.
+- Loads messages for the selected chat from `ZWAMESSAGE`.
+- Discovers `ZWAMEDIAITEM` metadata when the table and columns are available.
+- Shows text messages and media placeholders.
+- Checks whether referenced media files appear available under the selected archive root.
+
+The app does not render photos, videos, audio, thumbnails, or binary media yet.
+
+## Current State
+
+### Milestone 1 Validated
+
+- Opens a real extracted iPhone `ChatStorage.sqlite`.
+- Loads the chat list and large chats.
+- Preserves message order, dates, and sender direction.
+- Keeps the app responsive by loading only the latest batch for a selected chat.
+
+### Milestone 2 Media Metadata Discovery
+
+- Discovers available `ZWAMEDIAITEM` columns at runtime.
+- Joins media metadata to message rows when the schema supports it.
+- Shows clearer placeholders for empty-text media messages, such as photo, video, audio, or generic media attachments.
+- Attempts safe relative media path resolution under the selected archive root without loading media files.
+- Keeps the database read-only.
+
+### Milestone 2.5 Full-History Pagination
+
+- Opens a selected chat with only the latest 500 messages loaded initially.
+- Adds a top-of-list "Load older messages" control.
+- Loads older messages in additional batches.
+- Uses stable keyset pagination by message date and primary key instead of `OFFSET`.
+- Prepends older batches while keeping the UI ordered oldest-to-newest.
+- Keeps initial auto-scroll to the latest message, but does not jump back to the bottom after loading older messages.
+- Keeps media metadata and path discovery populated for older loaded messages.
+
+The app does not load every message at once because large WhatsApp chats can contain many thousands of rows. Incremental loading keeps memory use and UI updates bounded while still allowing full-history reading.
+
 ## Development Data
 
-For simulator development, copy a local development copy of `ChatStorage.sqlite` into the app container's Documents folder as:
+For simulator development, a local development copy of `ChatStorage.sqlite` can be placed in the app container's Documents folder as:
 
 ```text
 Documents/ChatStorage.sqlite
@@ -20,41 +73,28 @@ Documents/ChatStorage.sqlite-shm
 Documents/ChatStorage.sqlite-journal
 ```
 
-The app also has an Open Archive action that can select either an extracted archive folder containing `ChatStorage.sqlite` or the database file directly. Picking the containing folder is preferred because iOS grants access to SQLite sidecar files as well. The app copies `ChatStorage.sqlite` and any sidecars into its own Application Support folder, then opens that local copy with read-only flags and `PRAGMA query_only = ON`.
+The app also has an Open Archive action that can select either an extracted archive folder containing `ChatStorage.sqlite` or the database file directly. Picking the containing folder is preferred because the selected folder becomes the archive root for media availability checks. The app copies only the database and sidecars into Application Support; it does not copy media binaries into the app sandbox.
 
-## Current Scope
+## Testing Notes
 
-### Milestone 1 Validated
+- Test with a large chat and confirm the latest 500 messages appear first.
+- Tap "Load older messages" and confirm older rows prepend above the current messages.
+- Confirm ordering remains oldest-to-newest.
+- Confirm sender direction and dates remain correct.
+- Confirm media placeholders still appear.
+- Confirm the viewer does not auto-scroll back to newest after loading older messages.
+- Avoid printing private message contents or full private filesystem paths during debugging.
 
-- Opens a real extracted iPhone `ChatStorage.sqlite`.
-- Loads the chat list and large chats.
-- Preserves message order, dates, and sender direction.
-- Keeps the app responsive by loading only the latest 500 messages per selected chat.
+## Privacy Warnings
 
-### Milestone 2 Media Metadata Discovery
-
-- Loads chat sessions from `ZWACHATSESSION`.
-- Loads messages for the selected chat from `ZWAMESSAGE`.
-- Discovers available `ZWAMEDIAITEM` columns at runtime and joins media metadata when possible.
-- Shows chat title, message count, latest message date, sender direction, message date, and `ZTEXT`.
-- Shows clearer placeholders for empty-text media messages, such as photo, video, audio, or generic media attachments.
-- Attempts safe relative media path resolution under the selected archive root without loading media files.
-- Loads only the latest 500 messages per selected chat, sorted ascending in the message view.
-
-### Milestone 2.5 Full-History Pagination
-
-- Opens a selected chat with only the latest 500 messages loaded initially.
-- Adds a top-of-list control to load older messages incrementally in fixed-size batches.
-- Uses stable keyset pagination by message date and primary key instead of `OFFSET`.
-- Keeps loaded messages sorted oldest-to-newest while prepending older batches.
-- Keeps media metadata and safe path discovery available for older loaded messages without rendering media.
-- Does not load all messages, media binaries, or thumbnails at once.
-- Keeps private archive data local and ignored.
+- Do not commit extracted archives, WhatsApp databases, media folders, generated exports, or screenshots with private content.
+- Keep local archives under ignored folders such as `data/` or `exports/`.
+- Check `git status --short --ignored` before every commit.
 
 ## Limitations
 
 - Media rendering is not implemented yet.
 - Thumbnails and binary media are not loaded into memory yet.
-- There is no full import flow or persistent archive bookmark yet.
-- `ContactsV2.sqlite` is not used in this milestone.
-- Build validation requires full Xcode, not only Command Line Tools.
+- `ContactsV2.sqlite` is not used for contact enrichment yet.
+- Persistent archive bookmarks and polished import management are future work.
+- App document sharing through Finder is not configured yet; use the Files picker with a local or iCloud Drive archive folder.
