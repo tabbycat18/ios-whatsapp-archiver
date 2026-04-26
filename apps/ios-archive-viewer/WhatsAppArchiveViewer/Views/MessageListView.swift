@@ -143,7 +143,10 @@ private struct MessageBubbleView: View {
             return "You"
         }
         if isGroupChat {
-            return message.friendlySenderName ?? message.safeSenderPhoneNumber ?? "Unknown sender"
+            if let friendlyName = DisplayNameSanitizer.friendlyName(message.friendlySenderName) {
+                return friendlyName
+            }
+            return message.safeSenderPhoneNumber ?? "Unknown sender"
         }
         return nil
     }

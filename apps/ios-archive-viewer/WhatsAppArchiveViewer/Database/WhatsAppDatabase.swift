@@ -39,12 +39,215 @@ private struct MediaClassificationInput {
 
 private struct ChatSummaryRow {
     let id: Int64
+    let identityKey: String
     let contactJID: String?
     let contactIdentifier: String?
     let partnerName: String?
     let title: String
     let messageCount: Int
     let latestMessageDate: Date?
+}
+
+private struct ContactIdentity {
+    let key: String
+    let displayName: String?
+}
+
+private final class ContactsV2Resolver {
+    private var database: OpaquePointer?
+    private var identitiesByJID: [String: ContactIdentity] = [:]
+
+    init?(archiveRootURL: URL) {
+        let contactsURL = archiveRootURL.appendingPathComponent("ContactsV2.sqlite")
+        guard FileManager.default.fileExists(atPath: contactsURL.path) else {
+            return nil
+        }
+
+        var connection: OpaquePointer?
+        let result = sqlite3_open_v2(contactsURL.path, &connection, SQLITE_OPEN_READONLY | SQLITE_OPEN_FULLMUTEX, nil)
+        guard result == SQLITE_OK, let connection else {
+            if let connection {
+                sqlite3_close(connection)
+            }
+            return nil
+        }
+
+        database = connection
+        do {
+            try execute("PRAGMA query_only = ON")
+            try loadContacts()
+        } catch {
+            sqlite3_close(connection)
+            database = nil
+            return nil
+        }
+    }
+
+    deinit {
+        if let database {
+            sqlite3_close(database)
+        }
+    }
+
+    func identity(for jid: String?) -> ContactIdentity? {
+        guard let key = normalizedJID(jid) else { return nil }
+        return identitiesByJID[key]
+    }
+
+    private func loadContacts() throws {
+        guard try tableExists("ZWAADDRESSBOOKCONTACT") else { return }
+        let columns = try columns(in: "ZWAADDRESSBOOKCONTACT")
+        guard columns.contains("Z_PK") else { return }
+
+        let sql = """
+            SELECT
+                Z_PK,
+                \(select("ZWHATSAPPID", columns: columns)),
+                \(select("ZLID", columns: columns)),
+                \(select("ZFULLNAME", columns: columns)),
+                \(select("ZGIVENNAME", columns: columns)),
+                \(select("ZLASTNAME", columns: columns)),
+                \(select("ZBUSINESSNAME", columns: columns)),
+                \(select("ZHIGHLIGHTEDNAME", columns: columns)),
+                \(select("ZUSERNAME", columns: columns))
+            FROM ZWAADDRESSBOOKCONTACT
+            """
+        let statement = try prepare(sql)
+        defer { sqlite3_finalize(statement) }
+
+        var candidatesByJID: [String: [ContactIdentity]] = [:]
+        var stepResult = sqlite3_step(statement)
+        while stepResult == SQLITE_ROW {
+            let identity = ContactIdentity(
+                key: "contactsV2:\(sqlite3_column_int64(statement, 0))",
+                displayName: displayName(
+                    fullName: string(statement, 3),
+                    givenName: string(statement, 4),
+                    lastName: string(statement, 5),
+                    businessName: string(statement, 6),
+                    highlightedName: string(statement, 7),
+                    username: string(statement, 8)
+                )
+            )
+
+            for jid in [string(statement, 1), string(statement, 2)].compactMap(normalizedJID) {
+                candidatesByJID[jid, default: []].append(identity)
+            }
+            stepResult = sqlite3_step(statement)
+        }
+        try throwIfStatementFailed(stepResult)
+
+        identitiesByJID = candidatesByJID.compactMapValues { identities in
+            let keys = Set(identities.map(\.key))
+            guard keys.count == 1 else { return nil }
+            return identities[0]
+        }
+    }
+
+    private func displayName(
+        fullName: String?,
+        givenName: String?,
+        lastName: String?,
+        businessName: String?,
+        highlightedName: String?,
+        username: String?
+    ) -> String? {
+        let combinedName = [givenName, lastName]
+            .compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+            .joined(separator: " ")
+
+        return DisplayNameSanitizer.friendlyName(fullName)
+            ?? DisplayNameSanitizer.friendlyName(combinedName)
+            ?? DisplayNameSanitizer.friendlyName(businessName)
+            ?? DisplayNameSanitizer.friendlyName(highlightedName)
+            ?? DisplayNameSanitizer.friendlyName(username)
+    }
+
+    private func normalizedJID(_ value: String?) -> String? {
+        guard let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased(), !trimmed.isEmpty else {
+            return nil
+        }
+        guard !trimmed.contains(";"), !trimmed.contains(",") else {
+            return nil
+        }
+        if trimmed.contains("@s.whatsapp.net") || trimmed.contains("@lid") {
+            return trimmed
+        }
+        return nil
+    }
+
+    private func select(_ column: String, columns: Set<String>) -> String {
+        columns.contains(column) ? column : "NULL"
+    }
+
+    private func tableExists(_ table: String) throws -> Bool {
+        let statement = try prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ? LIMIT 1")
+        defer { sqlite3_finalize(statement) }
+        sqlite3_bind_text(statement, 1, table, -1, sqliteTransient)
+        let result = sqlite3_step(statement)
+        if result == SQLITE_ROW {
+            return true
+        }
+        if result == SQLITE_DONE {
+            return false
+        }
+        throw WhatsAppDatabaseError.queryFailed(lastErrorMessage)
+    }
+
+    private func columns(in table: String) throws -> Set<String> {
+        let statement = try prepare("PRAGMA table_info(\(table))")
+        defer { sqlite3_finalize(statement) }
+
+        var columns = Set<String>()
+        var stepResult = sqlite3_step(statement)
+        while stepResult == SQLITE_ROW {
+            if let column = string(statement, 1) {
+                columns.insert(column)
+            }
+            stepResult = sqlite3_step(statement)
+        }
+        try throwIfStatementFailed(stepResult)
+        return columns
+    }
+
+    private func execute(_ sql: String) throws {
+        var errorMessage: UnsafeMutablePointer<Int8>?
+        let result = sqlite3_exec(database, sql, nil, nil, &errorMessage)
+        if result != SQLITE_OK {
+            let message = errorMessage.map { String(cString: $0) } ?? lastErrorMessage
+            sqlite3_free(errorMessage)
+            throw WhatsAppDatabaseError.queryFailed(message)
+        }
+    }
+
+    private func prepare(_ sql: String) throws -> OpaquePointer {
+        var statement: OpaquePointer?
+        let result = sqlite3_prepare_v2(database, sql, -1, &statement, nil)
+        guard result == SQLITE_OK, let statement else {
+            throw WhatsAppDatabaseError.queryFailed(lastErrorMessage)
+        }
+        return statement
+    }
+
+    private func throwIfStatementFailed(_ result: Int32) throws {
+        guard result == SQLITE_DONE else {
+            throw WhatsAppDatabaseError.queryFailed(lastErrorMessage)
+        }
+    }
+
+    private var lastErrorMessage: String {
+        guard let database else { return "database is not open" }
+        return String(cString: sqlite3_errmsg(database))
+    }
+
+    private func string(_ statement: OpaquePointer, _ index: Int32) -> String? {
+        guard sqlite3_column_type(statement, index) != SQLITE_NULL,
+              let text = sqlite3_column_text(statement, index) else {
+            return nil
+        }
+        return String(cString: text)
+    }
 }
 
 enum WhatsAppDatabaseError: LocalizedError {
@@ -76,6 +279,7 @@ final class WhatsAppDatabase {
     private var messageColumns: Set<String> = []
     private var mediaSchema: MediaSchema?
     private var canJoinProfilePushNames = false
+    private var contactsResolver: ContactsV2Resolver?
 
     init(databaseURL: URL, archiveRootURL: URL? = nil, securityScopedURL: URL? = nil) throws {
         self.databaseURL = databaseURL
@@ -105,6 +309,7 @@ final class WhatsAppDatabase {
             messageColumns = try columns(in: "ZWAMESSAGE")
             mediaSchema = try discoverMediaSchema()
             canJoinProfilePushNames = try discoverProfilePushNameJoin()
+            contactsResolver = ContactsV2Resolver(archiveRootURL: self.archiveRootURL)
         } catch {
             if let database {
                 sqlite3_close(database)
@@ -181,7 +386,9 @@ final class WhatsAppDatabase {
             let contactJID = string(statement, 1)
             let contactIdentifier = string(statement, 2)
             let partnerName = string(statement, 3)
-            let title = DisplayNameSanitizer.friendlyName(partnerName)
+            let contactIdentity = contactsResolver?.identity(for: contactJID)
+            let title = DisplayNameSanitizer.friendlyName(contactIdentity?.displayName)
+                ?? DisplayNameSanitizer.friendlyName(partnerName)
                 ?? DisplayNameSanitizer.friendlyName(contactIdentifier)
                 ?? (isGroupJID(contactJID) ? "Group chat" : "Unknown chat")
             let latestMessageDate = date(statement, 8) ?? date(statement, 10) ?? date(statement, 9) ?? date(statement, 6)
@@ -189,6 +396,7 @@ final class WhatsAppDatabase {
             rows.append(
                 ChatSummaryRow(
                     id: id,
+                    identityKey: chatIdentityKey(id: id, contactJID: contactJID, contactIdentity: contactIdentity),
                     contactJID: contactJID,
                     contactIdentifier: contactIdentifier,
                     partnerName: partnerName,
@@ -202,6 +410,16 @@ final class WhatsAppDatabase {
 
         try throwIfStatementFailed(stepResult)
         return mergedChatSummaries(from: rows)
+    }
+
+    private func chatIdentityKey(id: Int64, contactJID: String?, contactIdentity: ContactIdentity?) -> String {
+        if let contactIdentity {
+            return contactIdentity.key
+        }
+        if let contactJID = contactJID?.trimmingCharacters(in: .whitespacesAndNewlines), !contactJID.isEmpty {
+            return "jid:\(contactJID)"
+        }
+        return "session:\(id)"
     }
 
     private func isGroupJID(_ value: String?) -> Bool {
@@ -269,12 +487,7 @@ final class WhatsAppDatabase {
     }
 
     private func mergedChatSummaries(from rows: [ChatSummaryRow]) -> [ChatSummary] {
-        let groupedRows = Dictionary(grouping: rows) { row -> String in
-            if let contactJID = row.contactJID?.trimmingCharacters(in: .whitespacesAndNewlines), !contactJID.isEmpty {
-                return "jid:\(contactJID)"
-            }
-            return "session:\(row.id)"
-        }
+        let groupedRows = Dictionary(grouping: rows, by: \.identityKey)
 
         var summaries = groupedRows.values.map { group -> ChatSummary in
             let sortedGroup = group.sorted { lhs, rhs in
@@ -297,7 +510,7 @@ final class WhatsAppDatabase {
             let messageCount = sortedGroup.reduce(0) { $0 + $1.messageCount }
             let latestMessageDate = sortedGroup.compactMap(\.latestMessageDate).max()
             let detailText = sessionIDs.count > 1
-                ? "\(sessionIDs.count) archive sessions, \(messageCount.formatted()) messages"
+                ? "\(sessionIDs.count) linked archive entries, \(messageCount.formatted()) messages"
                 : "\(messageCount.formatted()) messages"
 
             return ChatSummary(
@@ -317,14 +530,11 @@ final class WhatsAppDatabase {
         let duplicateTitleCounts = Dictionary(grouping: summaries, by: \.title)
             .mapValues(\.count)
 
-        var duplicateTitleIndexes: [String: Int] = [:]
         summaries = summaries.sorted(by: chatSummarySort).map { summary in
             let duplicateCount = duplicateTitleCounts[summary.title, default: 0]
             guard duplicateCount > 1 else {
                 return summary
             }
-            let duplicateIndex = duplicateTitleIndexes[summary.title, default: 0] + 1
-            duplicateTitleIndexes[summary.title] = duplicateIndex
             return ChatSummary(
                 id: summary.id,
                 sessionIDs: summary.sessionIDs,
@@ -332,7 +542,7 @@ final class WhatsAppDatabase {
                 contactIdentifier: summary.contactIdentifier,
                 partnerName: summary.partnerName,
                 title: summary.title,
-                detailText: "Archive session \(duplicateIndex) of \(duplicateCount), \(summary.detailText)",
+                detailText: "Separate archive entry, \(summary.detailText)",
                 messageCount: summary.messageCount,
                 latestMessageDate: summary.latestMessageDate,
                 searchableTitle: summary.searchableTitle
@@ -414,6 +624,7 @@ final class WhatsAppDatabase {
                     groupMemberFirstName: string(statement, 5),
                     groupMemberJID: string(statement, 6),
                     profilePushName: string(statement, 7),
+                    contactsDisplayName: contactsResolver?.identity(for: string(statement, 6))?.displayName,
                     text: string(statement, 8),
                     messageDate: date(statement, 9),
                     messageType: messageType,

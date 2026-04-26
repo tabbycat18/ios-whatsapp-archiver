@@ -23,7 +23,8 @@ Build and run with full Xcode on an iOS simulator or device. Command Line Tools 
 - Loads chat sessions from `ZWACHATSESSION`.
 - Searches loaded chat titles in memory.
 - Loads messages for the selected chat from `ZWAMESSAGE`.
-- Merges exact duplicate chat sessions only when they share the same `ZCONTACTJID`.
+- Uses `ContactsV2.sqlite` when available to improve contact names and link phone-JID/`@lid` sessions only when they map to the same contact row.
+- Merges duplicate chat sessions only when they share a strong identifier, such as the same `ZCONTACTJID` or the same unambiguous ContactsV2 identity.
 - Discovers `ZWAMEDIAITEM` metadata when the table and columns are available.
 - Shows text messages and conservative media/system placeholders.
 - Checks whether referenced media files appear available under the selected archive root.
@@ -64,10 +65,10 @@ The app does not load every message at once because large WhatsApp chats can con
 
 - Chat search filters loaded chat titles only. It does not search message contents.
 - Raw JIDs and internal sender identifiers are hidden in the normal UI.
-- Group sender names use friendly names when the archive provides one, including profile push names stored in `ChatStorage.sqlite`. Unsaved senders may show a safely extracted phone number only from classic phone-based WhatsApp JIDs. `@lid` identifiers and unresolved sender tokens are treated as opaque, so the UI shows "Unknown sender" rather than risk showing a wrong name or number.
+- Group sender names use friendly names when the archive provides one, including profile push names stored in `ChatStorage.sqlite` and optional ContactsV2 names. Unsaved senders may show a safely extracted phone number only from classic phone-based WhatsApp JIDs. `@lid` identifiers and unresolved sender tokens are treated as opaque, so the UI shows "Unknown sender" rather than risk showing a wrong name or number.
 - Message classification is conservative. Known media placeholders, likely voice call rows, deleted rows, and system notices are labeled without exposing raw database identifiers. Unknown mappings stay generic instead of guessing unsupported WhatsApp internals.
 - Chat sorting prefers the latest real user-visible conversation row when possible and excludes known system-notice message types from the primary latest-date calculation. It falls back to broader activity dates only when no relevant message date is available.
-- Split sessions can exist in old archives. The viewer merges exact same-JID sessions, but does not merge rows by title alone because that can combine unrelated people with the same display name.
+- Split sessions can exist in old archives. The viewer merges sessions with strong identity evidence, but does not merge rows by title alone because that can combine unrelated people with the same display name. Duplicate-title rows that cannot be linked safely stay as separate archive entries.
 - Media path resolution checks several archive-root-relative layouts, including `Media/` and `Message/Media/`, without loading media binaries.
 
 ## Development Data
@@ -133,7 +134,7 @@ Packaging may still be useful to test because one large file can be easier to tr
 
 - Media rendering is not implemented yet.
 - Thumbnails and binary media are not loaded into memory yet.
-- `ContactsV2.sqlite` is not used for contact enrichment yet.
+- ContactsV2 enrichment is intentionally conservative and may not resolve every historical contact edge case yet.
 - Persistent archive bookmarks and polished import management are future work.
 - App document sharing through Finder is not configured yet; use the Files picker with a local or iCloud Drive archive folder.
 - Zip/package import is not implemented yet.

@@ -29,6 +29,7 @@ Not every archive has every SQLite sidecar. Media folder layout can vary by What
 - `ZWACHATSESSION`: chat/session metadata used for chat list rows, message counts, and latest message dates.
 - `ZWAMESSAGE`: message rows for the selected chat.
 - `ZWAMEDIAITEM`: optional media metadata joined to messages when the table exists and has a message relationship column.
+- `ContactsV2.sqlite` / `ZWAADDRESSBOOKCONTACT`: optional contact metadata used read-only when present to improve names and connect phone-JID/`@lid` sessions only through unambiguous contact rows.
 
 ## Current Fields
 
@@ -69,13 +70,14 @@ private ranking or filtering logic not yet mapped by this project.
 ## Split Sessions
 
 WhatsApp archives can contain multiple `ZWACHATSESSION` rows that look like the
-same visible chat. The viewer merges sessions only when they share the exact
-same non-empty `ZCONTACTJID`, then queries messages across all merged session
-IDs with the same `(ZMESSAGEDATE, Z_PK)` keyset pagination.
+same visible chat. The viewer merges sessions only when they have strong
+identity evidence, such as the exact same non-empty `ZCONTACTJID` or a shared
+unambiguous ContactsV2 contact identity. Merged chats query messages across all
+related session IDs with the same `(ZMESSAGEDATE, Z_PK)` keyset pagination.
 
 The viewer does not merge by display title alone because unrelated people or
 groups can share the same visible title. Same-title sessions remain separate in
-the chat list and are marked as archive sessions without exposing raw JIDs.
+the chat list as separate archive entries without exposing raw JIDs.
 
 ## Message Classification
 
@@ -91,7 +93,8 @@ group-event type, and media metadata:
 The exact private WhatsApp meaning of every type value is not fully mapped.
 `@lid` identifiers are treated as opaque internal identifiers and are not
 converted to phone numbers. Unsaved group senders can remain "Unknown sender"
-when no friendly name, profile push name, or safe phone-based JID is available.
+when no friendly name, ContactsV2 name, profile push name, or safe phone-based
+JID is available.
 
 ## Media State
 
@@ -107,4 +110,6 @@ Media rendering is not implemented yet. The viewer does not load thumbnails, pho
 
 ## Not Yet Used
 
-`ContactsV2.sqlite` is extracted and documented as private data, but it is not used for contact enrichment yet.
+`ContactsV2.sqlite` is extracted and documented as private data. The viewer uses
+it only for conservative read-only enrichment when identifiers map
+unambiguously; broader contact enrichment remains future work.

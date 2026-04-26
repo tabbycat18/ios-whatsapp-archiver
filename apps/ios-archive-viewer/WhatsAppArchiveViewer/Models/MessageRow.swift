@@ -67,6 +67,7 @@ struct MessageRow: Identifiable, Hashable {
     let groupMemberFirstName: String?
     let groupMemberJID: String?
     let profilePushName: String?
+    let contactsDisplayName: String?
     let text: String?
     let messageDate: Date?
     let messageType: Int?
@@ -81,6 +82,7 @@ struct MessageRow: Identifiable, Hashable {
     var friendlySenderName: String? {
         DisplayNameSanitizer.friendlyName(groupMemberContactName)
             ?? DisplayNameSanitizer.friendlyName(groupMemberFirstName)
+            ?? DisplayNameSanitizer.friendlyName(contactsDisplayName)
             ?? DisplayNameSanitizer.friendlyName(pushName)
             ?? DisplayNameSanitizer.friendlyName(profilePushName)
     }

@@ -17,7 +17,7 @@
 
 - Merge the Milestone 2.5 pagination PR.
 - Continue auditing WhatsApp private message-type mappings with public fixtures where possible.
-- Improve phone-JID and `@lid` migration handling for split one-to-one chats without unsafe title-only merging.
+- Continue validating ContactsV2-backed phone-JID and `@lid` migration handling for split one-to-one chats without unsafe title-only merging.
 - Finish large archive transfer experiment results with the
   [packaged archive transfer experiments](transfer-experiments.md).
 - Add packaged archive import support.

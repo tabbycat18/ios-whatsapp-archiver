@@ -40,12 +40,13 @@ Working now:
 - Read large chats incrementally by scrolling upward to load older messages.
 - Show media metadata and placeholders.
 - Show conservative system/call placeholders without exposing raw sender IDs.
+- Use `ContactsV2.sqlite` when available for conservative contact-name and split-session resolution.
 - Detect whether referenced media files appear available in the selected archive.
 
 Not implemented yet:
 
 - Photo, video, and audio preview.
-- `ContactsV2.sqlite` enrichment.
+- Complete `ContactsV2.sqlite` enrichment for every historical contact edge case.
 - Direct zip/package import.
 - Non-Xcode installation or distribution.
 
