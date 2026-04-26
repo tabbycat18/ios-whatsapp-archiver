@@ -97,7 +97,9 @@ private struct ChatSummaryDraft {
 private final class ProfilePhotoResolver {
     private let archiveRootURL: URL
     private let fileManager: FileManager
-    private var resolvedURLsByCacheKey: [String: URL?] = [:]
+    private var resolvedURLsByCacheKey: [String: URL] = [:]
+    private var unresolvedCacheKeys = Set<String>()
+    private var indexedProfilePhotos: [ProfilePhotoCandidate]?
 
     init(archiveRootURL: URL, fileManager: FileManager = .default) {
         self.archiveRootURL = archiveRootURL.standardizedFileURL
@@ -112,9 +114,16 @@ private final class ProfilePhotoResolver {
         if let cachedURL = resolvedURLsByCacheKey[cacheKey] {
             return cachedURL
         }
+        if unresolvedCacheKeys.contains(cacheKey) {
+            return nil
+        }
 
         let resolvedURL = resolveProfilePhotoURL(candidateFileNames: candidateFileNames)
-        resolvedURLsByCacheKey[cacheKey] = resolvedURL
+        if let resolvedURL {
+            resolvedURLsByCacheKey[cacheKey] = resolvedURL
+        } else {
+            unresolvedCacheKeys.insert(cacheKey)
+        }
         return resolvedURL
     }
 
@@ -133,7 +142,76 @@ private final class ProfilePhotoResolver {
                 }
             }
         }
+        return resolveProfilePhotoURLFromIndex(candidateFileNames: candidateFileNames)
+    }
+
+    private func resolveProfilePhotoURLFromIndex(candidateFileNames: [String]) -> URL? {
+        let indexedPhotos = indexedProfilePhotoCandidates()
+        guard !indexedPhotos.isEmpty else { return nil }
+
+        let candidateTokens = Set(candidateFileNames.map(normalizedToken).filter { !$0.isEmpty })
+        for photo in indexedPhotos where candidateTokens.contains(photo.normalizedFileName) {
+            return photo.url
+        }
+
+        for token in candidateTokens.sorted(by: { $0.count > $1.count }) where token.count >= 6 {
+            if let photo = indexedPhotos.first(where: { $0.normalizedFileName.contains(token) }) {
+                return photo.url
+            }
+        }
+
         return nil
+    }
+
+    private func indexedProfilePhotoCandidates() -> [ProfilePhotoCandidate] {
+        if let indexedProfilePhotos {
+            return indexedProfilePhotos
+        }
+
+        let keys: Set<URLResourceKey> = [.isRegularFileKey, .isReadableKey, .isHiddenKey]
+        let options: FileManager.DirectoryEnumerationOptions = [.skipsHiddenFiles, .skipsPackageDescendants]
+        var candidates: [ProfilePhotoCandidate] = []
+        var seenPaths = Set<String>()
+
+        for directory in Self.profileDirectories {
+            let directoryURL = archiveRootURL.appendingPathComponent(directory, isDirectory: true)
+            var isDirectory: ObjCBool = false
+            guard fileManager.fileExists(atPath: directoryURL.path, isDirectory: &isDirectory),
+                  isDirectory.boolValue,
+                  let enumerator = fileManager.enumerator(
+                    at: directoryURL,
+                    includingPropertiesForKeys: Array(keys),
+                    options: options
+                  )
+            else {
+                continue
+            }
+
+            for case let fileURL as URL in enumerator {
+                guard seenPaths.insert(fileURL.path).inserted,
+                      isPotentialProfileImage(fileURL),
+                      let values = try? fileURL.resourceValues(forKeys: keys),
+                      values.isRegularFile == true,
+                      values.isReadable != false,
+                      values.isHidden != true
+                else {
+                    continue
+                }
+
+                let fileName = fileURL.deletingPathExtension().lastPathComponent
+                let normalizedFileName = normalizedToken(fileName)
+                guard normalizedFileName.count >= 5 else { continue }
+                candidates.append(ProfilePhotoCandidate(url: fileURL.standardizedFileURL, normalizedFileName: normalizedFileName))
+            }
+        }
+
+        indexedProfilePhotos = candidates
+        return candidates
+    }
+
+    private func isPotentialProfileImage(_ url: URL) -> Bool {
+        let fileExtension = url.pathExtension.lowercased()
+        return fileExtension.isEmpty || Self.imageExtensions.contains(fileExtension) || Self.extraImageLikeExtensions.contains(fileExtension)
     }
 
     private func isReadableFile(_ url: URL) -> Bool {
@@ -207,9 +285,22 @@ private final class ProfilePhotoResolver {
         "Profile",
         "Avatars",
         "Media/Profile Pictures",
-        "Media/ProfilePictures"
+        "Media/ProfilePictures",
+        "Library/Caches/Profile Pictures",
+        "Library/Caches/ProfilePictures",
+        "Library/Caches/Profile Photos",
+        "Library/Caches/ProfilePhotos",
+        "Library/Caches/Profiles",
+        "Library/Caches/Profile",
+        "Library/Caches/Avatars"
     ]
     private static let imageExtensions = ["jpg", "jpeg", "png", "heic", "heif"]
+    private static let extraImageLikeExtensions = ["jpe", "jfif", "thumb"]
+}
+
+private struct ProfilePhotoCandidate {
+    let url: URL
+    let normalizedFileName: String
 }
 
 private final class ContactsV2Resolver {
