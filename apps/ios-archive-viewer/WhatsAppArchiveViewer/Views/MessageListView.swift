@@ -314,7 +314,7 @@ private struct MessageBubbleView: View {
                 MessageContentView(message: message)
                     .padding(.horizontal, 12)
                     .padding(.vertical, 8)
-                    .background(message.isFromMe ? Color.green.opacity(0.18) : Color.gray.opacity(0.12))
+                    .background(message.isFromMe ? Color.green.opacity(0.82) : Color.white.opacity(0.94))
                     .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
                     .textSelection(.enabled)
 
