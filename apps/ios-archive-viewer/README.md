@@ -26,15 +26,19 @@ Build and run with full Xcode on an iOS simulator or device. Command Line Tools 
 - Uses `ContactsV2.sqlite` when available to improve contact names and link phone-JID/`@lid` sessions only when they map to the same contact row.
 - Merges duplicate chat sessions only when they share a strong identifier, such as the same `ZCONTACTJID` or the same unambiguous ContactsV2 identity.
 - Classifies unresolved duplicate-title entries conservatively so real separate conversations stay visible while technical archive fragments do not clutter normal browsing.
+- Classifies likely WhatsApp Status/Stories rows only when reliable message/session/path evidence is present, such as `status@broadcast` or status/story media folders.
+- Separates detected status/story-only fragments into a Stories / Status section instead of showing them as normal conversations.
 - Discovers `ZWAMEDIAITEM` metadata when the table and columns are available.
 - Shows text messages, inline photos, tap-to-play video previews, simple audio playback, and conservative placeholders for unsupported media/system rows.
+- Opens a lightweight Chat Info view with per-chat media filters for all media, photos, videos, and detected Stories / Status.
 - Checks whether referenced media files appear available under the selected archive root.
 - Uses the extracted WhatsApp chat wallpaper as the message background when a generic wallpaper file is present at the selected archive root.
 - Avoids showing raw JIDs or internal sender identifiers in the normal message UI.
 - Shows safely extracted phone numbers for unsaved group senders when the sender JID can be reduced to digits only.
 
 Media files stay local. The app renders only visible message attachments lazily
-and keeps missing or unresolved files as placeholders.
+and keeps missing or unresolved files as placeholders. Photo and video preview
+sharing uses local file URLs through the system share sheet.
 
 ## Current State
 
@@ -61,6 +65,9 @@ and keeps missing or unresolved files as placeholders.
 - Shows the archive wallpaper behind messages when `current_wallpaper.jpg` or `current_wallpaper_dark.jpg` exists next to `ChatStorage.sqlite`.
 - Keeps unsupported, missing, or unreadable media as placeholders.
 - Loads media only for visible rows and does not scan or preload all archive media.
+- Supports pinch-to-zoom in the photo preview on iOS.
+- Shares photos and videos from the preview sheets through the system share sheet.
+- Provides a first lightweight Chat Info media view backed by direct per-chat SQLite queries.
 
 ### Milestone 2.5 Full-History Pagination
 
@@ -82,9 +89,11 @@ The app does not load every message at once because large WhatsApp chats can con
 - Chat sorting prefers the latest real user-visible conversation row when possible and excludes known system-notice message types from the primary latest-date calculation. It falls back to broader activity dates only when no relevant message date is available.
 - Split sessions can exist in old archives. The viewer merges sessions with strong identity evidence, but does not merge rows by title alone because that can combine unrelated people with the same display name.
 - Duplicate-title rows with real user-visible text, media, or call evidence stay visible as separate conversations. Duplicate/system-only rows and tiny no-visible-message archive fragments are hidden from normal browsing and chat-title search instead of being merged or deleted. Uncertain larger archive entries remain visible with a cautious label.
+- Status/story rows can be stored separately from direct chat messages. The viewer excludes reliably detected status/story rows from normal chat message loading and keeps status/story-only sessions in a separate Stories / Status section. It does not classify by date alone.
 - Media path resolution checks several archive-root-relative layouts, including `Media/` and `Message/Media/`. The normal UI does not print full private media paths.
 - Chat wallpaper resolution checks generic archive-root files named `current_wallpaper.jpg` and `current_wallpaper_dark.jpg`.
 - Media rendering is lazy. Images are downsampled before display, video thumbnails are generated only for visible video rows, and audio playback starts only after the user taps play.
+- The Chat Info media view queries media for the selected chat/session directly from SQLite and caps each filtered fetch. It is not a full archive-wide media library.
 
 ## Development Data
 
@@ -114,6 +123,8 @@ The app also has an Open Archive action that can select either an extracted arch
 - Confirm sender direction and dates remain correct.
 - Confirm media placeholders still appear.
 - Confirm available photos render inline without large layout jumps.
+- Confirm photo preview pinch-to-zoom works.
+- Confirm photo and video preview sharing opens the system share sheet.
 - Confirm available videos open in the video preview only after tapping.
 - Confirm available audio or voice rows can play and pause.
 - Confirm the chat wallpaper appears behind messages when `current_wallpaper.jpg` is present in the selected archive folder.
@@ -124,6 +135,7 @@ The app also has an Open Archive action that can select either an extracted arch
 - Confirm unresolved group senders show "Unknown sender" instead of raw opaque tokens.
 - Confirm chat list dates for duplicate-title conversations come from user-visible text, media, or call rows rather than security/system-only fragments.
 - Confirm media rendering does not break automatic older-message loading.
+- Confirm detected status/story-only entries appear under Stories / Status rather than as normal chats.
 - Avoid printing private message contents or full private filesystem paths during debugging.
 
 ## Large Archive Transfer Notes
@@ -155,7 +167,7 @@ Packaging may still be useful to test because one large file can be easier to tr
 
 ## Limitations
 
-- The per-chat media library is not implemented yet.
+- The Chat Info media view is intentionally lightweight and capped per filtered query; a full media library with richer browsing remains future work.
 - Document, link-preview, location, contact-card, and sticker rendering remain placeholders.
 - ContactsV2 enrichment is intentionally conservative and may not resolve every historical contact edge case yet.
 - ContactsV2 improves identity resolution, but duplicate-title sessions can still represent either real separate chats or archive fragments that need conservative classification.

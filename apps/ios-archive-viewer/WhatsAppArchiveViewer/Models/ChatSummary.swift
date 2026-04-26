@@ -3,6 +3,7 @@ import Foundation
 enum ChatSessionClassification: String, Hashable {
     case normalConversation
     case separateConversation
+    case statusStoryFragment
     case archiveFragment
     case systemOnlyFragment
     case unknown

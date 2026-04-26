@@ -7,6 +7,7 @@ import UIKit
 #endif
 
 struct MessageListView: View {
+    @EnvironmentObject private var store: ArchiveStore
     let chat: ChatSummary
     let messages: [MessageRow]
     let isLoadingOlder: Bool
@@ -22,6 +23,7 @@ struct MessageListView: View {
     @State private var messageSearchText = ""
     @State private var latestScrolledSearchQuery = ""
     @State private var latestScrolledSearchResultID: Int64?
+    @State private var isChatInfoPresented = false
     private let olderLoadThreshold = 8
     private let bottomSpacerID = "message-list-bottom-spacer"
 
@@ -90,6 +92,20 @@ struct MessageListView: View {
         }
         .navigationTitle(chat.title)
         .searchable(text: $messageSearchText, prompt: "Search messages")
+        .toolbar {
+            ToolbarItem(placement: .primaryAction) {
+                Button {
+                    isChatInfoPresented = true
+                } label: {
+                    Image(systemName: "info.circle")
+                }
+                .accessibilityLabel("Chat info")
+            }
+        }
+        .sheet(isPresented: $isChatInfoPresented) {
+            ChatInfoView(chat: chat)
+                .environmentObject(store)
+        }
         #if os(iOS)
         .navigationBarTitleDisplayMode(.inline)
         #endif
@@ -100,14 +116,14 @@ struct MessageListView: View {
             .font(.caption)
             .foregroundStyle(.secondary)
             .frame(maxWidth: .infinity)
-            .padding(.vertical, 12)
+            .padding(.vertical, 6)
             .listRowSeparator(.hidden)
             .listRowBackground(Color.clear)
     }
 
     private var messageListBottomSpacer: some View {
         Color.clear
-            .frame(height: 32)
+            .frame(height: 16)
             .id(bottomSpacerID)
             .listRowSeparator(.hidden)
             .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
@@ -181,8 +197,10 @@ struct MessageListView: View {
         latestScrolledSearchQuery = trimmedMessageSearchText
         latestScrolledSearchResultID = firstResultID
         DispatchQueue.main.async {
-            withAnimation {
-                proxy.scrollTo(firstResultID, anchor: .center)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.08) {
+                withAnimation {
+                    proxy.scrollTo(firstResultID, anchor: .center)
+                }
             }
         }
     }
@@ -223,6 +241,198 @@ private struct ChatWallpaperBackgroundView: View {
             image = loadedImage
         } else {
             didFail = true
+        }
+    }
+}
+
+private struct ChatInfoView: View {
+    @EnvironmentObject private var store: ArchiveStore
+    @Environment(\.dismiss) private var dismiss
+    let chat: ChatSummary
+    @State private var selectedFilter: ChatMediaFilter = .all
+    @State private var mediaItems: [ChatMediaItem] = []
+    @State private var mediaLoadError: String?
+
+    private var mediaTaskID: String {
+        "\(chat.id)-\(selectedFilter.rawValue)"
+    }
+
+    var body: some View {
+        NavigationStack {
+            List {
+                Section {
+                    LabeledContent("Title", value: chat.title)
+                    LabeledContent("Messages", value: chat.messageCount.formatted())
+                    if chat.classification == .statusStoryFragment {
+                        LabeledContent("Type", value: "Stories / Status")
+                    }
+                }
+
+                Section("Media") {
+                    Picker("Media", selection: $selectedFilter) {
+                        ForEach(ChatMediaFilter.allCases) { filter in
+                            Text(filter.title).tag(filter)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+
+                    if let mediaLoadError {
+                        Text(mediaLoadError)
+                            .font(.caption)
+                            .foregroundStyle(.red)
+                    } else if mediaItems.isEmpty {
+                        Text("No media")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    } else {
+                        LazyVGrid(
+                            columns: [GridItem(.adaptive(minimum: 104), spacing: 8)],
+                            spacing: 8
+                        ) {
+                            ForEach(mediaItems) { item in
+                                ChatInfoMediaTile(item: item)
+                            }
+                        }
+                        .padding(.vertical, 4)
+                    }
+                }
+            }
+            .navigationTitle(chat.classification == .statusStoryFragment ? "Stories / Status" : "Chat Info")
+            #if os(iOS)
+            .navigationBarTitleDisplayMode(.inline)
+            #endif
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Done") {
+                        dismiss()
+                    }
+                }
+            }
+            .task(id: mediaTaskID) {
+                loadMediaItems()
+            }
+        }
+    }
+
+    private func loadMediaItems() {
+        do {
+            mediaItems = try store.mediaItems(for: chat, filter: selectedFilter)
+            mediaLoadError = nil
+        } catch {
+            mediaItems = []
+            mediaLoadError = "Could not load media."
+        }
+    }
+}
+
+private struct ChatInfoMediaTile: View {
+    let item: ChatMediaItem
+    @StateObject private var playbackController = VideoPlaybackController()
+    @State private var thumbnail: CGImage?
+    @State private var didFailThumbnail = false
+    @State private var photoPreviewItem: PhotoPreviewItem?
+    @State private var isVideoPresented = false
+
+    var body: some View {
+        Button {
+            openPreview()
+        } label: {
+            ZStack(alignment: .bottomTrailing) {
+                thumbnailContent
+                    .frame(height: 104)
+                    .frame(maxWidth: .infinity)
+                    .background(Color.secondary.opacity(0.12))
+                    .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+
+                if item.media.source == .statusStory {
+                    Image(systemName: "circle.dashed")
+                        .font(.caption)
+                        .foregroundStyle(.white)
+                        .padding(5)
+                        .background(.black.opacity(0.55), in: Circle())
+                        .padding(5)
+                }
+            }
+        }
+        .buttonStyle(.plain)
+        .disabled(item.media.fileURL == nil)
+        .task(id: item.media.fileURL) {
+            await loadThumbnailIfNeeded()
+        }
+        .sheet(item: $photoPreviewItem) { item in
+            PhotoPreviewView(url: item.url)
+        }
+        .sheet(isPresented: $isVideoPresented) {
+            if let url = item.media.fileURL {
+                VideoPlayerSheet(controller: playbackController, url: url)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var thumbnailContent: some View {
+        if let thumbnail {
+            Image(decorative: thumbnail, scale: 1, orientation: .up)
+                .resizable()
+                .scaledToFill()
+        } else if didFailThumbnail {
+            Image(systemName: systemImageName)
+                .font(.title2)
+                .foregroundStyle(.secondary)
+        } else {
+            ProgressView()
+        }
+    }
+
+    private var systemImageName: String {
+        switch item.media.kind {
+        case .photo:
+            return "photo"
+        case .video:
+            return "video"
+        case .audio:
+            return "waveform"
+        case .document:
+            return "doc"
+        default:
+            return "paperclip"
+        }
+    }
+
+    private func openPreview() {
+        guard let url = item.media.fileURL else { return }
+        switch item.media.kind {
+        case .photo, .sticker:
+            photoPreviewItem = PhotoPreviewItem(url: url)
+        case .video:
+            playbackController.load(url: url, restart: true)
+            isVideoPresented = true
+        default:
+            break
+        }
+    }
+
+    private func loadThumbnailIfNeeded() async {
+        guard thumbnail == nil, !didFailThumbnail, let url = item.media.fileURL else {
+            return
+        }
+
+        let loadedThumbnail: CGImage?
+        switch item.media.kind {
+        case .photo, .sticker:
+            loadedThumbnail = await Task.detached(priority: .utility) {
+                downsampleImage(at: url, maxPixelSize: 360)
+            }.value
+        case .video:
+            loadedThumbnail = await videoThumbnail(at: url, maxPixelSize: 360)
+        default:
+            loadedThumbnail = nil
+        }
+
+        if let loadedThumbnail {
+            thumbnail = loadedThumbnail
+        } else {
+            didFailThumbnail = true
         }
     }
 }

@@ -104,7 +104,11 @@ final class ArchiveStore: ObservableObject {
     func loadMessages(for chat: ChatSummary) {
         guard let database else { return }
         do {
-            let loadedMessages = try database.fetchMessages(sessionIDs: chat.sessionIDs, limit: messageFetchLimit)
+            let loadedMessages = try database.fetchMessages(
+                sessionIDs: chat.sessionIDs,
+                limit: messageFetchLimit,
+                includeStatusStoryMessages: chat.classification == .statusStoryFragment
+            )
             hasMoreOlderMessages = loadedMessages.count > messageLimit
             messages = hasMoreOlderMessages ? Array(loadedMessages.dropFirst()) : loadedMessages
             olderMessagesErrorMessage = nil
@@ -139,7 +143,8 @@ final class ArchiveStore: ObservableObject {
                 let olderMessages = try database.fetchOlderMessages(
                     sessionIDs: sessionIDs,
                     before: cursor,
-                    limit: self.messageFetchLimit
+                    limit: self.messageFetchLimit,
+                    includeStatusStoryMessages: chat.classification == .statusStoryFragment
                 )
                 guard self.selectedChat?.id == chatID else { return }
                 self.hasMoreOlderMessages = olderMessages.count > self.messageLimit
@@ -154,6 +159,15 @@ final class ArchiveStore: ObservableObject {
         }
     }
 
+    func mediaItems(for chat: ChatSummary, filter: ChatMediaFilter) throws -> [ChatMediaItem] {
+        guard let database else { return [] }
+        return try database.fetchChatMediaItems(
+            sessionIDs: chat.sessionIDs,
+            filter: filter,
+            includeStatusStoriesInAll: chat.classification == .statusStoryFragment
+        )
+    }
+
     private func openDatabase(databaseURL: URL, archiveRootURL: URL, securityScopedURL: URL?) {
         do {
             let openedDatabase = try WhatsAppDatabase(
@@ -164,7 +178,7 @@ final class ArchiveStore: ObservableObject {
             let loadedChats = try openedDatabase.fetchChats()
             database = openedDatabase
             chats = loadedChats
-            selectedChat = loadedChats.first
+            selectedChat = loadedChats.first { $0.classification != .statusStoryFragment } ?? loadedChats.first
             archiveName = databaseURL.deletingLastPathComponent().lastPathComponent
             wallpaperURL = Self.wallpaperURL(in: archiveRootURL)
             errorMessage = nil

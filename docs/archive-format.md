@@ -48,6 +48,8 @@ The viewer uses fields needed for:
 - message text;
 - message date;
 - message and group-event type when available;
+- status/story evidence from message/session identifiers such as
+  `status@broadcast`, plus conservative status/story media-folder evidence;
 - media local path, title, size, URL, vCard, location, duration, resolved availability, and inferred attachment kind when available.
 
 The viewer also looks for generic chat wallpaper files at the selected archive
@@ -103,6 +105,25 @@ are not merged into another chat and their rows are not deleted; they are only
 filtered out of normal browsing to avoid technical clutter and misleading recent
 dates.
 
+## Status and Stories
+
+WhatsApp Status/Stories media can appear in `ChatStorage.sqlite` as rows that
+are not direct messages in a normal chat. The current viewer detects these rows
+conservatively using reliable archive evidence, primarily `status@broadcast` in
+message/session JID fields and, where present, status/story folder components in
+media paths. The viewer does not use recency, such as "last 48 hours", as product
+logic.
+
+When every row in a session is reliably detected as status/story data, that
+session is grouped into a separate Stories / Status section rather than listed
+as a normal conversation. Those rows are excluded from normal chat message
+loading and from normal chat latest-message dates. Mixed sessions keep direct
+messages in the chat while detected status/story rows are kept out of inline
+conversation rendering.
+
+Detection remains intentionally narrow. Rows without status/story schema,
+identifier, or path evidence are not guessed into this category.
+
 ## Message Classification
 
 The viewer classifies message rows conservatively from available message type,
@@ -111,6 +132,8 @@ group-event type, and media metadata:
 - available photos are rendered inline after downsampling;
 - available videos are shown as tap-to-play attachments with lazy thumbnails when thumbnail generation succeeds;
 - available audio and voice rows get a simple play/pause control;
+- reliably detected status/story media is marked as status/story media and kept
+  separate from normal direct-chat rows;
 - documents, contacts, locations, stickers, and link previews are shown as placeholders;
 - likely call rows are labeled as `VOICE CALL` when the message type evidence supports it;
 - known system-notice rows are labeled as system messages;
@@ -144,14 +167,21 @@ open playback only after the user taps the attachment. Audio rows create a
 player only after the user taps play, and the shared playback controller stops
 the previous audio row before starting another.
 
+Photo previews support pinch-to-zoom on iOS. Photo and video previews expose
+system sharing for the resolved local file URL. The app does not upload media or
+copy media files into Git.
+
 Chat wallpaper rendering is also lazy. The viewer downscales
 `current_wallpaper.jpg` or `current_wallpaper_dark.jpg` from the archive root
 before using it as the message background. Wallpaper files are not copied into
 Git and full local paths are not shown in the normal UI.
 
 The viewer does not scan or preload all media globally. Missing, unavailable, or
-unsupported media stays as a placeholder. The per-chat media library is not
-implemented yet.
+unsupported media stays as a placeholder. The first Chat Info media view queries
+media for the selected chat/session directly from SQLite, applies simple filters
+for all media, photos, videos, and detected Stories / Status, and caps each fetch
+so it does not become an archive-wide media scan. A richer media library remains
+future work.
 
 ## Not Yet Used
 

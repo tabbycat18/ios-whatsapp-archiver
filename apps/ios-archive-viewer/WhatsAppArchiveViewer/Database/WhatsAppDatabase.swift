@@ -48,6 +48,7 @@ private struct ChatSummaryRow {
     let messageCount: Int
     let userVisibleMessageCount: Int
     let systemMessageCount: Int
+    let statusStoryMessageCount: Int
     let latestUserVisibleMessageDate: Date?
     let latestAnyMessageDate: Date?
     let fallbackMessageDate: Date?
@@ -62,9 +63,14 @@ private struct ChatActivityMetrics {
     let messageCount: Int
     let userVisibleMessageCount: Int
     let systemMessageCount: Int
+    let statusStoryMessageCount: Int
 
     var hasUserVisibleMessages: Bool {
         userVisibleMessageCount > 0
+    }
+
+    var hasOnlyStatusStoryMessages: Bool {
+        messageCount > 0 && statusStoryMessageCount == messageCount
     }
 }
 
@@ -362,9 +368,10 @@ final class WhatsAppDatabase {
     }
 
     func fetchChats() throws -> [ChatSummary] {
-        let userVisibleMessageSQL = userVisibleMessageSQL(alias: "m")
+        let userVisibleMessageSQL = userVisibleMessageSQL(messageAlias: "m", chatAlias: "c")
         let mediaEvidenceSQL = mediaEvidenceSQL(alias: "m")
         let systemMessageSQL = systemMessageSQL(alias: "m")
+        let statusStoryMessageSQL = statusStoryMessageSQL(messageAlias: "m", chatAlias: "c")
 
         let sql = """
             SELECT
@@ -385,6 +392,7 @@ final class WhatsAppDatabase {
                 SUM(CASE WHEN \(mediaEvidenceSQL) THEN 1 ELSE 0 END) AS media_message_count,
                 SUM(CASE WHEN \(callMessageSQL(alias: "m")) THEN 1 ELSE 0 END) AS call_message_count,
                 SUM(CASE WHEN \(systemMessageSQL) THEN 1 ELSE 0 END) AS system_message_count,
+                SUM(CASE WHEN \(statusStoryMessageSQL) THEN 1 ELSE 0 END) AS status_story_message_count,
                 MAX(CASE WHEN \(userVisibleMessageSQL) THEN m.ZMESSAGEDATE ELSE NULL END) AS latest_user_visible_message_date,
                 MAX(m.ZMESSAGEDATE) AS latest_any_message_date,
                 lm.ZMESSAGEDATE AS last_message_pointer_date
@@ -417,21 +425,26 @@ final class WhatsAppDatabase {
                 ?? DisplayNameSanitizer.friendlyName(partnerName)
                 ?? DisplayNameSanitizer.friendlyName(contactIdentifier)
                 ?? (isGroupJID(contactJID) ? "Group chat" : "Unknown chat")
-            let latestUserVisibleMessageDate = date(statement, 13)
-            let latestAnyMessageDate = date(statement, 14)
-            let fallbackMessageDate = latestUserVisibleMessageDate ?? date(statement, 15) ?? latestAnyMessageDate ?? date(statement, 6)
+            let messageCount = Int(sqlite3_column_int64(statement, 7))
+            let statusStoryMessageCount = Int(sqlite3_column_int64(statement, 13))
+            let latestUserVisibleMessageDate = date(statement, 14)
+            let latestAnyMessageDate = date(statement, 15)
+            let fallbackMessageDate = latestUserVisibleMessageDate ?? date(statement, 16) ?? latestAnyMessageDate ?? date(statement, 6)
 
             rows.append(
                 ChatSummaryRow(
                     id: id,
-                    identityKey: chatIdentityKey(id: id, contactJID: contactJID, contactIdentity: contactIdentity),
+                    identityKey: statusStoryMessageCount == messageCount && messageCount > 0
+                        ? "status-stories"
+                        : chatIdentityKey(id: id, contactJID: contactJID, contactIdentity: contactIdentity),
                     contactJID: contactJID,
                     contactIdentifier: contactIdentifier,
                     partnerName: partnerName,
                     title: title,
-                    messageCount: Int(sqlite3_column_int64(statement, 7)),
+                    messageCount: messageCount,
                     userVisibleMessageCount: Int(sqlite3_column_int64(statement, 8)),
                     systemMessageCount: Int(sqlite3_column_int64(statement, 12)),
+                    statusStoryMessageCount: statusStoryMessageCount,
                     latestUserVisibleMessageDate: latestUserVisibleMessageDate,
                     latestAnyMessageDate: latestAnyMessageDate,
                     fallbackMessageDate: fallbackMessageDate
@@ -458,8 +471,12 @@ final class WhatsAppDatabase {
         value?.contains("@g.us") == true
     }
 
-    private func userVisibleMessageSQL(alias: String) -> String {
-        "(NOT \(systemMessageSQL(alias: alias)) AND (\(textMessageSQL(alias: alias)) OR \(mediaEvidenceSQL(alias: alias)) OR \(callMessageSQL(alias: alias))))"
+    private func userVisibleMessageSQL(messageAlias: String, chatAlias: String) -> String {
+        """
+        (NOT \(systemMessageSQL(alias: messageAlias))
+        AND NOT \(statusStoryMessageSQL(messageAlias: messageAlias, chatAlias: chatAlias))
+        AND (\(textMessageSQL(alias: messageAlias)) OR \(mediaEvidenceSQL(alias: messageAlias)) OR \(callMessageSQL(alias: messageAlias))))
+        """
     }
 
     private func textMessageSQL(alias: String) -> String {
@@ -483,6 +500,29 @@ final class WhatsAppDatabase {
         return "(\(predicates.joined(separator: " OR ")))"
     }
 
+    private func photoMediaSQL() -> String {
+        let path = "lower(COALESCE(mi.ZMEDIALOCALPATH, mi.ZMEDIAURL, mi.ZTITLE, ''))"
+        return """
+        (m.ZMESSAGETYPE = 1
+        OR \(path) LIKE '%.jpg'
+        OR \(path) LIKE '%.jpeg'
+        OR \(path) LIKE '%.png'
+        OR \(path) LIKE '%.heic'
+        OR \(path) LIKE '%.webp'
+        OR \(path) LIKE '%.gif')
+        """
+    }
+
+    private func videoMediaSQL() -> String {
+        let path = "lower(COALESCE(mi.ZMEDIALOCALPATH, mi.ZMEDIAURL, mi.ZTITLE, ''))"
+        return """
+        (m.ZMESSAGETYPE = 2
+        OR \(path) LIKE '%.mp4'
+        OR \(path) LIKE '%.mov'
+        OR \(path) LIKE '%.m4v')
+        """
+    }
+
     private func callMessageSQL(alias: String) -> String {
         guard messageColumns.contains("ZMESSAGETYPE") else {
             return "0"
@@ -497,17 +537,68 @@ final class WhatsAppDatabase {
         return "(\(alias).ZMESSAGETYPE IN (6, 10))"
     }
 
-    func fetchMessages(sessionIDs: [Int64], limit: Int = 500) throws -> [MessageRow] {
+    private func statusStoryMessageSQL(messageAlias: String, chatAlias: String) -> String {
+        var predicates: [String] = []
+        predicates.append("\(chatAlias).ZCONTACTJID = 'status@broadcast'")
+        if messageColumns.contains("ZFROMJID") {
+            predicates.append("\(messageAlias).ZFROMJID = 'status@broadcast'")
+        }
+        if messageColumns.contains("ZTOJID") {
+            predicates.append("\(messageAlias).ZTOJID = 'status@broadcast'")
+        }
+        if messageColumns.contains("ZMEDIASECTIONID") {
+            predicates.append(statusStoryPathSQL("\(messageAlias).ZMEDIASECTIONID"))
+        }
+        if mediaSchema?.canJoinMessages == true {
+            predicates.append(
+                """
+                EXISTS (
+                    SELECT 1
+                    FROM ZWAMEDIAITEM status_media
+                    WHERE status_media.ZMESSAGE = \(messageAlias).Z_PK
+                      AND \(statusStoryPathSQL("status_media.ZMEDIALOCALPATH"))
+                )
+                """
+            )
+        }
+        return "(\(predicates.joined(separator: " OR ")))"
+    }
+
+    private func statusStoryPathSQL(_ expression: String) -> String {
+        let lowerPath = "lower(COALESCE(\(expression), ''))"
+        return """
+        (\(lowerPath) LIKE 'status/%'
+        OR \(lowerPath) LIKE 'statuses/%'
+        OR \(lowerPath) LIKE 'stories/%'
+        OR \(lowerPath) LIKE 'story/%'
+        OR \(lowerPath) LIKE '%/.statuses/%'
+        OR \(lowerPath) LIKE '%/statuses/%'
+        OR \(lowerPath) LIKE '%/status/%'
+        OR \(lowerPath) LIKE '%/stories/%'
+        OR \(lowerPath) LIKE '%/story/%')
+        """
+    }
+
+    func fetchMessages(
+        sessionIDs: [Int64],
+        limit: Int = 500,
+        includeStatusStoryMessages: Bool = false
+    ) throws -> [MessageRow] {
         let sessionIDs = normalizedSessionIDs(sessionIDs)
         let placeholders = sessionPlaceholders(for: sessionIDs)
+        let statusStoryFilterSQL = includeStatusStoryMessages
+            ? "1"
+            : "NOT \(statusStoryMessageSQL(messageAlias: "m", chatAlias: "c"))"
         let sql = """
             SELECT *
             FROM (
                 \(messageRowSelectSQL())
                 FROM ZWAMESSAGE m
+                \(chatSessionJoinSQL())
                 \(mediaJoinSQL())
                 \(groupMemberJoinSQL())
                 WHERE m.ZCHATSESSION IN (\(placeholders))
+                  AND \(statusStoryFilterSQL)
                 ORDER BY m.ZMESSAGEDATE DESC, m.Z_PK DESC
                 LIMIT ?
             )
@@ -525,16 +616,22 @@ final class WhatsAppDatabase {
     func fetchOlderMessages(
         sessionIDs: [Int64],
         before cursor: MessagePaginationCursor,
-        limit: Int = 500
+        limit: Int = 500,
+        includeStatusStoryMessages: Bool = false
     ) throws -> [MessageRow] {
         let sessionIDs = normalizedSessionIDs(sessionIDs)
         let placeholders = sessionPlaceholders(for: sessionIDs)
+        let statusStoryFilterSQL = includeStatusStoryMessages
+            ? "1"
+            : "NOT \(statusStoryMessageSQL(messageAlias: "m", chatAlias: "c"))"
         let sql = """
             \(messageRowSelectSQL())
             FROM ZWAMESSAGE m
+            \(chatSessionJoinSQL())
             \(mediaJoinSQL())
             \(groupMemberJoinSQL())
             WHERE m.ZCHATSESSION IN (\(placeholders))
+              AND \(statusStoryFilterSQL)
               AND (
                 m.ZMESSAGEDATE < ?
                 OR (m.ZMESSAGEDATE = ? AND m.Z_PK < ?)
@@ -555,6 +652,85 @@ final class WhatsAppDatabase {
 
         let descendingMessages = try readMessages(from: statement)
         return Array(descendingMessages.reversed())
+    }
+
+    func fetchChatMediaItems(
+        sessionIDs: [Int64],
+        filter: ChatMediaFilter,
+        includeStatusStoriesInAll: Bool,
+        limit: Int = 300
+    ) throws -> [ChatMediaItem] {
+        guard mediaSchema?.canJoinMessages == true else {
+            return []
+        }
+
+        let sessionIDs = normalizedSessionIDs(sessionIDs)
+        let placeholders = sessionPlaceholders(for: sessionIDs)
+        let statusStorySQL = statusStoryMessageSQL(messageAlias: "m", chatAlias: "c")
+        let filterSQL: String
+        switch filter {
+        case .all:
+            filterSQL = includeStatusStoriesInAll ? "1" : "NOT \(statusStorySQL)"
+        case .photos:
+            filterSQL = "NOT \(statusStorySQL) AND \(photoMediaSQL())"
+        case .videos:
+            filterSQL = "NOT \(statusStorySQL) AND \(videoMediaSQL())"
+        case .statusStories:
+            filterSQL = statusStorySQL
+        }
+
+        let sql = """
+            SELECT
+                m.Z_PK,
+                m.ZMESSAGEDATE,
+                \(messageTypeSelectSQL()) AS message_type,
+                \(groupEventTypeSelectSQL()) AS group_event_type,
+                \(statusStorySQL) AS is_status_story,
+                \(mediaSelectSQL())
+            FROM ZWAMESSAGE m
+            \(chatSessionJoinSQL())
+            \(mediaJoinSQL())
+            WHERE m.ZCHATSESSION IN (\(placeholders))
+              AND mi.Z_PK IS NOT NULL
+              AND \(filterSQL)
+            ORDER BY m.ZMESSAGEDATE DESC, m.Z_PK DESC
+            LIMIT ?
+            """
+
+        let statement = try prepare(sql)
+        defer { sqlite3_finalize(statement) }
+        bindSessionIDs(sessionIDs, to: statement)
+        sqlite3_bind_int(statement, Int32(sessionIDs.count + 1), Int32(limit))
+
+        var items: [ChatMediaItem] = []
+        var stepResult = sqlite3_step(statement)
+        while stepResult == SQLITE_ROW {
+            let messageID = sqlite3_column_int64(statement, 0)
+            let isStatusStory = sqlite3_column_int(statement, 4) != 0
+            guard let media = mediaMetadata(
+                from: statement,
+                startingAt: 5,
+                messageType: int(statement, 2),
+                groupEventType: int(statement, 3),
+                source: isStatusStory ? .statusStory : .normal
+            ) else {
+                stepResult = sqlite3_step(statement)
+                continue
+            }
+
+            items.append(
+                ChatMediaItem(
+                    id: "\(messageID)-\(media.itemID ?? 0)",
+                    messageID: messageID,
+                    messageDate: date(statement, 1),
+                    media: media
+                )
+            )
+            stepResult = sqlite3_step(statement)
+        }
+
+        try throwIfStatementFailed(stepResult)
+        return items
     }
 
     private func mergedChatSummaries(from rows: [ChatSummaryRow]) -> [ChatSummary] {
@@ -581,6 +757,7 @@ final class WhatsAppDatabase {
             let messageCount = sortedGroup.reduce(0) { $0 + $1.messageCount }
             let userVisibleMessageCount = sortedGroup.reduce(0) { $0 + $1.userVisibleMessageCount }
             let systemMessageCount = sortedGroup.reduce(0) { $0 + $1.systemMessageCount }
+            let statusStoryMessageCount = sortedGroup.reduce(0) { $0 + $1.statusStoryMessageCount }
             let latestUserVisibleMessageDate = sortedGroup.compactMap(\.latestUserVisibleMessageDate).max()
             let latestAnyMessageDate = sortedGroup.compactMap(\.latestAnyMessageDate).max()
             let fallbackMessageDate = latestUserVisibleMessageDate
@@ -596,16 +773,17 @@ final class WhatsAppDatabase {
                 contactJID: primary.contactJID,
                 contactIdentifier: primary.contactIdentifier,
                 partnerName: primary.partnerName,
-                title: primary.title,
+                title: statusStoryMessageCount == messageCount && messageCount > 0 ? "Stories / Status" : primary.title,
                 detailText: detailText,
                 latestUserVisibleMessageDate: latestUserVisibleMessageDate,
                 latestAnyMessageDate: latestAnyMessageDate,
                 fallbackMessageDate: fallbackMessageDate,
-                searchableTitle: primary.title,
+                searchableTitle: statusStoryMessageCount == messageCount && messageCount > 0 ? "Stories Status" : primary.title,
                 activity: ChatActivityMetrics(
                     messageCount: messageCount,
                     userVisibleMessageCount: userVisibleMessageCount,
-                    systemMessageCount: systemMessageCount
+                    systemMessageCount: systemMessageCount,
+                    statusStoryMessageCount: statusStoryMessageCount
                 )
             )
         }
@@ -649,6 +827,9 @@ final class WhatsAppDatabase {
     }
 
     private func baseClassification(for activity: ChatActivityMetrics) -> ChatSessionClassification {
+        if activity.hasOnlyStatusStoryMessages {
+            return .statusStoryFragment
+        }
         if activity.hasUserVisibleMessages {
             return .normalConversation
         }
@@ -665,7 +846,7 @@ final class WhatsAppDatabase {
         switch classification {
         case .archiveFragment, .systemOnlyFragment:
             return true
-        case .normalConversation, .separateConversation, .unknown:
+        case .normalConversation, .separateConversation, .statusStoryFragment, .unknown:
             return false
         }
     }
@@ -679,6 +860,8 @@ final class WhatsAppDatabase {
             return draft.detailText
         case .separateConversation:
             return "Separate conversation, \(draft.detailText)"
+        case .statusStoryFragment:
+            return "Status/story media, \(draft.detailText)"
         case .archiveFragment:
             return "Archive fragment, \(draft.detailText)"
         case .systemOnlyFragment:
@@ -695,7 +878,7 @@ final class WhatsAppDatabase {
         switch classification {
         case .normalConversation, .separateConversation:
             return draft.latestUserVisibleMessageDate ?? draft.fallbackMessageDate
-        case .archiveFragment, .systemOnlyFragment, .unknown:
+        case .statusStoryFragment, .archiveFragment, .systemOnlyFragment, .unknown:
             return draft.latestAnyMessageDate ?? draft.fallbackMessageDate
         }
     }
@@ -746,6 +929,9 @@ final class WhatsAppDatabase {
             m.ZMESSAGEDATE,
             \(messageTypeSelectSQL()) AS message_type,
             \(groupEventTypeSelectSQL()) AS group_event_type,
+            \(toJIDSelectSQL()) AS to_jid,
+            c.ZCONTACTJID AS chat_contact_jid,
+            \(statusStoryMessageSQL(messageAlias: "m", chatAlias: "c")) AS is_status_story,
             \(mediaSelectSQL())
         """
     }
@@ -756,11 +942,13 @@ final class WhatsAppDatabase {
         while stepResult == SQLITE_ROW {
             let messageType = int(statement, 10)
             let groupEventType = int(statement, 11)
+            let isStatusStory = sqlite3_column_int(statement, 14) != 0
             let media = mediaMetadata(
                 from: statement,
-                startingAt: 12,
+                startingAt: 15,
                 messageType: messageType,
-                groupEventType: groupEventType
+                groupEventType: groupEventType,
+                source: isStatusStory ? .statusStory : .normal
             )
             messages.append(
                 MessageRow(
@@ -777,6 +965,7 @@ final class WhatsAppDatabase {
                     messageDate: date(statement, 9),
                     messageType: messageType,
                     groupEventType: groupEventType,
+                    isStatusStory: isStatusStory,
                     media: media
                 )
             )
@@ -852,6 +1041,13 @@ final class WhatsAppDatabase {
         return "NULL"
     }
 
+    private func toJIDSelectSQL() -> String {
+        if messageColumns.contains("ZTOJID") {
+            return "m.ZTOJID"
+        }
+        return "NULL"
+    }
+
     private func mediaSelectSQL() -> String {
         guard let mediaSchema, mediaSchema.canJoinMessages else {
             return [
@@ -889,6 +1085,10 @@ final class WhatsAppDatabase {
         return "LEFT JOIN ZWAMEDIAITEM mi ON mi.ZMESSAGE = m.Z_PK"
     }
 
+    private func chatSessionJoinSQL() -> String {
+        "LEFT JOIN ZWACHATSESSION c ON c.Z_PK = m.ZCHATSESSION"
+    }
+
     private func groupMemberJoinSQL() -> String {
         let profileJoin = canJoinProfilePushNames
             ? "\n            LEFT JOIN ZWAPROFILEPUSHNAME pp ON pp.ZJID = gm.ZMEMBERJID"
@@ -904,7 +1104,8 @@ final class WhatsAppDatabase {
         from statement: OpaquePointer,
         startingAt index: Int32,
         messageType: Int?,
-        groupEventType: Int?
+        groupEventType: Int?,
+        source: MediaAttachmentSource
     ) -> MediaMetadata? {
         let itemID = int64(statement, index)
         let localPath = string(statement, index + 1)
@@ -953,7 +1154,8 @@ final class WhatsAppDatabase {
             fileSize: fileSize,
             durationSeconds: durationSeconds,
             isFileAvailableInArchive: resolution.existsInArchive,
-            kind: kind
+            kind: kind,
+            source: source
         )
     }
 

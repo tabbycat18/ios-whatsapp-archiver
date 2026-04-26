@@ -42,6 +42,9 @@ Working now:
 - Open available video attachments in a tap-to-play video preview.
 - Play available audio and voice attachments with a simple play/pause control.
 - Use the extracted WhatsApp chat wallpaper as the message background when `current_wallpaper.jpg` is present at the archive root.
+- Detect WhatsApp Status/Stories rows when message/session evidence such as `status@broadcast` or status/story media folders is present, and keep them out of normal direct-chat browsing.
+- Show a lightweight Chat Info screen with per-chat media filters for all media, photos, videos, and detected Stories/Status media.
+- Share photos and videos from their local preview sheets without uploading them.
 - Keep missing or unsupported media as placeholders.
 - Show conservative system/call placeholders without exposing raw sender IDs.
 - Use `ContactsV2.sqlite` when available for conservative contact-name and split-session resolution.
@@ -50,7 +53,7 @@ Working now:
 
 Not implemented yet:
 
-- Per-chat media library.
+- Full per-chat media library browsing beyond the first lightweight filtered view.
 - Complete `ContactsV2.sqlite` enrichment for every historical contact edge case.
 - Direct zip/package import.
 - Non-Xcode installation or distribution.

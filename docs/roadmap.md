@@ -15,16 +15,20 @@
 - Duplicate-title archive entries are classified so real separate conversations stay visible while system-only or tiny no-visible-message fragments are hidden from normal browsing.
 - First chat media rendering path with inline photos, tap-to-play video previews, and simple audio playback.
 - Chat wallpaper rendering from generic archive-root `current_wallpaper.jpg` files.
+- Conservative WhatsApp Status/Stories detection from schema/path/session evidence, with status/story-only fragments separated from normal chats.
+- Photo preview zoom and photo/video local share-sheet support.
+- First lightweight Chat Info media view with per-chat filters.
 
 ## Next
 
 - Continue auditing WhatsApp private message-type mappings with public fixtures where possible.
+- Expand the Stories / Status area into a richer media browser if more archive shapes are validated.
 - Continue validating ContactsV2-backed phone-JID and `@lid` migration handling for split one-to-one chats without unsafe title-only merging. ContactsV2 improves identity resolution, but it does not solve every split-session or archive-fragment case yet.
 - Add a lightweight debug-only way to inspect hidden technical archive fragments if future diagnostics need it.
 - Finish large archive transfer experiment results with the
   [packaged archive transfer experiments](transfer-experiments.md).
 - Add packaged archive import support.
-- Add a per-chat media library.
+- Replace the lightweight Chat Info media grid with a fuller per-chat media library.
 - Expand media rendering for documents, contact cards, locations, stickers, and link previews where safe.
 - Add `ContactsV2.sqlite` enrichment for better names and contact metadata.
 - Expand group sender enrichment where ChatStorage push names are unavailable.

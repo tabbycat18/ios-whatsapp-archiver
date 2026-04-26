@@ -16,6 +16,14 @@ struct ChatListView: View {
         }
     }
 
+    private var filteredNormalChats: [ChatSummary] {
+        filteredChats.filter { $0.classification != .statusStoryFragment }
+    }
+
+    private var filteredStatusStoryChats: [ChatSummary] {
+        filteredChats.filter { $0.classification == .statusStoryFragment }
+    }
+
     var body: some View {
         NavigationSplitView {
             Group {
@@ -31,9 +39,21 @@ struct ChatListView: View {
                     }
                 } else {
                     List(selection: $store.selectedChat) {
-                        ForEach(filteredChats) { chat in
-                            NavigationLink(value: chat) {
-                                ChatRowView(chat: chat)
+                        if !filteredStatusStoryChats.isEmpty {
+                            Section("Stories / Status") {
+                                ForEach(filteredStatusStoryChats) { chat in
+                                    NavigationLink(value: chat) {
+                                        ChatRowView(chat: chat)
+                                    }
+                                }
+                            }
+                        }
+
+                        Section("Chats") {
+                            ForEach(filteredNormalChats) { chat in
+                                NavigationLink(value: chat) {
+                                    ChatRowView(chat: chat)
+                                }
                             }
                         }
                     }

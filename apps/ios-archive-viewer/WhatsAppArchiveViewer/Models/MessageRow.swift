@@ -47,6 +47,11 @@ enum MediaAttachmentKind: String, Hashable {
     }
 }
 
+enum MediaAttachmentSource: String, Hashable {
+    case normal
+    case statusStory
+}
+
 struct MediaMetadata: Hashable {
     let itemID: Int64?
     let localPath: String?
@@ -61,6 +66,7 @@ struct MediaMetadata: Hashable {
     let durationSeconds: Double?
     let isFileAvailableInArchive: Bool
     let kind: MediaAttachmentKind
+    let source: MediaAttachmentSource
 
     var contactDisplayName: String? {
         DisplayNameSanitizer.friendlyName(vCardName)
@@ -129,6 +135,7 @@ struct MessageRow: Identifiable, Hashable {
     let messageDate: Date?
     let messageType: Int?
     let groupEventType: Int?
+    let isStatusStory: Bool
     let media: MediaMetadata?
 
     var paginationCursor: MessagePaginationCursor? {
@@ -172,6 +179,35 @@ struct MessageRow: Identifiable, Hashable {
     private static func isCallMessageType(_ value: Int?) -> Bool {
         value == 59 || value == 66
     }
+}
+
+enum ChatMediaFilter: String, CaseIterable, Identifiable {
+    case all
+    case photos
+    case videos
+    case statusStories
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .all:
+            return "All"
+        case .photos:
+            return "Photos"
+        case .videos:
+            return "Videos"
+        case .statusStories:
+            return "Stories / Status"
+        }
+    }
+}
+
+struct ChatMediaItem: Identifiable, Hashable {
+    let id: String
+    let messageID: Int64
+    let messageDate: Date?
+    let media: MediaMetadata
 }
 
 struct MessagePaginationCursor: Hashable {
