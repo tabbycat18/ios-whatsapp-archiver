@@ -199,10 +199,13 @@ For zip or packaged archive experiments:
 
 Future work may add packaged archive import where the app imports one archive file, unpacks or indexes it locally, and avoids transferring thousands of individual files through app document sharing. That is not implemented yet.
 
+For a repeatable comparison plan, see [packaged archive transfer experiments](docs/transfer-experiments.md).
+
 ## More Documentation
 
 - [iPhone backup extraction](docs/iphone-backup-extraction.md)
 - [Archive format](docs/archive-format.md)
+- [Packaged archive transfer experiments](docs/transfer-experiments.md)
 - [Architecture](docs/architecture.md)
 - [Roadmap](docs/roadmap.md)
 - [Privacy](PRIVACY.md)
