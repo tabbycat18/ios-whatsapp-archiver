@@ -22,3 +22,13 @@ build/
 *.xcworkspace/xcuserdata/
 *.pyc
 __pycache__/
+
+# Synthetic demo archive fixture. This directory is intentionally committed.
+!test-fixtures/demo-archive/
+!test-fixtures/demo-archive/**
+!test-fixtures/demo-archive/ChatStorage.sqlite
+!test-fixtures/demo-archive/ContactsV2.sqlite
+!test-fixtures/demo-archive/Media/
+!test-fixtures/demo-archive/Media/**
+!test-fixtures/demo-archive/Message/
+!test-fixtures/demo-archive/Message/**
