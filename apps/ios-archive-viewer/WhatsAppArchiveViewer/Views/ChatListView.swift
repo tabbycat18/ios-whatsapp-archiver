@@ -168,7 +168,7 @@ private struct ArchiveLibraryView: View {
                     InstructionsCardView {
                         isInstructionsPresented = true
                     }
-                    .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
+                    .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 6, trailing: 16))
                     .listRowBackground(Color.clear)
                 }
 
@@ -201,7 +201,7 @@ private struct ArchiveLibraryView: View {
                             }
                         )
                         .disabled(store.isOpeningArchive && archive?.id != store.openingArchiveID)
-                        .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
+                        .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 6, trailing: 16))
                         .listRowBackground(Color.clear)
                     }
                 } footer: {
@@ -214,7 +214,7 @@ private struct ArchiveLibraryView: View {
                         isDisabled: store.isOpeningArchive,
                         onOpen: store.openDemoArchive
                     )
-                    .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
+                    .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 6, trailing: 16))
                     .listRowBackground(Color.clear)
                 }
             }
@@ -275,14 +275,14 @@ private struct ArchiveSlotCardView: View {
     let onRemove: () -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
+        VStack(alignment: .leading, spacing: 10) {
             HStack(alignment: .top, spacing: 12) {
                 ZStack {
                     RoundedRectangle(cornerRadius: 8, style: .continuous)
                         .fill(iconBackground)
 
                     Image(systemName: needsRelink ? "exclamationmark.triangle.fill" : kind.systemImage)
-                        .font(.system(size: 19, weight: .semibold))
+                        .font(.system(size: 17, weight: .semibold))
                         .foregroundStyle(needsRelink ? .orange : .accentColor)
                         .overlay {
                             if isOpening {
@@ -291,9 +291,9 @@ private struct ArchiveSlotCardView: View {
                             }
                         }
                 }
-                .frame(width: 44, height: 44)
+                .frame(width: 38, height: 38)
 
-                VStack(alignment: .leading, spacing: 5) {
+                VStack(alignment: .leading, spacing: 3) {
                     Text(archive?.displayName ?? kind.defaultDisplayName)
                         .font(.headline)
                         .foregroundStyle(.primary)
@@ -316,7 +316,7 @@ private struct ArchiveSlotCardView: View {
 
             actionButtons
         }
-        .padding(14)
+        .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(
             RoundedRectangle(cornerRadius: 8, style: .continuous)
@@ -341,7 +341,7 @@ private struct ArchiveSlotCardView: View {
             )
             .disabled(!canAdd)
         } else {
-            VStack(spacing: 10) {
+            HStack(spacing: 8) {
                 ArchiveActionButton(
                     title: isOpening ? "Opening" : "Open",
                     systemImage: isOpening ? nil : "arrow.right.circle.fill",
@@ -352,38 +352,36 @@ private struct ArchiveSlotCardView: View {
                 )
                 .disabled(isOpening)
 
-                HStack(spacing: 10) {
-                    ArchiveActionButton(
-                        title: "Relink",
-                        systemImage: "link",
-                        style: .secondary,
-                        maxWidth: .infinity,
-                        action: onRelink
-                    )
-                    .disabled(isOpening)
+                ArchiveActionButton(
+                    title: "Relink",
+                    systemImage: "link",
+                    style: .secondary,
+                    width: 96,
+                    action: onRelink
+                )
+                .disabled(isOpening)
 
-                    Menu {
-                        Button(action: onRename) {
-                            Label("Rename", systemImage: "pencil")
-                        }
-
-                        Button(role: .destructive, action: onRemove) {
-                            Label("Remove", systemImage: "trash")
-                        }
-                    } label: {
-                        HStack(spacing: 7) {
-                            Image(systemName: "ellipsis.circle")
-                            Text("More")
-                                .lineLimit(1)
-                        }
-                        .font(.body.weight(.semibold))
-                        .frame(maxWidth: .infinity)
-                        .frame(minHeight: ArchiveActionButton.height)
+                Menu {
+                    Button(action: onRename) {
+                        Label("Rename", systemImage: "pencil")
                     }
-                    .buttonStyle(.bordered)
-                    .controlSize(.large)
-                    .disabled(isOpening)
+
+                    Button(role: .destructive, action: onRemove) {
+                        Label("Remove", systemImage: "trash")
+                    }
+                } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: "ellipsis.circle")
+                        Text("More")
+                            .lineLimit(1)
+                    }
+                    .font(.subheadline.weight(.semibold))
+                    .frame(width: 82)
+                    .frame(minHeight: ArchiveActionButton.height)
                 }
+                .buttonStyle(.bordered)
+                .controlSize(.regular)
+                .disabled(isOpening)
             }
         }
     }
@@ -425,18 +423,18 @@ private struct InstructionsCardView: View {
     let onOpen: () -> Void
 
     var body: some View {
-        HStack(alignment: .top, spacing: 12) {
+        HStack(alignment: .center, spacing: 12) {
             ZStack {
                 RoundedRectangle(cornerRadius: 8, style: .continuous)
                     .fill(Color(.tertiarySystemGroupedBackground))
 
                 Image(systemName: "questionmark.circle.fill")
-                    .font(.system(size: 19, weight: .semibold))
+                    .font(.system(size: 17, weight: .semibold))
                     .foregroundStyle(Color.accentColor)
             }
-            .frame(width: 44, height: 44)
+            .frame(width: 38, height: 38)
 
-            VStack(alignment: .leading, spacing: 5) {
+            VStack(alignment: .leading, spacing: 3) {
                 Text("How It Works")
                     .font(.headline)
                     .foregroundStyle(.primary)
@@ -450,14 +448,14 @@ private struct InstructionsCardView: View {
 
             Button(action: onOpen) {
                 Text("Help")
-                    .font(.body.weight(.semibold))
+                    .font(.subheadline.weight(.semibold))
                     .lineLimit(1)
-                    .frame(minWidth: 72, minHeight: ArchiveActionButton.height)
+                    .frame(minWidth: 64, minHeight: ArchiveActionButton.height)
             }
             .buttonStyle(.bordered)
-            .controlSize(.large)
+            .controlSize(.regular)
         }
-        .padding(14)
+        .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(
             RoundedRectangle(cornerRadius: 8, style: .continuous)
@@ -476,19 +474,19 @@ private struct DemoArchiveCardView: View {
     let onOpen: () -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
+        VStack(alignment: .leading, spacing: 10) {
             HStack(alignment: .top, spacing: 12) {
                 ZStack {
                     RoundedRectangle(cornerRadius: 8, style: .continuous)
                         .fill(Color.blue.opacity(0.12))
 
                     Image(systemName: "sparkles")
-                        .font(.system(size: 19, weight: .semibold))
+                        .font(.system(size: 17, weight: .semibold))
                         .foregroundStyle(.blue)
                 }
-                .frame(width: 44, height: 44)
+                .frame(width: 38, height: 38)
 
-                VStack(alignment: .leading, spacing: 5) {
+                VStack(alignment: .leading, spacing: 3) {
                     Text("Demo Archive")
                         .font(.headline)
                         .foregroundStyle(.primary)
@@ -513,7 +511,7 @@ private struct DemoArchiveCardView: View {
             )
             .disabled(isDisabled)
         }
-        .padding(14)
+        .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(
             RoundedRectangle(cornerRadius: 8, style: .continuous)
@@ -532,7 +530,7 @@ private struct ArchiveActionButton: View {
         case secondary
     }
 
-    static let height: CGFloat = 44
+    static let height: CGFloat = 38
 
     let title: String
     var systemImage: String?
@@ -556,7 +554,7 @@ private struct ArchiveActionButton: View {
                     .lineLimit(1)
                     .minimumScaleFactor(0.9)
             }
-            .font(.body.weight(.semibold))
+            .font(.subheadline.weight(.semibold))
             .frame(width: width)
             .frame(maxWidth: maxWidth)
             .frame(minHeight: Self.height)
@@ -567,12 +565,12 @@ private struct ArchiveActionButton: View {
         case .primary:
             button
                 .buttonStyle(.borderedProminent)
-                .controlSize(.large)
+                .controlSize(.regular)
                 .tint(.green)
         case .secondary:
             button
                 .buttonStyle(.bordered)
-                .controlSize(.large)
+                .controlSize(.regular)
         }
     }
 }

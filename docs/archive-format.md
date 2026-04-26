@@ -70,6 +70,8 @@ root:
 - `current_wallpaper_dark.jpg`
 
 If one is present, it is loaded lazily and used as the message-list background.
+When both light and dark files are present, dark mode prefers
+`current_wallpaper_dark.jpg`.
 
 The viewer can also use local profile/avatar cache images when they are present
 in the selected archive. Resolution is best-effort and conservative: the app
@@ -199,7 +201,8 @@ files into Git.
 Chat wallpaper rendering is also lazy. The viewer downscales
 `current_wallpaper.jpg` or `current_wallpaper_dark.jpg` from the archive root
 before using it as the message background. Wallpaper files are not copied into
-Git and full local paths are not shown in the normal UI.
+Git and full local paths are not shown in the normal UI. The demo fixture uses
+a fully synthetic subtle pattern, not a copied WhatsApp asset.
 
 The viewer does not scan or preload all media globally. Missing or unavailable
 media stays as a placeholder, while unsupported metadata-only rows are kept out

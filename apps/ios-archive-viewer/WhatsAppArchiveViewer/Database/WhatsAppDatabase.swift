@@ -1290,7 +1290,7 @@ final class WhatsAppDatabase {
         case .separateConversation:
             return "Separate conversation, \(draft.detailText)"
         case .statusStoryFragment:
-            return "Status/story media, \(draft.detailText)"
+            return "Stories media, \(draft.detailText)"
         case .archiveFragment:
             return "Archive fragment, \(draft.detailText)"
         case .systemOnlyFragment:

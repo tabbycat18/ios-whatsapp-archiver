@@ -186,7 +186,7 @@ MEDIA_LIBRARY = {
     "photo_picnic_blanket.jpg": {
         "kind": "photo",
         "path": "Media/photo_picnic_blanket.jpg",
-        "caption": "testing the picnic blanket situation",
+        "caption": "picnic blanket test",
         "label": "PICNIC BLANKET",
         "available": True,
     },
@@ -221,14 +221,14 @@ MEDIA_LIBRARY = {
     "photo_ticket_preview_fake.jpg": {
         "kind": "photo",
         "path": "Media/photo_ticket_preview_fake.jpg",
-        "caption": "fake preview, not a real ticket",
+        "caption": "ticket preview",
         "label": "DEMO ONLY TICKET",
         "available": True,
     },
     "photo_group_selfie_placeholder.jpg": {
         "kind": "photo",
         "path": "Media/photo_group_selfie_placeholder.jpg",
-        "caption": "group photo placeholder",
+        "caption": "group photo",
         "label": "ABSTRACT AVATARS",
         "available": True,
     },
@@ -257,7 +257,7 @@ MEDIA_LIBRARY = {
     "sticker_snacks_demo.png": {
         "kind": "sticker",
         "path": "Media/sticker_snacks_demo.png",
-        "caption": "snacks sticker placeholder",
+        "caption": "snacks sticker",
         "label": "SNACKS STICKER",
         "available": True,
     },
@@ -280,7 +280,7 @@ MEDIA_LIBRARY = {
     "video_instant_note.mp4": {
         "kind": "video_message",
         "path": "Media/video_instant_note.mp4",
-        "caption": "instant video note placeholder",
+        "caption": "instant video note",
         "label": "VIDEO NOTE",
         "duration": 5,
         "available": True,
@@ -341,7 +341,7 @@ MEDIA_LIBRARY = {
     "ticket_notes_demo.pdf": {
         "kind": "document",
         "path": "Media/ticket_notes_demo.pdf",
-        "caption": "fake ticket transfer note, not valid",
+        "caption": "ticket transfer note",
         "label": "DEMO TICKET NOTE",
         "available": True,
     },
@@ -373,11 +373,18 @@ MEDIA_LIBRARY = {
         "label": "PDF SENT",
         "available": True,
     },
-    "wallpaper_demo_green_gradient.jpg": {
+    "wallpaper_demo_light_pattern.jpg": {
         "kind": "wallpaper",
-        "path": "Wallpapers/wallpaper_demo_green_gradient.jpg",
-        "caption": "synthetic wallpaper",
-        "label": "DEMO WALLPAPER",
+        "path": "Wallpapers/wallpaper_demo_light_pattern.jpg",
+        "caption": "subtle synthetic light chat wallpaper",
+        "label": "SYNTHETIC LIGHT WALLPAPER",
+        "available": True,
+    },
+    "wallpaper_demo_dark_pattern.jpg": {
+        "kind": "wallpaper_dark",
+        "path": "Wallpapers/wallpaper_demo_dark_pattern.jpg",
+        "caption": "subtle synthetic dark chat wallpaper",
+        "label": "SYNTHETIC DARK WALLPAPER",
         "available": True,
     },
 }
@@ -494,25 +501,9 @@ def draw_text(
         cursor += (glyph_width + 1) * scale
 
 
-def write_png(path: Path, label: str, subtitle: str, palette: tuple[tuple[int, int, int], ...]) -> None:
-    width, height = 480, 270
-    pixels = bytearray(width * height * 3)
-    for y in range(height):
-        for x in range(width):
-            t = (x + y) / (width + height)
-            base = palette[0] if t < 0.5 else palette[1]
-            pixels[(y * width + x) * 3:(y * width + x) * 3 + 3] = bytes(base)
-    fill_rect(pixels, width, height, 28, 28, width - 28, height - 28, (248, 248, 242))
-    fill_rect(pixels, width, height, 42, 54, width - 42, 150, palette[2])
-    fill_rect(pixels, width, height, 66, 170, 150, 220, palette[0])
-    fill_rect(pixels, width, height, 166, 170, 250, 220, palette[1])
-    fill_rect(pixels, width, height, 266, 170, 414, 220, palette[2])
-    draw_text(pixels, width, height, 58, 82, label, (30, 36, 40), scale=4)
-    draw_text(pixels, width, height, 58, 228, "SYNTHETIC DEMO", (30, 36, 40), scale=2)
-    if subtitle:
-        draw_text(pixels, width, height, 58, 118, subtitle, (30, 36, 40), scale=2)
-
+def write_png_bytes(path: Path, width: int, height: int, pixels: bytearray) -> None:
     raw = b"".join(b"\x00" + pixels[y * width * 3:(y + 1) * width * 3] for y in range(height))
+
     def chunk(kind: bytes, data: bytes) -> bytes:
         return struct.pack(">I", len(data)) + kind + data + struct.pack(">I", zlib.crc32(kind + data) & 0xFFFFFFFF)
 
@@ -521,6 +512,112 @@ def write_png(path: Path, label: str, subtitle: str, palette: tuple[tuple[int, i
     data += chunk(b"IDAT", zlib.compress(raw, level=9))
     data += chunk(b"IEND", b"")
     path.write_bytes(data)
+
+
+def blend(first: tuple[int, int, int], second: tuple[int, int, int], amount: float) -> tuple[int, int, int]:
+    return tuple(int(first[index] * (1 - amount) + second[index] * amount) for index in range(3))
+
+
+def fill_circle(
+    pixels: bytearray,
+    width: int,
+    height: int,
+    center_x: int,
+    center_y: int,
+    radius: int,
+    rgb: tuple[int, int, int],
+) -> None:
+    radius_squared = radius * radius
+    for y in range(max(0, center_y - radius), min(height, center_y + radius + 1)):
+        row = y * width * 3
+        for x in range(max(0, center_x - radius), min(width, center_x + radius + 1)):
+            if (x - center_x) * (x - center_x) + (y - center_y) * (y - center_y) <= radius_squared:
+                pixels[row + x * 3:row + x * 3 + 3] = bytes(rgb)
+
+
+def draw_line(
+    pixels: bytearray,
+    width: int,
+    height: int,
+    start: tuple[int, int],
+    end: tuple[int, int],
+    rgb: tuple[int, int, int],
+    thickness: int = 2,
+) -> None:
+    x0, y0 = start
+    x1, y1 = end
+    steps = max(abs(x1 - x0), abs(y1 - y0), 1)
+    for step in range(steps + 1):
+        x = round(x0 + (x1 - x0) * step / steps)
+        y = round(y0 + (y1 - y0) * step / steps)
+        fill_rect(pixels, width, height, x - thickness // 2, y - thickness // 2, x + thickness, y + thickness, rgb)
+
+
+def write_png(path: Path, label: str, subtitle: str, palette: tuple[tuple[int, int, int], ...]) -> None:
+    width, height = 960, 720
+    pixels = bytearray(width * height * 3)
+    for y in range(height):
+        for x in range(width):
+            t = y / max(height - 1, 1)
+            base = blend((238, 242, 235), palette[0], 0.18 + t * 0.16)
+            pixels[(y * width + x) * 3:(y * width + x) * 3 + 3] = bytes(base)
+
+    fill_circle(pixels, width, height, 790, 135, 66, blend(palette[1], (255, 255, 255), 0.22))
+    fill_rect(pixels, width, height, 0, 445, width, height, blend(palette[0], (230, 236, 226), 0.48))
+    draw_line(pixels, width, height, (0, 470), (210, 350), blend(palette[0], (80, 95, 85), 0.24), thickness=5)
+    draw_line(pixels, width, height, (150, 410), (420, 520), blend(palette[1], (80, 95, 85), 0.26), thickness=5)
+    draw_line(pixels, width, height, (380, 520), (690, 360), blend(palette[2], (80, 95, 85), 0.26), thickness=5)
+    draw_line(pixels, width, height, (620, 385), (960, 515), blend(palette[0], (80, 95, 85), 0.25), thickness=5)
+
+    for index in range(9):
+        x = 92 + index * 96
+        y = 610 + (index % 3) * 14
+        fill_circle(pixels, width, height, x, y, 12, blend(palette[index % len(palette)], (245, 246, 240), 0.22))
+
+    fill_rect(pixels, width, height, 46, 46, 338, 106, (248, 249, 244))
+    draw_text(pixels, width, height, 66, 65, "SYNTHETIC DEMO", (82, 94, 88), scale=2)
+    if subtitle:
+        draw_text(pixels, width, height, 66, 92, subtitle, (112, 124, 118), scale=1)
+
+    write_png_bytes(path, width, height, pixels)
+
+
+def write_wallpaper(path: Path, dark: bool) -> None:
+    width, height = 1080, 1920
+    base = (244, 239, 229) if not dark else (18, 27, 31)
+    alternate = (232, 238, 229) if not dark else (26, 39, 44)
+    ink = (214, 220, 211) if not dark else (39, 55, 61)
+    accent = (198, 210, 202) if not dark else (34, 49, 54)
+    pixels = bytearray(width * height * 3)
+
+    for y in range(height):
+        t = y / max(height - 1, 1)
+        row_color = blend(base, alternate, 0.28 + math.sin(t * math.pi * 2) * 0.08)
+        for x in range(width):
+            noise = ((x * 17 + y * 11) % 19) - 9
+            color = tuple(max(0, min(255, channel + noise)) for channel in row_color)
+            pixels[(y * width + x) * 3:(y * width + x) * 3 + 3] = bytes(color)
+
+    for y in range(90, height, 150):
+        for x in range(70, width, 150):
+            offset = ((x // 150) + (y // 150)) % 4
+            cx = x + (offset % 2) * 18
+            cy = y + (offset // 2) * 18
+            if offset == 0:
+                fill_circle(pixels, width, height, cx, cy, 7, ink)
+                draw_line(pixels, width, height, (cx + 22, cy - 8), (cx + 54, cy - 8), accent, thickness=3)
+                draw_line(pixels, width, height, (cx + 22, cy + 8), (cx + 44, cy + 8), accent, thickness=3)
+            elif offset == 1:
+                draw_line(pixels, width, height, (cx - 22, cy), (cx + 22, cy), ink, thickness=3)
+                draw_line(pixels, width, height, (cx, cy - 22), (cx, cy + 22), ink, thickness=3)
+            elif offset == 2:
+                fill_rect(pixels, width, height, cx - 25, cy - 13, cx + 25, cy + 13, accent)
+                fill_rect(pixels, width, height, cx - 18, cy - 7, cx + 18, cy + 7, base)
+            else:
+                draw_line(pixels, width, height, (cx - 22, cy + 12), (cx, cy - 14), ink, thickness=3)
+                draw_line(pixels, width, height, (cx, cy - 14), (cx + 24, cy + 12), ink, thickness=3)
+
+    write_png_bytes(path, width, height, pixels)
 
 
 def write_pdf(path: Path, title: str, lines: list[str]) -> None:
@@ -593,10 +690,14 @@ def write_media_files() -> list[dict]:
             manifest.append({**meta, "filename": filename, "created": False})
             continue
         kind = meta["kind"]
-        if kind in {"photo", "sticker", "status_photo", "wallpaper"}:
+        if kind in {"photo", "sticker", "status_photo"}:
             write_png(path, meta["label"], meta.get("caption", ""), palette)
-            if kind == "wallpaper":
-                shutil.copyfile(path, FIXTURE_ROOT / "current_wallpaper.jpg")
+        elif kind == "wallpaper":
+            write_wallpaper(path, dark=False)
+            shutil.copyfile(path, FIXTURE_ROOT / "current_wallpaper.jpg")
+        elif kind == "wallpaper_dark":
+            write_wallpaper(path, dark=True)
+            shutil.copyfile(path, FIXTURE_ROOT / "current_wallpaper_dark.jpg")
         elif kind == "document":
             write_pdf(
                 path,
@@ -662,8 +763,8 @@ def build_chats() -> list[Chat]:
         ("alex", "A small production. Tasteful. With snacks.", None),
         ("maya", "I am bringing chips unless Leo panic-buys six bags again", None),
         ("alex", "Please prevent snack chaos if you can.", None),
-        ("maya", "No promises. Snack chaos is my brand in this fictional demo.", None),
-        ("maya", "testing the picnic blanket situation", {"message_type": 1, "media_key": "photo_picnic_blanket.jpg"}),
+        ("maya", "No promises. Snack chaos is my brand.", None),
+        ("maya", "Testing the picnic blanket situation.", {"message_type": 1, "media_key": "photo_picnic_blanket.jpg"}),
         ("alex", "That blanket looks lake-ready.", None),
         ("maya", "Voice memo incoming because snack math needs nuance.", None),
         ("maya", "Maya explains snack math for 18 seconds", {"message_type": 3, "media_key": "audio_maya_snack_math.wav"}),
@@ -675,7 +776,7 @@ def build_chats() -> list[Chat]:
         ("maya", "The lake does not require a contingency matrix.", None),
         ("alex", "It might if Leo controls snacks.", None),
         ("maya", "Fair. Add emergency cookies.", None),
-        ("maya", "instant video note placeholder", {"message_type": 4, "media_key": "video_instant_note.mp4"}),
+        ("maya", "Quick video note from the snack aisle.", {"message_type": 4, "media_key": "video_instant_note.mp4"}),
         ("alex", "Saved for future snack training.", None),
         ("maya", "Sticker response.", {"message_type": 15, "media_key": "sticker_snacks_demo.png"}),
         ("alex", "I accept the sticker ruling.", None),
@@ -688,14 +789,14 @@ def build_chats() -> list[Chat]:
         ("alex", "You made the lake weekend sound like a conference.", None),
         ("samir", "Conferences have working schedules.", None),
         ("samir", "Updated meeting point screenshot", {"message_type": 1, "media_key": "photo_meeting_point.jpg"}),
-        ("alex", "The map labels are synthetic but useful.", None),
+        ("alex", "That meeting point helps. I would have picked the wrong exit.", None),
         ("samir", "Tiny correction: boat tickets are 14:20, not 14:40.", None),
         ("alex", "Updating my overplanned lake notes.", None),
         ("samir", "Please don't let Leo be in charge of timing.", None),
         ("alex", "He is in charge of vibes and maybe snacks.", None),
         ("samir", "That is already too much responsibility.", None),
         ("alex", "Do we need printed tickets?", None),
-        ("samir", "No. Just the fake demo ticket count in the PDF.", None),
+        ("samir", "No. Just the ticket count in the PDF.", None),
         ("alex", "Adding sunscreen to the list.", None),
         ("samir", "Add water too. People forget obvious things.", None),
         ("alex", "Maya says emergency cookies.", None),
@@ -731,7 +832,7 @@ def build_chats() -> list[Chat]:
         ("theo", "09:10?", None),
         ("alex", "I will be there 09:10.", None),
         ("theo", "Demo Station Side Entrance", {"message_type": 5, "latitude": 47.0001, "longitude": 8.0001}),
-        ("alex", "Coordinates are synthetic, label is enough.", None),
+        ("alex", "The label is enough. I know which entrance you mean.", None),
         ("theo", "Good. Then lake transfer at 09:25.", None),
         ("alex", "Samir will like that precision.", None),
         ("theo", "He sent a PDF.", None),
@@ -746,7 +847,7 @@ def build_chats() -> list[Chat]:
         ("elena", "You say that and then call cold.", None),
         ("alex", "Fair evidence.", None),
         ("elena", "Found this old birthday photo.", {"message_type": 1, "media_key": "photo_old_birthday.jpg"}),
-        ("alex", "That birthday photo is adorable and very synthetic.", None),
+        ("alex", "That birthday photo is adorable.", None),
         ("elena", "Synthetic or not, you still looked serious about cake.", None),
         ("alex", "Cake requires focus.", None),
         ("elena", "Elena says happy early birthday", {"message_type": 3, "media_key": "audio_elena_birthday_note.wav"}),
@@ -763,11 +864,11 @@ def build_chats() -> list[Chat]:
         ("alex", "Still selling the spare ticket?", None),
         ("jules", "Maybe, waiting on one person.", None),
         ("alex", "No rush, just checking before the lake plan locks.", None),
-        ("jules", "fake preview, not a real ticket", {"message_type": 1, "media_key": "photo_ticket_preview_fake.jpg"}),
+        ("jules", "Ticket preview.", {"message_type": 1, "media_key": "photo_ticket_preview_fake.jpg"}),
         ("alex", "Thanks. The preview says DEMO ONLY, perfect.", None),
         ("jules", "It is not valid for anything, obviously.", None),
         ("alex", "Can you send the ticket note too?", None),
-        ("jules", "fake ticket transfer note, not valid", {"message_type": 8, "media_key": "ticket_notes_demo.pdf"}),
+        ("jules", "Ticket transfer note.", {"message_type": 8, "media_key": "ticket_notes_demo.pdf"}),
         ("alex", "Got the PDF. Still unresolved then?", None),
         ("jules", "Yes, waiting on a reply.", None),
         ("alex", "Okay. I will not count it yet.", None),
@@ -795,7 +896,7 @@ def build_chats() -> list[Chat]:
         ("alex", "Outgoing voice call, 00:34", {"message_type": 66, "duration": 34}),
         ("studio", "Appointment note saved for the picnic basket.", None),
         ("alex", "Please include napkins.", None),
-        ("studio", "Added napkins to the demo order.", None),
+        ("studio", "Added napkins to the order.", None),
         ("alex", "PDF receipt has everything I need.", None),
         ("studio", "Message folder media layout sample", {"message_type": 1, "media_key": "photo_message_layout_marker.jpg"}),
         ("studio", "Thank you for using Green Corner Studio.", None),
@@ -803,7 +904,7 @@ def build_chats() -> list[Chat]:
 
     lake_lines = [
         ("alex", "Group created by Alex.", {"message_type": 6, "group_event_type": 1}),
-        ("alex", "Welcome to Lake Weekend. This is a synthetic demo group.", None),
+        ("alex", "Welcome to Lake Weekend. Keeping the plan here so it does not vanish in side chats.", None),
         ("maya", "I am here for snacks and gentle chaos.", None),
         ("samir", "I am here for the PDF and ticket timing.", None),
         ("theo", "I am here for station logistics.", None),
@@ -815,7 +916,7 @@ def build_chats() -> list[Chat]:
         ("samir", "Ticket count is four confirmed, one pending.", None),
         ("theo", "Station side entrance at 09:10.", None),
         ("theo", "Demo Station Side Entrance", {"message_type": 5, "latitude": 47.0001, "longitude": 8.0001}),
-        ("alex", "Coordinates are synthetic; follow the fake blue sign.", None),
+        ("alex", "Follow the blue sign near the side entrance.", None),
         ("maya", "not the actual lake but manifesting this energy", {"message_type": 1, "media_key": "photo_lake_view.jpg"}),
         ("leo", "I can hear this photo demanding snacks.", None),
         ("maya", "Green Corner Studio contact card", {"message_type": 4, "media_key": "contact_green_corner.vcf"}),
@@ -832,7 +933,7 @@ def build_chats() -> list[Chat]:
         ("maya", "Welcome. We have snacks diplomacy.", None),
         ("nina", "I can bring fruit and emotional balance.", None),
         ("leo", "Fruit is just quiet snacks.", None),
-        ("samir", "Security notice: messages are end-to-end encrypted in this synthetic demo.", {"message_type": 10, "group_event_type": 3}),
+        ("samir", "Security notice: messages are end-to-end encrypted.", {"message_type": 10, "group_event_type": 3}),
         ("theo", "Back to logistics. Train buffer is 12 minutes.", None),
         ("alex", "I like a buffer.", None),
         ("maya", "You like three buffers stacked in a trench coat.", None),
@@ -846,13 +947,13 @@ def build_chats() -> list[Chat]:
         ("alex", "That voice note somehow made it less clear.", None),
         ("theo", "I will book the transport for five.", None),
         ("samir", "Good. PDF revision not needed.", None),
-        ("maya", "group photo placeholder", {"message_type": 1, "media_key": "photo_group_selfie_placeholder.jpg"}),
+        ("maya", "Group photo from the planning thread.", {"message_type": 1, "media_key": "photo_group_selfie_placeholder.jpg"}),
         ("nina", "Everyone looks like abstract blobs. Accurate.", None),
         ("leo", "dramatic 3 second lake pan", {"message_type": 2, "media_key": "video_lake_pan.mp4"}),
-        ("alex", "The video placeholder may not thumbnail, but the row should load.", None),
-        ("samir", "Please do not debug video at the station.", None),
-        ("maya", "boat sign, if it uploads - Media missing expected", {"message_type": 1, "media_key": "photo_missing_boat_sign.jpg"}),
-        ("alex", "Good missing media test. The app should show a placeholder.", None),
+        ("alex", "That video makes the lake look calmer than our planning.", None),
+        ("samir", "Please do not review videos at the station.", None),
+        ("maya", "Boat sign, if it uploads.", {"message_type": 1, "media_key": "photo_missing_boat_sign.jpg"}),
+        ("alex", "If it does not upload, the written plan still covers it.", None),
         ("nina", "I am no longer annoyed, for the record.", None),
         ("maya", "Resolution achieved. Snacks remain unresolved.", None),
         ("leo", "I can bring chips.", None),
@@ -873,7 +974,7 @@ def build_chats() -> list[Chat]:
         ("leo", "And I am not in charge of timing.", None),
         ("samir", "Correct.", None),
         ("maya", "Emergency cookies are packed.", None),
-        ("alex", "Thanks everyone. This demo group is ready.", None),
+        ("alex", "Thanks everyone. Lake plan is ready.", None),
     ]
     lines_to_messages(by_key["lake_weekend"], dt(23, 9, 0), lake_lines)
 
@@ -1219,7 +1320,7 @@ source alone is not a one-tap iPhone install path.
 - PDFs/documents
 - media captions
 - Stories rows via `status@broadcast`
-- wallpaper via `current_wallpaper.jpg`
+- subtle synthetic light/dark wallpaper via `current_wallpaper.jpg` and `current_wallpaper_dark.jpg`
 - Chat Info / Media filters
 - intentionally missing media behavior
 
@@ -1362,7 +1463,7 @@ def validate_fixture(chats: list[Chat], media_manifest: list[dict]) -> dict:
         if "missing" in rel_path:
             if path.exists():
                 failures.append(f"Intentionally missing media exists: {rel_path}")
-            if "Media missing" not in (message_text or ""):
+            if not (message_text or "").strip():
                 failures.append(f"Missing media lacks expected label metadata: {rel_path}")
         elif not path.exists():
             failures.append(f"Available media reference does not exist: {rel_path}")

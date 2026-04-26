@@ -253,9 +253,11 @@ struct MessageListView: View {
 }
 
 private struct ChatWallpaperBackgroundView: View {
+    @Environment(\.colorScheme) private var colorScheme
     let wallpaperURL: URL?
     @State private var image: CGImage?
     @State private var didFail = false
+    @State private var loadedWallpaperURL: URL?
 
     var body: some View {
         ZStack {
@@ -269,12 +271,32 @@ private struct ChatWallpaperBackgroundView: View {
             }
         }
         .ignoresSafeArea()
-        .task(id: wallpaperURL) {
+        .task(id: resolvedWallpaperURL) {
             await loadWallpaperIfNeeded()
         }
     }
 
+    private var resolvedWallpaperURL: URL? {
+        guard let wallpaperURL else { return nil }
+        guard colorScheme == .dark, wallpaperURL.lastPathComponent == "current_wallpaper.jpg" else {
+            return wallpaperURL
+        }
+
+        let darkWallpaperURL = wallpaperURL
+            .deletingLastPathComponent()
+            .appendingPathComponent("current_wallpaper_dark.jpg")
+            .standardizedFileURL
+        return FileManager.default.fileExists(atPath: darkWallpaperURL.path) ? darkWallpaperURL : wallpaperURL
+    }
+
     private func loadWallpaperIfNeeded() async {
+        let wallpaperURL = resolvedWallpaperURL
+        if loadedWallpaperURL != wallpaperURL {
+            image = nil
+            didFail = false
+            loadedWallpaperURL = wallpaperURL
+        }
+
         guard image == nil, !didFail, let wallpaperURL else {
             return
         }

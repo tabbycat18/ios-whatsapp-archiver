@@ -39,7 +39,7 @@ Build and run with full Xcode on an iOS simulator or device. Command Line Tools 
 - Opens a lightweight Chat Info view with per-chat filters for all previewable chat media, photos, videos, and documents, with tap or drag multi-select sharing for available local files.
 - Prioritizes locally available media in Chat Info while keeping missing or unresolved items as placeholders.
 - Checks whether referenced media files appear available under the selected archive root.
-- Uses the extracted WhatsApp chat wallpaper as the message background when a generic wallpaper file is present at the selected archive root.
+- Uses extracted chat wallpaper files as the message background when a generic light or dark wallpaper file is present at the selected archive root.
 - Avoids showing raw JIDs or internal sender identifiers in the normal message UI.
 - Shows safely extracted phone numbers for unsaved group senders when the sender JID can be reduced to digits only.
 
@@ -104,7 +104,7 @@ The app does not load every message at once because large WhatsApp chats can con
 - Status/story rows can be stored separately from direct chat messages. The viewer excludes reliably detected status/story rows from normal chat message loading and keeps status/story-only sessions in a separate Stories section. It does not classify by date alone.
 - Media path resolution checks several archive-root-relative layouts, including `Media/` and `Message/Media/`. The normal UI does not print full private media paths.
 - Profile picture resolution is local and best-effort. It only uses image files from profile/avatar-looking archive paths and falls back to initials when no safe match is found.
-- Chat wallpaper resolution checks generic archive-root files named `current_wallpaper.jpg` and `current_wallpaper_dark.jpg`.
+- Chat wallpaper resolution checks generic archive-root files named `current_wallpaper.jpg` and `current_wallpaper_dark.jpg`; dark mode prefers the dark companion when both are present.
 - Media rendering is lazy. Images are downsampled before display, video thumbnails are generated only for visible video rows, and audio playback starts only after the user taps play.
 - Contact-card rendering requires reliable vCard metadata. Rows with video media evidence, including instant video notes, are treated as playable video media rather than contact cards.
 - The Chat Info media view queries photo/video/document media for the selected chat/session directly from SQLite, includes related merged session IDs, excludes status/story rows, includes deliberately sent audio in the All view while keeping voice-message audio in chat rows, prioritizes locally available renderable media, supports tap or drag multi-select sharing/export for available files, and caps each filtered fetch. It is not a full archive-wide media library.

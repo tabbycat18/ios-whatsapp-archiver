@@ -237,7 +237,7 @@
   "media_manifest": [
     {
       "available": true,
-      "caption": "testing the picnic blanket situation",
+      "caption": "picnic blanket test",
       "created": true,
       "filename": "photo_picnic_blanket.jpg",
       "kind": "photo",
@@ -282,7 +282,7 @@
     },
     {
       "available": true,
-      "caption": "fake preview, not a real ticket",
+      "caption": "ticket preview",
       "created": true,
       "filename": "photo_ticket_preview_fake.jpg",
       "kind": "photo",
@@ -291,7 +291,7 @@
     },
     {
       "available": true,
-      "caption": "group photo placeholder",
+      "caption": "group photo",
       "created": true,
       "filename": "photo_group_selfie_placeholder.jpg",
       "kind": "photo",
@@ -328,7 +328,7 @@
     },
     {
       "available": true,
-      "caption": "snacks sticker placeholder",
+      "caption": "snacks sticker",
       "created": true,
       "filename": "sticker_snacks_demo.png",
       "kind": "sticker",
@@ -357,7 +357,7 @@
     },
     {
       "available": true,
-      "caption": "instant video note placeholder",
+      "caption": "instant video note",
       "created": true,
       "duration": 5,
       "filename": "video_instant_note.mp4",
@@ -434,7 +434,7 @@
     },
     {
       "available": true,
-      "caption": "fake ticket transfer note, not valid",
+      "caption": "ticket transfer note",
       "created": true,
       "filename": "ticket_notes_demo.pdf",
       "kind": "document",
@@ -479,12 +479,21 @@
     },
     {
       "available": true,
-      "caption": "synthetic wallpaper",
+      "caption": "subtle synthetic light chat wallpaper",
       "created": true,
-      "filename": "wallpaper_demo_green_gradient.jpg",
+      "filename": "wallpaper_demo_light_pattern.jpg",
       "kind": "wallpaper",
-      "label": "DEMO WALLPAPER",
-      "path": "Wallpapers/wallpaper_demo_green_gradient.jpg"
+      "label": "SYNTHETIC LIGHT WALLPAPER",
+      "path": "Wallpapers/wallpaper_demo_light_pattern.jpg"
+    },
+    {
+      "available": true,
+      "caption": "subtle synthetic dark chat wallpaper",
+      "created": true,
+      "filename": "wallpaper_demo_dark_pattern.jpg",
+      "kind": "wallpaper_dark",
+      "label": "SYNTHETIC DARK WALLPAPER",
+      "path": "Wallpapers/wallpaper_demo_dark_pattern.jpg"
     }
   ],
   "messages": [
@@ -560,7 +569,7 @@
       "sender": "Maya Chen",
       "sqlite_message_id": 5,
       "stable_message_id": "maya-005",
-      "text_or_caption": "No promises. Snack chaos is my brand in this fictional demo.",
+      "text_or_caption": "No promises. Snack chaos is my brand.",
       "timestamp": "2026-04-18T09:04:00+00:00"
     },
     {
@@ -575,7 +584,7 @@
       "sender": "Maya Chen",
       "sqlite_message_id": 6,
       "stable_message_id": "maya-006",
-      "text_or_caption": "testing the picnic blanket situation",
+      "text_or_caption": "Testing the picnic blanket situation.",
       "timestamp": "2026-04-18T09:05:00+00:00"
     },
     {
@@ -755,7 +764,7 @@
       "sender": "Maya Chen",
       "sqlite_message_id": 18,
       "stable_message_id": "maya-018",
-      "text_or_caption": "instant video note placeholder",
+      "text_or_caption": "Quick video note from the snack aisle.",
       "timestamp": "2026-04-18T09:17:00+00:00"
     },
     {
@@ -905,7 +914,7 @@
       "sender": "Alex Rivera",
       "sqlite_message_id": 28,
       "stable_message_id": "samir-007",
-      "text_or_caption": "The map labels are synthetic but useful.",
+      "text_or_caption": "That meeting point helps. I would have picked the wrong exit.",
       "timestamp": "2026-04-18T11:06:00+00:00"
     },
     {
@@ -1010,7 +1019,7 @@
       "sender": "Samir Patel",
       "sqlite_message_id": 35,
       "stable_message_id": "samir-014",
-      "text_or_caption": "No. Just the fake demo ticket count in the PDF.",
+      "text_or_caption": "No. Just the ticket count in the PDF.",
       "timestamp": "2026-04-18T11:13:00+00:00"
     },
     {
@@ -1463,7 +1472,7 @@
       "sender": "Alex Rivera",
       "sqlite_message_id": 65,
       "stable_message_id": "theo-006",
-      "text_or_caption": "Coordinates are synthetic, label is enough.",
+      "text_or_caption": "The label is enough. I know which entrance you mean.",
       "timestamp": "2026-04-20T08:35:00+00:00"
     },
     {
@@ -1643,7 +1652,7 @@
       "sender": "Alex Rivera",
       "sqlite_message_id": 77,
       "stable_message_id": "elena-006",
-      "text_or_caption": "That birthday photo is adorable and very synthetic.",
+      "text_or_caption": "That birthday photo is adorable.",
       "timestamp": "2026-04-20T18:05:00+00:00"
     },
     {
@@ -1853,7 +1862,7 @@
       "sender": "Jules Meyer",
       "sqlite_message_id": 91,
       "stable_message_id": "jules-004",
-      "text_or_caption": "fake preview, not a real ticket",
+      "text_or_caption": "Ticket preview.",
       "timestamp": "2026-04-21T10:03:00+00:00"
     },
     {
@@ -1913,7 +1922,7 @@
       "sender": "Jules Meyer",
       "sqlite_message_id": 95,
       "stable_message_id": "jules-008",
-      "text_or_caption": "fake ticket transfer note, not valid",
+      "text_or_caption": "Ticket transfer note.",
       "timestamp": "2026-04-21T10:07:00+00:00"
     },
     {
@@ -2243,7 +2252,7 @@
       "sender": "Green Corner Studio",
       "sqlite_message_id": 117,
       "stable_message_id": "studio-010",
-      "text_or_caption": "Added napkins to the demo order.",
+      "text_or_caption": "Added napkins to the order.",
       "timestamp": "2026-04-22T12:09:00+00:00"
     },
     {
@@ -2318,7 +2327,7 @@
       "sender": "Alex Rivera",
       "sqlite_message_id": 122,
       "stable_message_id": "lake_weekend-002",
-      "text_or_caption": "Welcome to Lake Weekend. This is a synthetic demo group.",
+      "text_or_caption": "Welcome to Lake Weekend. Keeping the plan here so it does not vanish in side chats.",
       "timestamp": "2026-04-23T09:01:00+00:00"
     },
     {
@@ -2501,7 +2510,7 @@
       "sender": "Alex Rivera",
       "sqlite_message_id": 134,
       "stable_message_id": "lake_weekend-014",
-      "text_or_caption": "Coordinates are synthetic; follow the fake blue sign.",
+      "text_or_caption": "Follow the blue sign near the side entrance.",
       "timestamp": "2026-04-23T09:13:00+00:00"
     },
     {
@@ -2756,7 +2765,7 @@
       "sender": "Samir Patel",
       "sqlite_message_id": 151,
       "stable_message_id": "lake_weekend-031",
-      "text_or_caption": "Security notice: messages are end-to-end encrypted in this synthetic demo.",
+      "text_or_caption": "Security notice: messages are end-to-end encrypted.",
       "timestamp": "2026-04-23T09:30:00+00:00"
     },
     {
@@ -2966,7 +2975,7 @@
       "sender": "Maya Chen",
       "sqlite_message_id": 165,
       "stable_message_id": "lake_weekend-045",
-      "text_or_caption": "group photo placeholder",
+      "text_or_caption": "Group photo from the planning thread.",
       "timestamp": "2026-04-23T09:44:00+00:00"
     },
     {
@@ -3011,7 +3020,7 @@
       "sender": "Alex Rivera",
       "sqlite_message_id": 168,
       "stable_message_id": "lake_weekend-048",
-      "text_or_caption": "The video placeholder may not thumbnail, but the row should load.",
+      "text_or_caption": "That video makes the lake look calmer than our planning.",
       "timestamp": "2026-04-23T09:47:00+00:00"
     },
     {
@@ -3026,7 +3035,7 @@
       "sender": "Samir Patel",
       "sqlite_message_id": 169,
       "stable_message_id": "lake_weekend-049",
-      "text_or_caption": "Please do not debug video at the station.",
+      "text_or_caption": "Please do not review videos at the station.",
       "timestamp": "2026-04-23T09:48:00+00:00"
     },
     {
@@ -3041,7 +3050,7 @@
       "sender": "Maya Chen",
       "sqlite_message_id": 170,
       "stable_message_id": "lake_weekend-050",
-      "text_or_caption": "boat sign, if it uploads - Media missing expected",
+      "text_or_caption": "Boat sign, if it uploads.",
       "timestamp": "2026-04-23T09:49:00+00:00"
     },
     {
@@ -3056,7 +3065,7 @@
       "sender": "Alex Rivera",
       "sqlite_message_id": 171,
       "stable_message_id": "lake_weekend-051",
-      "text_or_caption": "Good missing media test. The app should show a placeholder.",
+      "text_or_caption": "If it does not upload, the written plan still covers it.",
       "timestamp": "2026-04-23T09:50:00+00:00"
     },
     {
@@ -3371,7 +3380,7 @@
       "sender": "Alex Rivera",
       "sqlite_message_id": 192,
       "stable_message_id": "lake_weekend-072",
-      "text_or_caption": "Thanks everyone. This demo group is ready.",
+      "text_or_caption": "Thanks everyone. Lake plan is ready.",
       "timestamp": "2026-04-23T10:11:00+00:00"
     },
     {
@@ -3877,12 +3886,12 @@
   },
   "synthetic_notice": "Fully synthetic demo fixture. Contains no real WhatsApp data, no real private messages, no real tickets, no real receipts, and no real addresses.",
   "validation": {
-    "available_media_files": 25,
+    "available_media_files": 26,
     "failures": [],
-    "fixture_size_bytes": 217866,
+    "fixture_size_bytes": 419880,
     "group_chats": 2,
     "lake_weekend_messages": 72,
-    "media_items": 27,
+    "media_items": 28,
     "missing_media_references": 1,
     "normal_conversations": 10,
     "one_to_one_chats": 8,
