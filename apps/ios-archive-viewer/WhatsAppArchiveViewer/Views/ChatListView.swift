@@ -342,15 +342,12 @@ private struct ArchiveSlotCardView: View {
             .disabled(!canAdd)
         } else {
             HStack(spacing: 8) {
-                ArchiveActionButton(
-                    title: isOpening ? "Opening" : "Open",
-                    systemImage: isOpening ? nil : "arrow.right.circle.fill",
+                ArchiveIconActionButton(
+                    accessibilityTitle: isOpening ? "Opening" : "Open",
+                    systemImage: "arrow.right.circle.fill",
                     showsProgress: isOpening,
-                    style: .primary,
-                    maxWidth: .infinity,
                     action: onOpen
                 )
-                .disabled(isOpening)
 
                 ArchiveActionButton(
                     title: "Relink",
@@ -521,6 +518,39 @@ private struct DemoArchiveCardView: View {
             RoundedRectangle(cornerRadius: 8, style: .continuous)
                 .stroke(.quaternary)
         )
+    }
+}
+
+private struct ArchiveIconActionButton: View {
+    let accessibilityTitle: String
+    let systemImage: String
+    var showsProgress = false
+    let action: () -> Void
+
+    var body: some View {
+        Button {
+            guard !showsProgress else { return }
+            action()
+        } label: {
+            Group {
+                if showsProgress {
+                    ProgressView()
+                        .controlSize(.small)
+                        .tint(.white)
+                } else {
+                    Image(systemName: systemImage)
+                        .font(.system(size: 17, weight: .semibold))
+                }
+            }
+            .frame(width: 72)
+            .frame(minHeight: ArchiveActionButton.height)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.borderedProminent)
+        .controlSize(.regular)
+        .tint(.green)
+        .accessibilityLabel(accessibilityTitle)
+        .allowsHitTesting(!showsProgress)
     }
 }
 
