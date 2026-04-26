@@ -17,6 +17,7 @@ struct MessageListView: View {
     @State private var didCompleteInitialScroll = false
     @State private var lastOlderLoadTriggerMessageID: Int64?
     @State private var messageSearchText = ""
+    @State private var latestScrolledSearchQuery = ""
     private let olderLoadThreshold = 8
 
     private var trimmedMessageSearchText: String {
@@ -71,6 +72,12 @@ struct MessageListView: View {
                     didCompleteInitialScroll = false
                     lastOlderLoadTriggerMessageID = nil
                     scrollToLatestMessageIfNeeded(using: proxy, animated: false)
+                }
+                .onChange(of: trimmedMessageSearchText) { _, _ in
+                    scrollToFirstSearchResultIfNeeded(using: proxy)
+                }
+                .onChange(of: displayedMessages.first?.element.id) { _, _ in
+                    scrollToFirstSearchResultIfNeeded(using: proxy)
                 }
             }
         }
@@ -145,6 +152,21 @@ struct MessageListView: View {
         guard lastOlderLoadTriggerMessageID != oldestMessageID else { return }
         lastOlderLoadTriggerMessageID = oldestMessageID
         onLoadOlderMessages()
+    }
+
+    private func scrollToFirstSearchResultIfNeeded(using proxy: ScrollViewProxy) {
+        guard isSearchingMessages else {
+            latestScrolledSearchQuery = ""
+            return
+        }
+        guard latestScrolledSearchQuery != trimmedMessageSearchText else { return }
+        latestScrolledSearchQuery = trimmedMessageSearchText
+        guard let firstResultID = displayedMessages.first?.element.id else { return }
+        DispatchQueue.main.async {
+            withAnimation {
+                proxy.scrollTo(firstResultID, anchor: .top)
+            }
+        }
     }
 }
 
