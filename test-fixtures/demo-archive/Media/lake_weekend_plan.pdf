@@ -3,41 +3,52 @@
 << /Type /Catalog /Pages 2 0 R >>
 endobj
 2 0 obj
-<< /Type /Pages /Kids [3 0 R] /Count 1 >>
+<< /Type /Pages /Kids [5 0 R] /Count 1 >>
 endobj
 3 0 obj
-<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>
-endobj
-4 0 obj
 << /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>
 endobj
+4 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>
+endobj
 5 0 obj
-<< /Length 257 >>
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 3 0 R /F2 4 0 R >> >> /Contents 6 0 R >>
+endobj
+6 0 obj
+<< /Length 1693 >>
 stream
-BT
-/F1 12 Tf
-50 760 Td
-(LAKE WEEKEND PLAN) Tj
-0 -18 Td
-(Synthetic demo fixture.) Tj
-0 -18 Td
-(DEMO ONLY. Not a real ticket, receipt, document, or private message.) Tj
-0 -18 Td
-(Uploading the PDF now.) Tj
-0 -18 Td
-(Fictional reference: DEMO-ORDER-042.) Tj
-ET
+BT /F2 20 Tf 1 0 0 1 50 740 Tm (Lake Weekend Plan) Tj ET
+BT /F1 9 Tf 1 0 0 1 50 716 Tm (Synthetic demo document) Tj ET
+BT /F1 11 Tf 1 0 0 1 50 692 Tm (Synthetic demo fixture - not a real booking or private itinerary.) Tj ET
+BT /F2 13 Tf 1 0 0 1 50 665 Tm (Saturday outline) Tj ET
+BT /F1 11 Tf 1 0 0 1 62 647 Tm (- 09:10 meet at the station side entrance by the blue sign.) Tj ET
+BT /F1 11 Tf 1 0 0 1 62 632 Tm (- 09:25 transfer leaves. Theo has the exact platform note.) Tj ET
+BT /F1 11 Tf 1 0 0 1 62 617 Tm (- 14:20 boat tickets. This corrected the older 14:40 note.) Tj ET
+BT /F1 11 Tf 1 0 0 1 62 602 Tm (- 18:30 relaxed dinner plan, no fixed reservation in this fixture.) Tj ET
+BT /F2 13 Tf 1 0 0 1 50 575 Tm (People) Tj ET
+BT /F1 11 Tf 1 0 0 1 62 557 Tm (- Alex keeps the checklist and the archive.) Tj ET
+BT /F1 11 Tf 1 0 0 1 62 542 Tm (- Maya brings emergency cookies and keeps the tone honest.) Tj ET
+BT /F1 11 Tf 1 0 0 1 62 527 Tm (- Samir brings the printed backup and refuses mystery timing.) Tj ET
+BT /F1 11 Tf 1 0 0 1 62 512 Tm (- Nina brings fruit after the invite mix-up was cleared.) Tj ET
+BT /F1 11 Tf 1 0 0 1 62 497 Tm (- Theo handles station logistics and water.) Tj ET
+BT /F1 11 Tf 1 0 0 1 62 482 Tm (- Leo is invited, but not assigned to tickets.) Tj ET
+BT /F2 13 Tf 1 0 0 1 50 455 Tm (Packing) Tj ET
+BT /F1 11 Tf 1 0 0 1 62 437 Tm (- Jacket, sunscreen, water bottle, charger, small towel.) Tj ET
+BT /F1 11 Tf 1 0 0 1 62 422 Tm (- Snacks: chips x2, cookies x1, fruit x1, spare bag for cleanup.) Tj ET
+BT /F1 11 Tf 1 0 0 1 62 407 Tm (- Keep ticket screenshots local; this PDF has no usable ticket codes.) Tj ET
+BT /F1 8 Tf 1 0 0 1 50 36 Tm (Demo fixture - page 1 of 1) Tj ET
 endstream
 endobj
 xref
-0 6
-0000000000 65535 f 
-0000000009 00000 n 
-0000000058 00000 n 
-0000000115 00000 n 
-0000000241 00000 n 
-0000000311 00000 n 
-trailer << /Size 6 /Root 1 0 R >>
+0 7
+0000000000 65535 f
+0000000009 00000 n
+0000000058 00000 n
+0000000115 00000 n
+0000000185 00000 n
+0000000260 00000 n
+0000000396 00000 n
+trailer << /Size 7 /Root 1 0 R >>
 startxref
-619
+2141
 %%EOF

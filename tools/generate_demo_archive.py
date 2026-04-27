@@ -14,6 +14,7 @@ import os
 import shutil
 import sqlite3
 import struct
+import textwrap
 import wave
 import zlib
 from dataclasses import dataclass, field
@@ -21,7 +22,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 
-GENERATOR_VERSION = "1.0"
+GENERATOR_VERSION = "1.1"
 REPO_ROOT = Path(__file__).resolve().parents[1]
 FIXTURE_ROOT = REPO_ROOT / "test-fixtures" / "demo-archive"
 APPLE_EPOCH = datetime(2001, 1, 1, tzinfo=timezone.utc)
@@ -390,6 +391,122 @@ MEDIA_LIBRARY = {
 }
 
 
+DOCUMENT_LIBRARY = {
+    "lake_weekend_plan.pdf": {
+        "title": "Lake Weekend Plan",
+        "lines": [
+            "Synthetic demo fixture - not a real booking or private itinerary.",
+            "",
+            "## Saturday outline",
+            "- 09:10 meet at the station side entrance by the blue sign.",
+            "- 09:25 transfer leaves. Theo has the exact platform note.",
+            "- 14:20 boat tickets. This corrected the older 14:40 note.",
+            "- 18:30 relaxed dinner plan, no fixed reservation in this fixture.",
+            "",
+            "## People",
+            "- Alex keeps the checklist and the archive.",
+            "- Maya brings emergency cookies and keeps the tone honest.",
+            "- Samir brings the printed backup and refuses mystery timing.",
+            "- Nina brings fruit after the invite mix-up was cleared.",
+            "- Theo handles station logistics and water.",
+            "- Leo is invited, but not assigned to tickets.",
+            "",
+            "## Packing",
+            "- Jacket, sunscreen, water bottle, charger, small towel.",
+            "- Snacks: chips x2, cookies x1, fruit x1, spare bag for cleanup.",
+            "- Keep ticket screenshots local; this PDF has no usable ticket codes.",
+        ],
+    },
+    "green_corner_receipt.pdf": {
+        "title": "Green Corner Studio Receipt",
+        "lines": [
+            "Synthetic demo receipt - no real purchase, address, or payment data.",
+            "",
+            "## Order",
+            "- Picnic basket for Lake Weekend.",
+            "- Pickup reference DEMO-ORDER-042.",
+            "- Includes napkins, cups, and a small cold pack.",
+            "- Substitution allowed: extra crackers instead of olives.",
+            "",
+            "## Pickup note",
+            "The basket is on the labeled shelf in the demo pickup area. The pickup window is fictional and intentionally flexible.",
+            "",
+            "## Items",
+            "- Woven basket with reusable liner.",
+            "- Napkins added after Alex called.",
+            "- Cups packed separately so the fruit does not crush them.",
+            "- Small note card marked DEMO SAMPLE.",
+            "",
+            "## Chat behavior covered",
+            "- Business-style contact name.",
+            "- Receipt document row.",
+            "- Photo attachment in the same conversation.",
+            "- Outgoing call placeholder after the pickup message.",
+            "",
+            "## Safety note",
+            "This document exists only to exercise document preview, file size, captions, and sharing behavior in the viewer.",
+        ],
+    },
+    "office_snack_rotation.pdf": {
+        "title": "Office Snack Rotation",
+        "lines": [
+            "Synthetic office note - not a real workplace policy.",
+            "",
+            "## Poll result",
+            "- Salty: 3 votes.",
+            "- Sweet: 1 vote.",
+            "- Fruit: 1 vote.",
+            "- Mystery box: 0 votes after the raisin incident.",
+            "",
+            "## Rotation",
+            "- Monday: crackers and fruit.",
+            "- Wednesday: chips and sparkling water.",
+            "- Friday: cookies if the shelf labels are still readable.",
+            "",
+            "## Shelf labels",
+            "- Salty",
+            "- Sweet",
+            "- Fruit",
+            "- Risk, formerly known as mystery",
+            "",
+            "## Open questions",
+            "- Whether crackers count as salty or structurally neutral.",
+            "- Whether Maya is allowed to rename the labels midweek.",
+            "- Whether clips are enough or the shelf needs tape.",
+            "",
+            "## Viewer coverage",
+            "This file gives the demo a second non-travel document so media filters can show multiple PDFs across different conversations.",
+        ],
+    },
+    "ticket_notes_demo.pdf": {
+        "title": "Ticket Transfer Note",
+        "lines": [
+            "Synthetic demo ticket note - this cannot be used as a real ticket.",
+            "",
+            "## Status",
+            "- One spare ticket is still pending confirmation.",
+            "- Do not count it in the group total until Jules replies.",
+            "- The preview image is intentionally marked DEMO ONLY.",
+            "",
+            "## Redacted fields",
+            "- QR code: removed.",
+            "- Seat or passenger details: removed.",
+            "- Payment reference: removed.",
+            "- Sender account identifier: removed.",
+            "- Venue name: replaced with generic demo wording.",
+            "",
+            "## Handling",
+            "- Keep the spare marked pending.",
+            "- Do not forward outside the demo archive.",
+            "- Ask Jules for a final yes or no before the group summary.",
+            "",
+            "## Message context",
+            "This attachment tests document rows, captions, and unresolved planning threads without exposing real travel or payment information.",
+        ],
+    },
+}
+
+
 @dataclass
 class Message:
     stable_id: str
@@ -620,20 +737,74 @@ def write_wallpaper(path: Path, dark: bool) -> None:
     write_png_bytes(path, width, height, pixels)
 
 
+def pdf_escape(value: str) -> str:
+    return value.replace("\\", "\\\\").replace("(", "\\(").replace(")", "\\)")
+
+
 def write_pdf(path: Path, title: str, lines: list[str]) -> None:
-    escaped_lines = [line.replace("\\", "\\\\").replace("(", "\\(").replace(")", "\\)") for line in lines]
-    stream_lines = ["BT", "/F1 12 Tf", "50 760 Td", f"({title}) Tj"]
-    for line in escaped_lines:
-        stream_lines.extend(["0 -18 Td", f"({line}) Tj"])
-    stream_lines.append("ET")
-    stream = "\n".join(stream_lines).encode("ascii")
+    pages: list[list[str]] = [[]]
+    y = 740
+
+    def new_page() -> None:
+        nonlocal y
+        pages.append([])
+        y = 740
+
+    def add_text(text: str, *, x: int = 50, size: int = 11, font: str = "F1", leading: int = 16) -> None:
+        nonlocal y
+        if y < 70:
+            new_page()
+        pages[-1].append(f"BT /{font} {size} Tf 1 0 0 1 {x} {y} Tm ({pdf_escape(text)}) Tj ET")
+        y -= leading
+
+    def add_spacer(amount: int = 8) -> None:
+        nonlocal y
+        y -= amount
+        if y < 70:
+            new_page()
+
+    add_text(title, size=20, font="F2", leading=24)
+    add_text("Synthetic demo document", size=9, font="F1", leading=18)
+    add_spacer(6)
+
+    for line in lines:
+        if not line:
+            add_spacer()
+            continue
+        if line.startswith("## "):
+            add_spacer(4)
+            add_text(line[3:], size=13, font="F2", leading=18)
+            continue
+        if line.startswith("- "):
+            wrapped = textwrap.wrap(line[2:], width=78)
+            for index, part in enumerate(wrapped):
+                prefix = "- " if index == 0 else "  "
+                add_text(prefix + part, x=62, size=11, leading=15)
+            continue
+        for part in textwrap.wrap(line, width=86):
+            add_text(part, size=11, leading=15)
+
+    for index, page in enumerate(pages, start=1):
+        page.append(f"BT /F1 8 Tf 1 0 0 1 50 36 Tm (Demo fixture - page {index} of {len(pages)}) Tj ET")
+
+    streams = ["\n".join(page).encode("ascii") for page in pages]
+    page_object_start = 5
+    content_object_start = page_object_start + len(streams)
+    kids = " ".join(f"{page_object_start + index} 0 R" for index in range(len(streams)))
     objects = [
         b"<< /Type /Catalog /Pages 2 0 R >>",
-        b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
-        b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>",
+        f"<< /Type /Pages /Kids [{kids}] /Count {len(streams)} >>".encode("ascii"),
         b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
-        b"<< /Length " + str(len(stream)).encode("ascii") + b" >>\nstream\n" + stream + b"\nendstream",
+        b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>",
     ]
+    for index, _stream in enumerate(streams):
+        content_id = content_object_start + index
+        objects.append(
+            f"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 3 0 R /F2 4 0 R >> >> /Contents {content_id} 0 R >>".encode("ascii")
+        )
+    for stream in streams:
+        objects.append(b"<< /Length " + str(len(stream)).encode("ascii") + b" >>\nstream\n" + stream + b"\nendstream")
+
     content = bytearray(b"%PDF-1.4\n")
     offsets = [0]
     for i, obj in enumerate(objects, start=1):
@@ -643,9 +814,9 @@ def write_pdf(path: Path, title: str, lines: list[str]) -> None:
         content.extend(b"\nendobj\n")
     xref_offset = len(content)
     content.extend(f"xref\n0 {len(objects) + 1}\n".encode("ascii"))
-    content.extend(b"0000000000 65535 f \n")
+    content.extend(b"0000000000 65535 f\n")
     for offset in offsets[1:]:
-        content.extend(f"{offset:010d} 00000 n \n".encode("ascii"))
+        content.extend(f"{offset:010d} 00000 n\n".encode("ascii"))
     content.extend(
         f"trailer << /Size {len(objects) + 1} /Root 1 0 R >>\nstartxref\n{xref_offset}\n%%EOF\n".encode("ascii")
     )
@@ -699,15 +870,11 @@ def write_media_files() -> list[dict]:
             write_wallpaper(path, dark=True)
             shutil.copyfile(path, FIXTURE_ROOT / "current_wallpaper_dark.jpg")
         elif kind == "document":
+            document = DOCUMENT_LIBRARY.get(filename, {})
             write_pdf(
                 path,
-                meta["label"],
-                [
-                    "Synthetic demo fixture.",
-                    "DEMO ONLY. Not a real ticket, receipt, document, or private message.",
-                    meta.get("caption", ""),
-                    "Fictional reference: DEMO-ORDER-042.",
-                ],
+                document.get("title", meta["label"]),
+                document.get("lines", [SYNTHETIC_NOTICE, meta.get("caption", "")]),
             )
         elif kind in {"voice", "audio"}:
             write_wav(path, float(meta.get("duration", 2)), frequency=360.0 + len(filename))
@@ -762,13 +929,13 @@ def build_chats() -> list[Chat]:
         ("maya", "lake plan is becoming a whole production :')", None),
         ("alex", "A small production. Tasteful. With snacks.", None),
         ("maya", "I am bringing chips unless Leo panic-buys six bags again", None),
-        ("alex", "Please prevent snack chaos if you can.", None),
+        ("alex", "Please intercept snack chaos if you can.", None),
         ("maya", "No promises. Snack chaos is my brand.", None),
         ("maya", "Testing the picnic blanket situation.", {"message_type": 1, "media_key": "photo_picnic_blanket.jpg"}),
         ("alex", "That blanket looks lake-ready.", None),
         ("maya", "Voice memo incoming because snack math needs nuance.", None),
         ("maya", "Maya explains snack math for 18 seconds", {"message_type": 3, "media_key": "audio_maya_snack_math.wav"}),
-        ("alex", "I understood maybe half, which is enough.", None),
+        ("alex", "I understood the middle third and trusted the rest.", None),
         ("maya", "Missed voice call", {"message_type": 59, "duration": 0}),
         ("alex", "Sorry, was comparing ticket times.", None),
         ("maya", "You compared times plural? There is one boat.", None),
@@ -784,9 +951,9 @@ def build_chats() -> list[Chat]:
 
     lines_to_messages(by_key["samir"], dt(18, 11, 0), [
         ("samir", "Uploading the PDF now.", {"message_type": 8, "media_key": "lake_weekend_plan.pdf"}),
-        ("alex", "Got it. PDF title is very official.", None),
+        ("alex", "Got it. The title is very official.", None),
         ("samir", "It has a packing list and a ticket section.", None),
-        ("alex", "You made the lake weekend sound like a conference.", None),
+        ("alex", "You made the lake weekend sound like a small conference.", None),
         ("samir", "Conferences have working schedules.", None),
         ("samir", "Updated meeting point screenshot", {"message_type": 1, "media_key": "photo_meeting_point.jpg"}),
         ("alex", "That meeting point helps. I would have picked the wrong exit.", None),
@@ -810,8 +977,8 @@ def build_chats() -> list[Chat]:
         ("alex", "No, that is on me. I should have messaged you directly.", None),
         ("nina", "I honestly thought it was a closed thing.", None),
         ("alex", "It was not closed. I just got tangled in the lake planning thread.", None),
-        ("nina", "So the lake exists and I was just orbiting outside it.", None),
-        ("alex", "Accurate but accidental.", None),
+        ("nina", "So the lake exists and I was orbiting it like a sad moon.", None),
+        ("alex", "Accurate image, terrible process. Sorry.", None),
         ("nina", "I reserve the right to be dramatic for 10 minutes.", None),
         ("alex", "Granted. Full dramatic window approved.", None),
         ("nina", "Okay, I am coming if there is still space.", None),
@@ -819,7 +986,7 @@ def build_chats() -> list[Chat]:
         ("nina", "Good. I can bring fruit so it is not all snacks.", None),
         ("alex", "Maya will pretend fruit is decorative.", None),
         ("nina", "Maya can fight a grape.", None),
-        ("alex", "This invite recovery is going better than expected.", None),
+        ("alex", "This invite recovery is going better than I earned.", None),
         ("nina", "Because I am warm and reasonable after exactly 10 minutes.", None),
         ("alex", "Timer respected.", None),
         ("nina", "Send the ticket details when you can.", None),
@@ -848,7 +1015,7 @@ def build_chats() -> list[Chat]:
         ("alex", "Fair evidence.", None),
         ("elena", "Found this old birthday photo.", {"message_type": 1, "media_key": "photo_old_birthday.jpg"}),
         ("alex", "That birthday photo is adorable.", None),
-        ("elena", "Synthetic or not, you still looked serious about cake.", None),
+        ("elena", "You looked very serious about the cake.", None),
         ("alex", "Cake requires focus.", None),
         ("elena", "Elena says happy early birthday", {"message_type": 3, "media_key": "audio_elena_birthday_note.wav"}),
         ("alex", "I listened. I will eat properly.", None),
@@ -862,7 +1029,7 @@ def build_chats() -> list[Chat]:
 
     lines_to_messages(by_key["jules"], dt(21, 10, 0), [
         ("alex", "Still selling the spare ticket?", None),
-        ("jules", "Maybe, waiting on one person.", None),
+        ("jules", "Maybe, waiting on one person who reads messages like quarterly reports.", None),
         ("alex", "No rush, just checking before the lake plan locks.", None),
         ("jules", "Ticket preview.", {"message_type": 1, "media_key": "photo_ticket_preview_fake.jpg"}),
         ("alex", "Thanks. The preview says DEMO ONLY, perfect.", None),
@@ -904,11 +1071,11 @@ def build_chats() -> list[Chat]:
 
     lake_lines = [
         ("alex", "Group created by Alex.", {"message_type": 6, "group_event_type": 1}),
-        ("alex", "Welcome to Lake Weekend. Keeping the plan here so it does not vanish in side chats.", None),
-        ("maya", "I am here for snacks and gentle chaos.", None),
-        ("samir", "I am here for the PDF and ticket timing.", None),
+        ("alex", "Welcome to Lake Weekend. Putting the plan here before it gets lost across six side chats.", None),
+        ("maya", "I am here for snacks and light supervision.", None),
+        ("samir", "I am here for the schedule and ticket timing.", None),
         ("theo", "I am here for station logistics.", None),
-        ("leo", "I am here by accident but I brought optimism.", None),
+        ("leo", "I am here on purpose. Mostly.", None),
         ("samir", "Uploading the PDF now.", {"message_type": 8, "media_key": "lake_weekend_plan.pdf"}),
         ("alex", "Please read the lake PDF before inventing plans.", None),
         ("leo", "Does the PDF cover snacks?", None),
@@ -923,12 +1090,12 @@ def build_chats() -> list[Chat]:
         ("alex", "Useful. That is the picnic basket contact.", None),
         ("samir", "Reminder: boat tickets are 14:20.", None),
         ("alex", "Samir corrected 14:40 to 14:20 earlier.", None),
-        ("leo", "So 14:30?", None),
+        ("leo", "So not 14:30?", None),
         ("samir", "No. 14:20.", None),
-        ("maya", "Leo has entered the ticket fog.", None),
+        ("maya", "Leo has opened a side quest called ticket fog.", None),
         ("alex", "I am adding Nina now.", {"message_type": 6, "group_event_type": 2}),
         ("nina", "Hi. Was I forgotten or dramatically delayed?", None),
-        ("alex", "Dramatically delayed by my bad invite handling. Sorry.", None),
+        ("alex", "Dramatically delayed by my bad invite handling. Sorry again.", None),
         ("nina", "Okay, I am here and mildly dramatic.", None),
         ("maya", "Welcome. We have snacks diplomacy.", None),
         ("nina", "I can bring fruit and emotional balance.", None),
@@ -936,7 +1103,7 @@ def build_chats() -> list[Chat]:
         ("samir", "Security notice: messages are end-to-end encrypted.", {"message_type": 10, "group_event_type": 3}),
         ("theo", "Back to logistics. Train buffer is 12 minutes.", None),
         ("alex", "I like a buffer.", None),
-        ("maya", "You like three buffers stacked in a trench coat.", None),
+        ("maya", "You like three buffers pretending to be one buffer.", None),
         ("samir", "Ticket PDF says meet 09:10, depart 09:25.", None),
         ("leo", "I may have told Jules we needed six tickets.", None),
         ("alex", "Why six?", None),
@@ -944,11 +1111,11 @@ def build_chats() -> list[Chat]:
         ("nina", "Honestly snacks deserve representation.", None),
         ("samir", "We need five tickets plus one pending spare, not six confirmed.", None),
         ("maya", "Leo explains the ticket confusion", {"message_type": 3, "media_key": "audio_group_leo_explains.wav"}),
-        ("alex", "That voice note somehow made it less clear.", None),
+        ("alex", "That voice note has confidence but not clarity.", None),
         ("theo", "I will book the transport for five.", None),
         ("samir", "Good. PDF revision not needed.", None),
         ("maya", "Group photo from the planning thread.", {"message_type": 1, "media_key": "photo_group_selfie_placeholder.jpg"}),
-        ("nina", "Everyone looks like abstract blobs. Accurate.", None),
+        ("nina", "Everyone looks like abstract blobs, which feels emotionally accurate.", None),
         ("leo", "dramatic 3 second lake pan", {"message_type": 2, "media_key": "video_lake_pan.mp4"}),
         ("alex", "That video makes the lake look calmer than our planning.", None),
         ("samir", "Please do not review videos at the station.", None),
@@ -961,10 +1128,10 @@ def build_chats() -> list[Chat]:
         ("leo", "Consistency is a virtue.", None),
         ("alex", "Bring two chips, Nina fruit, Maya cookies.", None),
         ("theo", "I will bring water.", None),
-        ("samir", "I will bring printed backup of the PDF.", None),
-        ("maya", "The PDF has become a character.", None),
-        ("nina", "Can the PDF carry snacks?", None),
-        ("alex", "No, but it can list snacks.", None),
+        ("samir", "I will bring the printed backup.", None),
+        ("maya", "The printed backup is now our seventh attendee.", None),
+        ("nina", "Can it carry snacks?", None),
+        ("alex", "No, but it can judge us quietly.", None),
         ("leo", "I vote mystery snacks.", None),
         ("samir", "No mystery near tickets.", None),
         ("theo", "Weather looks mild in the fictional forecast.", None),
@@ -986,7 +1153,7 @@ def build_chats() -> list[Chat]:
         ("maya", "snack table prototype", {"message_type": 1, "media_key": "photo_snack_table.jpg"}),
         ("theo", "Looks efficient.", None),
         ("samir", "office snack rotation PDF", {"message_type": 8, "media_key": "office_snack_rotation.pdf"}),
-        ("alex", "A PDF for snacks is very on theme.", None),
+        ("alex", "A formal snack document is very on brand.", None),
         ("maya", "The office has become Samir's second lake.", None),
         ("samir", "The PDF prevents snack drift.", None),
         ("theo", "Theo votes for salty snacks", {"message_type": 3, "media_key": "audio_office_vote.wav"}),
@@ -1153,13 +1320,16 @@ def create_chat_storage(chats: list[Chat]) -> None:
                         "TEL:+15550108\nNOTE:Synthetic demo contact card\nEND:VCARD"
                     )
                 media_origin = 1 if media_meta["kind"] == "voice" else 0
+                media_title = media_meta.get("caption") or media_meta.get("label")
+                if media_meta["kind"] == "document":
+                    media_title = DOCUMENT_LIBRARY.get(message.media_key, {}).get("title", media_meta.get("label"))
                 cur.execute(
                     "INSERT INTO ZWAMEDIAITEM VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                     (
                         media_pk,
                         message_pk,
                         local_path,
-                        media_meta.get("caption") or media_meta.get("label"),
+                        media_title,
                         size,
                         media_origin,
                         None,
@@ -1317,7 +1487,7 @@ source alone is not a one-tap iPhone install path.
 - system messages
 - voice call labels
 - photos, videos, audio, voice memos, stickers, and contact cards
-- PDFs/documents
+- richer single-page and multipage PDFs/documents with fixture-specific content
 - media captions
 - Stories rows via `status@broadcast`
 - subtle synthetic light/dark wallpaper via `current_wallpaper.jpg` and `current_wallpaper_dark.jpg`
@@ -1338,6 +1508,9 @@ fixture filenames, including `.jpg` names, so the app can test image-path and
 media-kind behavior without copyrighted or private images. Video placeholders are
 small deterministic MP4-like files. They exercise existence, type inference, and
 unavailable-thumbnail behavior; they are not intended to be real playable clips.
+PDFs are deterministic synthetic documents with realistic headings and redacted
+demo-only details so document preview and sharing can be tested without private
+files.
 
 ## Validation Summary
 
@@ -1442,6 +1615,16 @@ def validate_fixture(chats: list[Chat], media_manifest: list[dict]) -> dict:
     pdf_count = len(list((FIXTURE_ROOT / "Media").glob("*.pdf")))
     if pdf_count < 2:
         failures.append(f"Expected at least two PDFs, found {pdf_count}")
+    for filename, document in DOCUMENT_LIBRARY.items():
+        path = FIXTURE_ROOT / "Media" / filename
+        if not path.exists():
+            failures.append(f"Expected generated document missing: {filename}")
+            continue
+        content = path.read_bytes()
+        if len(content) < 2_000:
+            failures.append(f"Generated document is too sparse: {filename}")
+        if document["title"].encode("ascii") not in content:
+            failures.append(f"Generated document title missing from PDF stream: {filename}")
 
     text_blob = "\n".join(
         row[0] or ""

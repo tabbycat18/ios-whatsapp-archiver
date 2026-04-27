@@ -53,7 +53,7 @@ source alone is not a one-tap iPhone install path.
 - system messages
 - voice call labels
 - photos, videos, audio, voice memos, stickers, and contact cards
-- PDFs/documents
+- richer single-page and multipage PDFs/documents with fixture-specific content
 - media captions
 - Stories rows via `status@broadcast`
 - subtle synthetic light/dark wallpaper via `current_wallpaper.jpg` and `current_wallpaper_dark.jpg`
@@ -74,6 +74,9 @@ fixture filenames, including `.jpg` names, so the app can test image-path and
 media-kind behavior without copyrighted or private images. Video placeholders are
 small deterministic MP4-like files. They exercise existence, type inference, and
 unavailable-thumbnail behavior; they are not intended to be real playable clips.
+PDFs are deterministic synthetic documents with realistic headings and redacted
+demo-only details so document preview and sharing can be tested without private
+files.
 
 ## Validation Summary
 
@@ -83,4 +86,4 @@ unavailable-thumbnail behavior; they are not intended to be real playable clips.
 - Status/story sessions: 1
 - Messages: 225
 - Lake Weekend messages: 72
-- Fixture size: 419880 bytes
+- Fixture size: 426174 bytes

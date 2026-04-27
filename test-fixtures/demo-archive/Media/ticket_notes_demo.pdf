@@ -3,41 +3,53 @@
 << /Type /Catalog /Pages 2 0 R >>
 endobj
 2 0 obj
-<< /Type /Pages /Kids [3 0 R] /Count 1 >>
+<< /Type /Pages /Kids [5 0 R] /Count 1 >>
 endobj
 3 0 obj
-<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>
-endobj
-4 0 obj
 << /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>
 endobj
+4 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>
+endobj
 5 0 obj
-<< /Length 254 >>
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 3 0 R /F2 4 0 R >> >> /Contents 6 0 R >>
+endobj
+6 0 obj
+<< /Length 1609 >>
 stream
-BT
-/F1 12 Tf
-50 760 Td
-(DEMO TICKET NOTE) Tj
-0 -18 Td
-(Synthetic demo fixture.) Tj
-0 -18 Td
-(DEMO ONLY. Not a real ticket, receipt, document, or private message.) Tj
-0 -18 Td
-(ticket transfer note) Tj
-0 -18 Td
-(Fictional reference: DEMO-ORDER-042.) Tj
-ET
+BT /F2 20 Tf 1 0 0 1 50 740 Tm (Ticket Transfer Note) Tj ET
+BT /F1 9 Tf 1 0 0 1 50 716 Tm (Synthetic demo document) Tj ET
+BT /F1 11 Tf 1 0 0 1 50 692 Tm (Synthetic demo ticket note - this cannot be used as a real ticket.) Tj ET
+BT /F2 13 Tf 1 0 0 1 50 665 Tm (Status) Tj ET
+BT /F1 11 Tf 1 0 0 1 62 647 Tm (- One spare ticket is still pending confirmation.) Tj ET
+BT /F1 11 Tf 1 0 0 1 62 632 Tm (- Do not count it in the group total until Jules replies.) Tj ET
+BT /F1 11 Tf 1 0 0 1 62 617 Tm (- The preview image is intentionally marked DEMO ONLY.) Tj ET
+BT /F2 13 Tf 1 0 0 1 50 590 Tm (Redacted fields) Tj ET
+BT /F1 11 Tf 1 0 0 1 62 572 Tm (- QR code: removed.) Tj ET
+BT /F1 11 Tf 1 0 0 1 62 557 Tm (- Seat or passenger details: removed.) Tj ET
+BT /F1 11 Tf 1 0 0 1 62 542 Tm (- Payment reference: removed.) Tj ET
+BT /F1 11 Tf 1 0 0 1 62 527 Tm (- Sender account identifier: removed.) Tj ET
+BT /F1 11 Tf 1 0 0 1 62 512 Tm (- Venue name: replaced with generic demo wording.) Tj ET
+BT /F2 13 Tf 1 0 0 1 50 485 Tm (Handling) Tj ET
+BT /F1 11 Tf 1 0 0 1 62 467 Tm (- Keep the spare marked pending.) Tj ET
+BT /F1 11 Tf 1 0 0 1 62 452 Tm (- Do not forward outside the demo archive.) Tj ET
+BT /F1 11 Tf 1 0 0 1 62 437 Tm (- Ask Jules for a final yes or no before the group summary.) Tj ET
+BT /F2 13 Tf 1 0 0 1 50 410 Tm (Message context) Tj ET
+BT /F1 11 Tf 1 0 0 1 50 392 Tm (This attachment tests document rows, captions, and unresolved planning threads without) Tj ET
+BT /F1 11 Tf 1 0 0 1 50 377 Tm (exposing real travel or payment information.) Tj ET
+BT /F1 8 Tf 1 0 0 1 50 36 Tm (Demo fixture - page 1 of 1) Tj ET
 endstream
 endobj
 xref
-0 6
-0000000000 65535 f 
-0000000009 00000 n 
-0000000058 00000 n 
-0000000115 00000 n 
-0000000241 00000 n 
-0000000311 00000 n 
-trailer << /Size 6 /Root 1 0 R >>
+0 7
+0000000000 65535 f
+0000000009 00000 n
+0000000058 00000 n
+0000000115 00000 n
+0000000185 00000 n
+0000000260 00000 n
+0000000396 00000 n
+trailer << /Size 7 /Root 1 0 R >>
 startxref
-616
+2057
 %%EOF

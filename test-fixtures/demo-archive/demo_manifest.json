@@ -233,7 +233,7 @@
     "theo": 12
   },
   "generated_at": "2026-04-26T00:00:00Z",
-  "generator_version": "1.0",
+  "generator_version": "1.1",
   "media_manifest": [
     {
       "available": true,
@@ -554,7 +554,7 @@
       "sender": "Alex Rivera",
       "sqlite_message_id": 4,
       "stable_message_id": "maya-004",
-      "text_or_caption": "Please prevent snack chaos if you can.",
+      "text_or_caption": "Please intercept snack chaos if you can.",
       "timestamp": "2026-04-18T09:03:00+00:00"
     },
     {
@@ -644,7 +644,7 @@
       "sender": "Alex Rivera",
       "sqlite_message_id": 10,
       "stable_message_id": "maya-010",
-      "text_or_caption": "I understood maybe half, which is enough.",
+      "text_or_caption": "I understood the middle third and trusted the rest.",
       "timestamp": "2026-04-18T09:09:00+00:00"
     },
     {
@@ -839,7 +839,7 @@
       "sender": "Alex Rivera",
       "sqlite_message_id": 23,
       "stable_message_id": "samir-002",
-      "text_or_caption": "Got it. PDF title is very official.",
+      "text_or_caption": "Got it. The title is very official.",
       "timestamp": "2026-04-18T11:01:00+00:00"
     },
     {
@@ -869,7 +869,7 @@
       "sender": "Alex Rivera",
       "sqlite_message_id": 25,
       "stable_message_id": "samir-004",
-      "text_or_caption": "You made the lake weekend sound like a conference.",
+      "text_or_caption": "You made the lake weekend sound like a small conference.",
       "timestamp": "2026-04-18T11:03:00+00:00"
     },
     {
@@ -1184,7 +1184,7 @@
       "sender": "Nina Rossi",
       "sqlite_message_id": 46,
       "stable_message_id": "nina-005",
-      "text_or_caption": "So the lake exists and I was just orbiting outside it.",
+      "text_or_caption": "So the lake exists and I was orbiting it like a sad moon.",
       "timestamp": "2026-04-19T14:04:00+00:00"
     },
     {
@@ -1199,7 +1199,7 @@
       "sender": "Alex Rivera",
       "sqlite_message_id": 47,
       "stable_message_id": "nina-006",
-      "text_or_caption": "Accurate but accidental.",
+      "text_or_caption": "Accurate image, terrible process. Sorry.",
       "timestamp": "2026-04-19T14:05:00+00:00"
     },
     {
@@ -1319,7 +1319,7 @@
       "sender": "Alex Rivera",
       "sqlite_message_id": 55,
       "stable_message_id": "nina-014",
-      "text_or_caption": "This invite recovery is going better than expected.",
+      "text_or_caption": "This invite recovery is going better than I earned.",
       "timestamp": "2026-04-19T14:13:00+00:00"
     },
     {
@@ -1667,7 +1667,7 @@
       "sender": "Elena Rivera",
       "sqlite_message_id": 78,
       "stable_message_id": "elena-007",
-      "text_or_caption": "Synthetic or not, you still looked serious about cake.",
+      "text_or_caption": "You looked very serious about the cake.",
       "timestamp": "2026-04-20T18:06:00+00:00"
     },
     {
@@ -1832,7 +1832,7 @@
       "sender": "Jules Meyer",
       "sqlite_message_id": 89,
       "stable_message_id": "jules-002",
-      "text_or_caption": "Maybe, waiting on one person.",
+      "text_or_caption": "Maybe, waiting on one person who reads messages like quarterly reports.",
       "timestamp": "2026-04-21T10:01:00+00:00"
     },
     {
@@ -2327,7 +2327,7 @@
       "sender": "Alex Rivera",
       "sqlite_message_id": 122,
       "stable_message_id": "lake_weekend-002",
-      "text_or_caption": "Welcome to Lake Weekend. Keeping the plan here so it does not vanish in side chats.",
+      "text_or_caption": "Welcome to Lake Weekend. Putting the plan here before it gets lost across six side chats.",
       "timestamp": "2026-04-23T09:01:00+00:00"
     },
     {
@@ -2342,7 +2342,7 @@
       "sender": "Maya Chen",
       "sqlite_message_id": 123,
       "stable_message_id": "lake_weekend-003",
-      "text_or_caption": "I am here for snacks and gentle chaos.",
+      "text_or_caption": "I am here for snacks and light supervision.",
       "timestamp": "2026-04-23T09:02:00+00:00"
     },
     {
@@ -2357,7 +2357,7 @@
       "sender": "Samir Patel",
       "sqlite_message_id": 124,
       "stable_message_id": "lake_weekend-004",
-      "text_or_caption": "I am here for the PDF and ticket timing.",
+      "text_or_caption": "I am here for the schedule and ticket timing.",
       "timestamp": "2026-04-23T09:03:00+00:00"
     },
     {
@@ -2387,7 +2387,7 @@
       "sender": "Leo Grant",
       "sqlite_message_id": 126,
       "stable_message_id": "lake_weekend-006",
-      "text_or_caption": "I am here by accident but I brought optimism.",
+      "text_or_caption": "I am here on purpose. Mostly.",
       "timestamp": "2026-04-23T09:05:00+00:00"
     },
     {
@@ -2615,7 +2615,7 @@
       "sender": "Leo Grant",
       "sqlite_message_id": 141,
       "stable_message_id": "lake_weekend-021",
-      "text_or_caption": "So 14:30?",
+      "text_or_caption": "So not 14:30?",
       "timestamp": "2026-04-23T09:20:00+00:00"
     },
     {
@@ -2645,7 +2645,7 @@
       "sender": "Maya Chen",
       "sqlite_message_id": 143,
       "stable_message_id": "lake_weekend-023",
-      "text_or_caption": "Leo has entered the ticket fog.",
+      "text_or_caption": "Leo has opened a side quest called ticket fog.",
       "timestamp": "2026-04-23T09:22:00+00:00"
     },
     {
@@ -2690,7 +2690,7 @@
       "sender": "Alex Rivera",
       "sqlite_message_id": 146,
       "stable_message_id": "lake_weekend-026",
-      "text_or_caption": "Dramatically delayed by my bad invite handling. Sorry.",
+      "text_or_caption": "Dramatically delayed by my bad invite handling. Sorry again.",
       "timestamp": "2026-04-23T09:25:00+00:00"
     },
     {
@@ -2810,7 +2810,7 @@
       "sender": "Maya Chen",
       "sqlite_message_id": 154,
       "stable_message_id": "lake_weekend-034",
-      "text_or_caption": "You like three buffers stacked in a trench coat.",
+      "text_or_caption": "You like three buffers pretending to be one buffer.",
       "timestamp": "2026-04-23T09:33:00+00:00"
     },
     {
@@ -2930,7 +2930,7 @@
       "sender": "Alex Rivera",
       "sqlite_message_id": 162,
       "stable_message_id": "lake_weekend-042",
-      "text_or_caption": "That voice note somehow made it less clear.",
+      "text_or_caption": "That voice note has confidence but not clarity.",
       "timestamp": "2026-04-23T09:41:00+00:00"
     },
     {
@@ -2990,7 +2990,7 @@
       "sender": "Nina Rossi",
       "sqlite_message_id": 166,
       "stable_message_id": "lake_weekend-046",
-      "text_or_caption": "Everyone looks like abstract blobs. Accurate.",
+      "text_or_caption": "Everyone looks like abstract blobs, which feels emotionally accurate.",
       "timestamp": "2026-04-23T09:45:00+00:00"
     },
     {
@@ -3185,7 +3185,7 @@
       "sender": "Samir Patel",
       "sqlite_message_id": 179,
       "stable_message_id": "lake_weekend-059",
-      "text_or_caption": "I will bring printed backup of the PDF.",
+      "text_or_caption": "I will bring the printed backup.",
       "timestamp": "2026-04-23T09:58:00+00:00"
     },
     {
@@ -3200,7 +3200,7 @@
       "sender": "Maya Chen",
       "sqlite_message_id": 180,
       "stable_message_id": "lake_weekend-060",
-      "text_or_caption": "The PDF has become a character.",
+      "text_or_caption": "The printed backup is now our seventh attendee.",
       "timestamp": "2026-04-23T09:59:00+00:00"
     },
     {
@@ -3215,7 +3215,7 @@
       "sender": "Nina Rossi",
       "sqlite_message_id": 181,
       "stable_message_id": "lake_weekend-061",
-      "text_or_caption": "Can the PDF carry snacks?",
+      "text_or_caption": "Can it carry snacks?",
       "timestamp": "2026-04-23T10:00:00+00:00"
     },
     {
@@ -3230,7 +3230,7 @@
       "sender": "Alex Rivera",
       "sqlite_message_id": 182,
       "stable_message_id": "lake_weekend-062",
-      "text_or_caption": "No, but it can list snacks.",
+      "text_or_caption": "No, but it can judge us quietly.",
       "timestamp": "2026-04-23T10:01:00+00:00"
     },
     {
@@ -3500,7 +3500,7 @@
       "sender": "Alex Rivera",
       "sqlite_message_id": 200,
       "stable_message_id": "office_snacks-008",
-      "text_or_caption": "A PDF for snacks is very on theme.",
+      "text_or_caption": "A formal snack document is very on brand.",
       "timestamp": "2026-04-24T10:07:00+00:00"
     },
     {
@@ -3888,7 +3888,7 @@
   "validation": {
     "available_media_files": 26,
     "failures": [],
-    "fixture_size_bytes": 419880,
+    "fixture_size_bytes": 426174,
     "group_chats": 2,
     "lake_weekend_messages": 72,
     "media_items": 28,
