@@ -48,6 +48,16 @@ For detailed steps, transfer notes, and troubleshooting, read the
 [user guide](docs/user-guide.md) and
 [iPhone backup extraction guide](docs/iphone-backup-extraction.md).
 
+## Install / Distribution Status
+
+Developers can build and install the app with Xcode. A stable personal install
+on your own iPhone requires Apple Developer Program signing; free Apple account
+builds can expire and require reinstalling. TestFlight is the recommended path
+for pre-release testers, but it is not currently published for this project.
+GitHub is not a one-tap iPhone install path.
+
+See [installation and distribution](docs/distribution.md) for details.
+
 ## Demo Archive
 
 The app bundles a fully synthetic demo archive for testing. It contains no real
@@ -82,6 +92,8 @@ privacy section in the [user guide](docs/user-guide.md#privacy-and-safety).
 
 - [Full user guide](docs/user-guide.md)
 - [iPhone backup extraction](docs/iphone-backup-extraction.md)
+- [Installation and distribution](docs/distribution.md)
+- [Release checklist](docs/release-checklist.md)
 - [Status and capabilities](docs/status.md)
 - [Roadmap](docs/roadmap.md)
 - [Large archive transfer experiments](docs/transfer-experiments.md)
