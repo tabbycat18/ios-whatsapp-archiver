@@ -633,48 +633,50 @@ private struct InstructionsCardView: View {
     let onOpen: () -> Void
 
     var body: some View {
-        HStack(alignment: .center, spacing: 12) {
-            ZStack {
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .fill(Color(.tertiarySystemGroupedBackground))
+        Button(action: onOpen) {
+            HStack(alignment: .center, spacing: 11) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .fill(Color(.tertiarySystemGroupedBackground))
 
-                Image(systemName: "questionmark.circle.fill")
-                    .font(.system(size: 17, weight: .semibold))
-                    .foregroundStyle(Color.accentColor)
+                    Image(systemName: "questionmark.circle.fill")
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundStyle(Color.accentColor)
+                }
+                .frame(width: 34, height: 34)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("How It Works")
+                        .font(.headline)
+                        .foregroundStyle(.primary)
+                        .lineLimit(1)
+
+                    Text("Backup, extract, transfer, browse")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.9)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+                Image(systemName: "chevron.right")
+                    .font(.footnote.weight(.semibold))
+                    .foregroundStyle(.tertiary)
             }
-            .frame(width: 38, height: 38)
-
-            VStack(alignment: .leading, spacing: 3) {
-                Text("How It Works")
-                    .font(.headline)
-                    .foregroundStyle(.primary)
-
-                Text("Backup, extract, transfer, and browse your archive locally.")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(2)
-            }
+            .padding(10)
             .frame(maxWidth: .infinity, alignment: .leading)
-
-            Button(action: onOpen) {
-                Text("Help")
-                    .font(.subheadline.weight(.semibold))
-                    .lineLimit(1)
-                    .frame(minWidth: 64, minHeight: ArchiveActionButton.height)
-            }
-            .buttonStyle(.bordered)
-            .controlSize(.regular)
+            .background(
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .fill(Color(.secondarySystemGroupedBackground))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .stroke(.quaternary)
+            )
         }
-        .padding(12)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .fill(Color(.secondarySystemGroupedBackground))
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .stroke(.quaternary)
-        )
+        .buttonStyle(.plain)
+        .accessibilityElement(children: .combine)
+        .accessibilityAddTraits(.isButton)
     }
 }
 
