@@ -103,7 +103,7 @@ struct MessageListView: View {
                 }
                 .safeAreaInset(edge: .bottom, spacing: 0) {
                     Color.clear
-                        .frame(height: bottomSearchSafeInset)
+                        .frame(height: effectiveBottomSearchSafeInset)
                         .allowsHitTesting(false)
                 }
                 .onAppear {
@@ -199,6 +199,22 @@ struct MessageListView: View {
             .listRowSeparator(.hidden)
             .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
             .listRowBackground(Color.clear)
+    }
+
+    private var effectiveBottomSearchSafeInset: CGFloat {
+        max(0, bottomSearchSafeInset - systemBottomSafeAreaInset)
+    }
+
+    private var systemBottomSafeAreaInset: CGFloat {
+        #if os(iOS)
+        let keyWindow = UIApplication.shared.connectedScenes
+            .compactMap({ $0 as? UIWindowScene })
+            .compactMap({ $0.windows.first(where: { $0.isKeyWindow }) })
+            .first
+        return keyWindow?.safeAreaInsets.bottom ?? 0
+        #else
+        return 0
+        #endif
     }
 
     @ViewBuilder
