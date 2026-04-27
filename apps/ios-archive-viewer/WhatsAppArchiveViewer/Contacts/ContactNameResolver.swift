@@ -65,9 +65,11 @@ final class ContactNameResolver: ObservableObject {
             status = authorizationStatus == .denied ? .permissionDenied : .notEnabled
         }
 
+        #if DEBUG
         if storedEnabled, authorizationStatus == .authorized {
-            loadContacts()
+            print("[Launch] deferred device Contacts matching until an archive opens")
         }
+        #endif
     }
 
     deinit {
@@ -108,6 +110,17 @@ final class ContactNameResolver: ObservableObject {
         index = .empty
         status = .notEnabled
         changeToken = UUID()
+    }
+
+    func loadContactsIfEnabled() {
+        guard defaults.bool(forKey: enabledDefaultsKey),
+              DeviceContactsResolver.authorizationStatus() == .authorized,
+              loadTask == nil,
+              status == .loading
+        else {
+            return
+        }
+        loadContacts()
     }
 
     func displayName(for identifiers: [String?]) -> String? {

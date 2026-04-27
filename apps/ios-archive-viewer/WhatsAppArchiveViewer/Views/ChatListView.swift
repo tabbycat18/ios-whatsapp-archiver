@@ -443,6 +443,14 @@ private struct ArchiveLibraryView: View {
                 }
             }
             .navigationTitle("WA Archiver")
+            .overlay(alignment: .bottom) {
+                if store.isOpeningArchive {
+                    OpeningArchiveBadge()
+                        .padding(.bottom, 16)
+                        .transition(.move(edge: .bottom).combined(with: .opacity))
+                        .allowsHitTesting(false)
+                }
+            }
             .toolbar {
                 ToolbarItem(placement: .primaryAction) {
                     Button {
@@ -567,21 +575,18 @@ private struct ArchiveSlotCardView: View {
             .disabled(!canAdd)
         } else {
             HStack(spacing: 8) {
-                ArchiveActionButton(
-                    title: isOpening ? "Opening…" : "Open",
-                    systemImage: isOpening ? nil : "arrow.right.circle.fill",
-                    style: .primary,
-                    width: 122,
+                ArchiveIconActionButton(
+                    accessibilityTitle: isOpening ? "Opening archive" : "Open archive",
+                    systemImage: "arrow.right.circle.fill",
                     isLoading: isOpening,
                     action: onOpen
                 )
-                .disabled(isOpening)
 
                 ArchiveActionButton(
                     title: "Relink",
                     systemImage: "link",
                     style: .secondary,
-                    width: 116,
+                    width: 92,
                     action: onRelink
                 )
                 .disabled(isOpening)
@@ -599,7 +604,7 @@ private struct ArchiveSlotCardView: View {
                         title: "More",
                         systemImage: "ellipsis.circle",
                         style: .secondary,
-                        width: 104
+                        width: 80
                     )
                 }
                 .disabled(isOpening)
@@ -725,7 +730,7 @@ private struct DemoArchiveCardView: View {
             }
 
             ArchiveActionButton(
-                title: isOpening ? "Opening…" : "Try Demo Archive",
+                title: "Try Demo Archive",
                 systemImage: isOpening ? nil : "play.circle.fill",
                 style: .secondary,
                 maxWidth: .infinity,
@@ -747,6 +752,25 @@ private struct DemoArchiveCardView: View {
     }
 }
 
+private struct OpeningArchiveBadge: View {
+    var body: some View {
+        Text("Opening archive")
+            .font(.caption.weight(.semibold))
+            .foregroundStyle(.primary)
+            .lineLimit(1)
+            .fixedSize(horizontal: true, vertical: false)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 7)
+            .background(.thinMaterial, in: Capsule(style: .continuous))
+            .overlay {
+                Capsule(style: .continuous)
+                    .stroke(Color.primary.opacity(0.08), lineWidth: 0.5)
+            }
+            .shadow(color: .black.opacity(0.14), radius: 10, y: 4)
+            .accessibilityLabel("Opening archive")
+    }
+}
+
 private struct ArchiveActionButton: View {
     @Environment(\.isEnabled) private var isEnabled
 
@@ -755,7 +779,7 @@ private struct ArchiveActionButton: View {
         case secondary
     }
 
-    static let height: CGFloat = 38
+    static let height: CGFloat = 34
 
     let title: String
     var systemImage: String?
@@ -779,6 +803,31 @@ private struct ArchiveActionButton: View {
         .buttonStyle(.plain)
         .opacity(isEnabled ? 1 : 0.45)
         .accessibilityLabel(title)
+    }
+}
+
+private struct ArchiveIconActionButton: View {
+    let accessibilityTitle: String
+    let systemImage: String
+    var isLoading = false
+    let action: () -> Void
+
+    var body: some View {
+        Button {
+            guard !isLoading else { return }
+            action()
+        } label: {
+            ArchiveActionPillLabel(
+                title: nil,
+                systemImage: isLoading ? nil : systemImage,
+                style: .primary,
+                width: 52,
+                isLoading: isLoading
+            )
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(accessibilityTitle)
+        .disabled(isLoading)
     }
 }
 
@@ -808,6 +857,7 @@ private struct ArchiveActionPillLabel: View {
             if let title {
                 Text(title)
                     .lineLimit(1)
+                    .truncationMode(.tail)
                     .minimumScaleFactor(0.9)
             }
         }

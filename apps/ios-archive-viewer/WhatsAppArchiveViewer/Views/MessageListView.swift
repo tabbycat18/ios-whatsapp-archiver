@@ -696,11 +696,15 @@ private struct ChatInfoView: View {
     @State private var selectionAutoScrollDirection: MediaSelectionAutoScrollDirection?
     @State private var selectionAutoScrollLocation: CGPoint?
     @State private var lastSelectionDragLocation: CGPoint?
+    #if os(iOS)
+    @State private var mediaScrollView: UIScrollView?
+    #endif
 
     private let mediaPageSize = 120
-    private let selectionAutoScrollEdgeInset: CGFloat = 88
-    private let selectionAutoScrollStep = 6
-    private let selectionAutoScrollInterval: UInt64 = 90_000_000
+    private let selectionAutoScrollEdgeInset: CGFloat = 76
+    private let selectionAutoScrollStep = 1
+    private let selectionAutoScrollInterval: UInt64 = 33_000_000
+    private let selectionAutoScrollMaxPointsPerTick: CGFloat = 9
 
     private var mediaTaskID: String {
         "\(chat.id)-\(selectedFilter.rawValue)-\(mediaDisplayLimit)"
@@ -738,6 +742,13 @@ private struct ChatInfoView: View {
                         .padding(.horizontal, 16)
                         .padding(.vertical, 18)
                     }
+                    #if os(iOS)
+                    .background(
+                        MediaScrollViewAccessor { scrollView in
+                            mediaScrollView = scrollView
+                        }
+                    )
+                    #endif
                     .coordinateSpace(name: "chatInfoMediaGrid")
                     .onAppear {
                         mediaViewportHeight = geometry.size.height
@@ -794,6 +805,9 @@ private struct ChatInfoView: View {
             }
             .onChange(of: selectedFilter) { _, _ in
                 resetMediaPaging()
+            }
+            .onDisappear {
+                resetSelectionDrag()
             }
             #if os(iOS)
             .sheet(item: $mediaShareSelection) { selection in
@@ -1132,7 +1146,7 @@ private struct ChatInfoView: View {
 
         while !Task.isCancelled, let direction = selectionAutoScrollDirection {
             try? await Task.sleep(nanoseconds: selectionAutoScrollInterval)
-            guard !Task.isCancelled, isSelectingMedia else { break }
+            guard !Task.isCancelled, isSelectingMedia, selectionAutoScrollDirection != nil else { break }
             scrollSelection(direction: direction, scrollProxy: scrollProxy)
             if let location = selectionAutoScrollLocation {
                 updateSelectionDrag(at: location)
@@ -1144,6 +1158,13 @@ private struct ChatInfoView: View {
         direction: MediaSelectionAutoScrollDirection,
         scrollProxy: ScrollViewProxy
     ) {
+        #if os(iOS)
+        if let mediaScrollView {
+            scrollSelectionSmoothly(direction: direction, scrollView: mediaScrollView)
+            return
+        }
+        #endif
+
         let indexedFrames = mediaItems.enumerated().compactMap { index, item -> (index: Int, item: ChatMediaItem, frame: CGRect)? in
             guard let frame = mediaTileFrames[item.id] else { return nil }
             return (index, item, frame)
@@ -1171,6 +1192,44 @@ private struct ChatInfoView: View {
         }
     }
 
+    #if os(iOS)
+    private func scrollSelectionSmoothly(
+        direction: MediaSelectionAutoScrollDirection,
+        scrollView: UIScrollView
+    ) {
+        let viewportHeight = scrollView.bounds.height
+        guard viewportHeight > 0 else { return }
+
+        let locationY = selectionAutoScrollLocation?.y ?? viewportHeight / 2
+        let edgeProgress: CGFloat
+        switch direction {
+        case .down:
+            edgeProgress = min(max((locationY - (viewportHeight - selectionAutoScrollEdgeInset)) / selectionAutoScrollEdgeInset, 0), 1)
+        case .up:
+            edgeProgress = min(max((selectionAutoScrollEdgeInset - locationY) / selectionAutoScrollEdgeInset, 0), 1)
+        }
+
+        let delta = max(2, edgeProgress * selectionAutoScrollMaxPointsPerTick)
+        let currentOffset = scrollView.contentOffset
+        let maximumOffsetY = max(scrollView.contentSize.height - viewportHeight + scrollView.adjustedContentInset.bottom, -scrollView.adjustedContentInset.top)
+        let proposedY: CGFloat
+        switch direction {
+        case .down:
+            proposedY = min(currentOffset.y + delta, maximumOffsetY)
+        case .up:
+            proposedY = max(currentOffset.y - delta, -scrollView.adjustedContentInset.top)
+        }
+
+        guard abs(proposedY - currentOffset.y) >= 0.5 else { return }
+        scrollView.setContentOffset(CGPoint(x: currentOffset.x, y: proposedY), animated: false)
+
+        if direction == .down,
+           scrollView.contentOffset.y + viewportHeight > scrollView.contentSize.height - 360 {
+            loadNextMediaPageIfNeeded()
+        }
+    }
+    #endif
+
     private func exportableItem(at location: CGPoint) -> ChatMediaItem? {
         mediaItems.first { item in
             item.media.fileURL != nil
@@ -1180,6 +1239,7 @@ private struct ChatInfoView: View {
     }
 
     private func exportableItems(hitBy location: CGPoint, previousLocation: CGPoint?) -> [ChatMediaItem] {
+        let expandedLocationRect = CGRect(x: location.x - 10, y: location.y - 10, width: 20, height: 20)
         let hitRect: CGRect
         if let previousLocation {
             hitRect = CGRect(
@@ -1188,16 +1248,80 @@ private struct ChatInfoView: View {
                 width: abs(previousLocation.x - location.x),
                 height: abs(previousLocation.y - location.y)
             )
-            .insetBy(dx: -18, dy: -18)
+            .insetBy(dx: -14, dy: -14)
         } else {
-            hitRect = CGRect(x: location.x - 1, y: location.y - 1, width: 2, height: 2)
+            hitRect = expandedLocationRect
         }
 
         return mediaItems.filter { item in
-            item.media.fileURL != nil
-                && item.media.isFileAvailableInArchive
-                && mediaTileFrames[item.id]?.intersects(hitRect) == true
+            guard item.media.fileURL != nil,
+                  item.media.isFileAvailableInArchive,
+                  let frame = mediaTileFrames[item.id]
+            else {
+                return false
+            }
+            let expandedFrame = frame.insetBy(dx: -6, dy: -6)
+            if expandedFrame.intersects(expandedLocationRect) {
+                return true
+            }
+            guard expandedFrame.intersects(hitRect) else {
+                return false
+            }
+            guard let previousLocation else {
+                return expandedFrame.contains(location)
+            }
+            return dragSegment(from: previousLocation, to: location, intersects: expandedFrame)
         }
+    }
+
+    private func dragSegment(from start: CGPoint, to end: CGPoint, intersects rect: CGRect) -> Bool {
+        if rect.contains(start) || rect.contains(end) {
+            return true
+        }
+
+        let corners = [
+            CGPoint(x: rect.minX, y: rect.minY),
+            CGPoint(x: rect.maxX, y: rect.minY),
+            CGPoint(x: rect.maxX, y: rect.maxY),
+            CGPoint(x: rect.minX, y: rect.maxY)
+        ]
+
+        let edges = [
+            (corners[0], corners[1]),
+            (corners[1], corners[2]),
+            (corners[2], corners[3]),
+            (corners[3], corners[0])
+        ]
+
+        return edges.contains { edgeStart, edgeEnd in
+            lineSegmentsIntersect(start, end, edgeStart, edgeEnd)
+        }
+    }
+
+    private func lineSegmentsIntersect(_ p1: CGPoint, _ p2: CGPoint, _ q1: CGPoint, _ q2: CGPoint) -> Bool {
+        func orientation(_ a: CGPoint, _ b: CGPoint, _ c: CGPoint) -> CGFloat {
+            (b.y - a.y) * (c.x - b.x) - (b.x - a.x) * (c.y - b.y)
+        }
+
+        func contains(_ point: CGPoint, onSegmentFrom start: CGPoint, to end: CGPoint) -> Bool {
+            point.x >= min(start.x, end.x) - 0.5
+                && point.x <= max(start.x, end.x) + 0.5
+                && point.y >= min(start.y, end.y) - 0.5
+                && point.y <= max(start.y, end.y) + 0.5
+        }
+
+        let o1 = orientation(p1, p2, q1)
+        let o2 = orientation(p1, p2, q2)
+        let o3 = orientation(q1, q2, p1)
+        let o4 = orientation(q1, q2, p2)
+        let epsilon: CGFloat = 0.001
+
+        if abs(o1) < epsilon, contains(q1, onSegmentFrom: p1, to: p2) { return true }
+        if abs(o2) < epsilon, contains(q2, onSegmentFrom: p1, to: p2) { return true }
+        if abs(o3) < epsilon, contains(p1, onSegmentFrom: q1, to: q2) { return true }
+        if abs(o4) < epsilon, contains(p2, onSegmentFrom: q1, to: q2) { return true }
+
+        return (o1 > 0) != (o2 > 0) && (o3 > 0) != (o4 > 0)
     }
 
     private func isPreviewableMediaItem(_ item: ChatMediaItem) -> Bool {
@@ -1287,6 +1411,38 @@ private struct ChatInfoMediaTileFramePreferenceKey: PreferenceKey {
 }
 
 #if os(iOS)
+private struct MediaScrollViewAccessor: UIViewRepresentable {
+    let onResolve: (UIScrollView?) -> Void
+
+    func makeUIView(context: Context) -> UIView {
+        let view = UIView(frame: .zero)
+        view.isUserInteractionEnabled = false
+        DispatchQueue.main.async {
+            onResolve(view.enclosingScrollView)
+        }
+        return view
+    }
+
+    func updateUIView(_ uiView: UIView, context: Context) {
+        DispatchQueue.main.async {
+            onResolve(uiView.enclosingScrollView)
+        }
+    }
+}
+
+private extension UIView {
+    var enclosingScrollView: UIScrollView? {
+        var view = superview
+        while let currentView = view {
+            if let scrollView = currentView as? UIScrollView {
+                return scrollView
+            }
+            view = currentView.superview
+        }
+        return nil
+    }
+}
+
 private struct ActivityView: UIViewControllerRepresentable {
     let activityItems: [Any]
 
@@ -2143,7 +2299,7 @@ private struct VoiceCallAttachmentView: View {
                 .minimumScaleFactor(0.85)
                 .textSelection(.enabled)
         }
-        .frame(maxWidth: 240, alignment: isFromMe ? .trailing : .leading)
+        .fixedSize(horizontal: true, vertical: false)
         .accessibilityElement(children: .combine)
         .accessibilityLabel("Voice call")
     }

@@ -166,7 +166,7 @@ final class ProfilePhotoResolver {
         )
         guard !candidateFileNames.isEmpty else { return nil }
 
-        let cacheKey = candidateFileNames.joined(separator: "|")
+        let cacheKey = "\(allowIndexedFallback ? "indexed" : "direct")|\(candidateFileNames.joined(separator: "|"))"
         if let cachedURL = resolvedURLsByCacheKey[cacheKey] {
             return cachedURL
         }

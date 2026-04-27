@@ -310,6 +310,10 @@ enum ProfileAvatarLoadPriority {
             return .milliseconds(700)
         }
     }
+
+    var allowsIndexedProfilePhotoLookup: Bool {
+        true
+    }
 }
 
 private actor ProfileAvatarLoader {
@@ -354,7 +358,10 @@ private actor ProfileAvatarLoader {
             return nil
         }
 
-        let imageURL = await service.profilePhotoURL(for: chat, allowIndexedFallback: false)
+        let imageURL = await service.profilePhotoURL(
+            for: chat,
+            allowIndexedFallback: priority.allowsIndexedProfilePhotoLookup
+        )
         guard !Task.isCancelled else {
             releaseLoadSlot()
             inFlightKeys.remove(key)
@@ -956,6 +963,7 @@ final class ArchiveStore: ObservableObject {
             wallpaperURL = snapshot.wallpaperURL
             wallpaperDarkURL = snapshot.wallpaperDarkURL
             errorMessage = nil
+            contactNameResolver.loadContactsIfEnabled()
 
             savedArchive.lastOpenedAt = Date()
             savedArchive.chatCount = snapshot.chats.count
