@@ -18,6 +18,7 @@ struct MessageListView: View {
     let olderMessagesErrorMessage: String?
     let initialMessageLoadGeneration: Int
     let wallpaperURL: URL?
+    let wallpaperTheme: ChatWallpaperTheme
     let onLoadOlderMessages: () -> Void
     @StateObject private var audioPlayback = AudioPlaybackController()
     @State private var latestScrolledGeneration: Int?
@@ -54,7 +55,7 @@ struct MessageListView: View {
 
     var body: some View {
         ZStack {
-            ChatWallpaperBackgroundView(wallpaperURL: wallpaperURL)
+            ChatWallpaperBackgroundView(wallpaperURL: wallpaperURL, wallpaperTheme: wallpaperTheme)
 
             ScrollViewReader { proxy in
                 List {
@@ -255,28 +256,37 @@ struct MessageListView: View {
 private struct ChatWallpaperBackgroundView: View {
     @Environment(\.colorScheme) private var colorScheme
     let wallpaperURL: URL?
+    let wallpaperTheme: ChatWallpaperTheme
     @State private var image: CGImage?
     @State private var didFail = false
     @State private var loadedWallpaperURL: URL?
 
     var body: some View {
         ZStack {
-            Color.gray.opacity(0.08)
+            switch wallpaperTheme {
+            case .archiveDefault:
+                Color.gray.opacity(0.08)
 
-            if let image {
-                Image(decorative: image, scale: 1, orientation: .up)
-                    .resizable()
-                    .scaledToFill()
-                    .opacity(0.9)
+                if let image {
+                    Image(decorative: image, scale: 1, orientation: .up)
+                        .resizable()
+                        .scaledToFill()
+                        .opacity(0.9)
+                }
+            case .plain:
+                Color(.systemBackground)
+            case .classic, .softPattern, .demo:
+                ProceduralChatWallpaperView(theme: wallpaperTheme)
             }
         }
         .ignoresSafeArea()
-        .task(id: resolvedWallpaperURL) {
+        .task(id: wallpaperTaskID) {
             await loadWallpaperIfNeeded()
         }
     }
 
     private var resolvedWallpaperURL: URL? {
+        guard wallpaperTheme == .archiveDefault else { return nil }
         guard let wallpaperURL else { return nil }
         guard colorScheme == .dark, wallpaperURL.lastPathComponent == "current_wallpaper.jpg" else {
             return wallpaperURL
@@ -287,6 +297,14 @@ private struct ChatWallpaperBackgroundView: View {
             .appendingPathComponent("current_wallpaper_dark.jpg")
             .standardizedFileURL
         return FileManager.default.fileExists(atPath: darkWallpaperURL.path) ? darkWallpaperURL : wallpaperURL
+    }
+
+    private var wallpaperTaskID: String {
+        [
+            wallpaperTheme.rawValue,
+            colorScheme == .dark ? "dark" : "light",
+            resolvedWallpaperURL?.path ?? "none"
+        ].joined(separator: "|")
     }
 
     private func loadWallpaperIfNeeded() async {
@@ -309,6 +327,205 @@ private struct ChatWallpaperBackgroundView: View {
             image = loadedImage
         } else {
             didFail = true
+        }
+    }
+}
+
+private struct ProceduralChatWallpaperView: View {
+    @Environment(\.colorScheme) private var colorScheme
+    let theme: ChatWallpaperTheme
+
+    var body: some View {
+        Canvas { context, size in
+            context.fill(
+                Path(CGRect(origin: .zero, size: size)),
+                with: .color(palette.background)
+            )
+
+            drawDots(in: &context, size: size)
+            drawLines(in: &context, size: size)
+            drawRings(in: &context, size: size)
+        }
+        .background(palette.background)
+    }
+
+    private var palette: WallpaperPalette {
+        WallpaperPalette(theme: theme, isDark: colorScheme == .dark)
+    }
+
+    private func drawDots(in context: inout GraphicsContext, size: CGSize) {
+        let spacing = palette.dotSpacing
+        var y = spacing * 0.6
+        var row = 0
+
+        while y < size.height + spacing {
+            var x = spacing * (row.isMultiple(of: 2) ? 0.45 : 0.95)
+            while x < size.width + spacing {
+                let rect = CGRect(x: x, y: y, width: palette.dotSize, height: palette.dotSize)
+                context.fill(Path(ellipseIn: rect), with: .color(palette.dot))
+                x += spacing
+            }
+            y += spacing
+            row += 1
+        }
+    }
+
+    private func drawLines(in context: inout GraphicsContext, size: CGSize) {
+        guard palette.lineOpacity > 0 else { return }
+        let spacing = palette.lineSpacing
+        var x = -size.height
+
+        while x < size.width + size.height {
+            var path = Path()
+            path.move(to: CGPoint(x: x, y: size.height))
+            path.addLine(to: CGPoint(x: x + size.height, y: 0))
+            context.stroke(
+                path,
+                with: .color(palette.line.opacity(palette.lineOpacity)),
+                lineWidth: palette.lineWidth
+            )
+            x += spacing
+        }
+    }
+
+    private func drawRings(in context: inout GraphicsContext, size: CGSize) {
+        guard palette.ringOpacity > 0 else { return }
+        let spacing = palette.ringSpacing
+        var y = spacing * 0.75
+        var row = 0
+
+        while y < size.height + spacing {
+            var x = spacing * (row.isMultiple(of: 2) ? 0.55 : 1.2)
+            while x < size.width + spacing {
+                let rect = CGRect(x: x, y: y, width: palette.ringSize, height: palette.ringSize)
+                context.stroke(
+                    Path(ellipseIn: rect),
+                    with: .color(palette.ring.opacity(palette.ringOpacity)),
+                    lineWidth: palette.ringLineWidth
+                )
+                x += spacing
+            }
+            y += spacing * 1.08
+            row += 1
+        }
+    }
+}
+
+private struct WallpaperPalette {
+    let background: Color
+    let dot: Color
+    let line: Color
+    let ring: Color
+    let dotSpacing: CGFloat
+    let dotSize: CGFloat
+    let lineSpacing: CGFloat
+    let lineWidth: CGFloat
+    let lineOpacity: Double
+    let ringSpacing: CGFloat
+    let ringSize: CGFloat
+    let ringLineWidth: CGFloat
+    let ringOpacity: Double
+
+    init(theme: ChatWallpaperTheme, isDark: Bool) {
+        switch (theme, isDark) {
+        case (.classic, false):
+            background = Color(red: 0.88, green: 0.91, blue: 0.85)
+            dot = Color(red: 0.28, green: 0.45, blue: 0.38).opacity(0.12)
+            line = Color(red: 0.35, green: 0.48, blue: 0.42)
+            ring = Color(red: 0.24, green: 0.42, blue: 0.34)
+            dotSpacing = 34
+            dotSize = 2.5
+            lineSpacing = 96
+            lineWidth = 0.8
+            lineOpacity = 0.08
+            ringSpacing = 118
+            ringSize = 16
+            ringLineWidth = 1
+            ringOpacity = 0.08
+        case (.classic, true):
+            background = Color(red: 0.10, green: 0.16, blue: 0.14)
+            dot = Color(red: 0.80, green: 0.92, blue: 0.84).opacity(0.10)
+            line = Color(red: 0.66, green: 0.82, blue: 0.74)
+            ring = Color(red: 0.74, green: 0.88, blue: 0.80)
+            dotSpacing = 34
+            dotSize = 2.5
+            lineSpacing = 96
+            lineWidth = 0.8
+            lineOpacity = 0.07
+            ringSpacing = 118
+            ringSize = 16
+            ringLineWidth = 1
+            ringOpacity = 0.07
+        case (.softPattern, false):
+            background = Color(red: 0.91, green: 0.92, blue: 0.91)
+            dot = Color(red: 0.32, green: 0.38, blue: 0.44).opacity(0.10)
+            line = Color(red: 0.38, green: 0.45, blue: 0.50)
+            ring = Color(red: 0.36, green: 0.43, blue: 0.48)
+            dotSpacing = 28
+            dotSize = 2
+            lineSpacing = 82
+            lineWidth = 0.7
+            lineOpacity = 0.06
+            ringSpacing = 140
+            ringSize = 22
+            ringLineWidth = 0.8
+            ringOpacity = 0.05
+        case (.softPattern, true):
+            background = Color(red: 0.13, green: 0.14, blue: 0.15)
+            dot = Color(red: 0.74, green: 0.78, blue: 0.82).opacity(0.08)
+            line = Color(red: 0.70, green: 0.75, blue: 0.78)
+            ring = Color(red: 0.70, green: 0.75, blue: 0.78)
+            dotSpacing = 28
+            dotSize = 2
+            lineSpacing = 82
+            lineWidth = 0.7
+            lineOpacity = 0.05
+            ringSpacing = 140
+            ringSize = 22
+            ringLineWidth = 0.8
+            ringOpacity = 0.05
+        case (.demo, false):
+            background = Color(red: 0.88, green: 0.89, blue: 0.82)
+            dot = Color(red: 0.45, green: 0.37, blue: 0.25).opacity(0.10)
+            line = Color(red: 0.47, green: 0.42, blue: 0.31)
+            ring = Color(red: 0.50, green: 0.40, blue: 0.30)
+            dotSpacing = 42
+            dotSize = 3
+            lineSpacing = 120
+            lineWidth = 0.8
+            lineOpacity = 0.05
+            ringSpacing = 104
+            ringSize = 14
+            ringLineWidth = 1
+            ringOpacity = 0.08
+        case (.demo, true):
+            background = Color(red: 0.12, green: 0.13, blue: 0.12)
+            dot = Color(red: 0.79, green: 0.74, blue: 0.62).opacity(0.08)
+            line = Color(red: 0.74, green: 0.69, blue: 0.58)
+            ring = Color(red: 0.78, green: 0.72, blue: 0.60)
+            dotSpacing = 42
+            dotSize = 3
+            lineSpacing = 120
+            lineWidth = 0.8
+            lineOpacity = 0.04
+            ringSpacing = 104
+            ringSize = 14
+            ringLineWidth = 1
+            ringOpacity = 0.07
+        default:
+            background = Color(.systemBackground)
+            dot = .clear
+            line = .clear
+            ring = .clear
+            dotSpacing = 1
+            dotSize = 0
+            lineSpacing = 1
+            lineWidth = 0
+            lineOpacity = 0
+            ringSpacing = 1
+            ringSize = 0
+            ringLineWidth = 0
+            ringOpacity = 0
         }
     }
 }

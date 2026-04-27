@@ -297,6 +297,11 @@ final class ArchiveStore: ObservableObject {
     @Published var initialMessageLoadGeneration = 0
     @Published var archiveName = "No Archive"
     @Published var wallpaperURL: URL?
+    @Published var wallpaperTheme: ChatWallpaperTheme {
+        didSet {
+            defaults.set(wallpaperTheme.rawValue, forKey: Self.wallpaperThemeDefaultsKey)
+        }
+    }
     @Published var currentArchiveID: UUID?
 
     let contactNameResolver = ContactNameResolver()
@@ -315,6 +320,7 @@ final class ArchiveStore: ObservableObject {
     }
 
     private let libraryStore = ArchiveLibraryStore()
+    private let defaults: UserDefaults
     private var database: WhatsAppDatabase?
     private var archiveAccess: ArchiveAccess?
     private var profilePhotoService: ProfilePhotoService?
@@ -323,7 +329,12 @@ final class ArchiveStore: ObservableObject {
     private var baseMessages: [MessageRow] = []
     private var contactNameResolverCancellable: AnyCancellable?
 
-    init() {
+    private static let wallpaperThemeDefaultsKey = "ChatWallpaperTheme.v2"
+
+    init(defaults: UserDefaults = .standard) {
+        self.defaults = defaults
+        wallpaperTheme = ChatWallpaperTheme(rawValue: defaults.string(forKey: Self.wallpaperThemeDefaultsKey) ?? "")
+            ?? .archiveDefault
         let loadedArchives = libraryStore.load().sorted(by: Self.archiveSort)
         savedArchives = loadedArchives
         contactNameResolverCancellable = contactNameResolver.$changeToken.sink { [weak self] _ in

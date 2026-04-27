@@ -54,7 +54,7 @@ Working now:
 - Play available audio and voice attachments with a simple play/pause control and share them from the chat row.
 - Show PDF and common document attachments as document rows, with local preview and sharing when the file resolves.
 - Show captions/text attached to photo, video, audio, or document rows under the media in the same bubble.
-- Use extracted chat wallpaper files as the message background when `current_wallpaper.jpg` or `current_wallpaper_dark.jpg` is present at the archive root.
+- Choose a local chat wallpaper style. Default keeps using extracted `current_wallpaper.jpg` or `current_wallpaper_dark.jpg` files from the archive root when present; Classic, Soft Pattern, Demo, and Plain are local app choices.
 - Detect WhatsApp Status/Stories rows only from reliable message/session evidence such as `status@broadcast`, and keep them out of normal direct-chat browsing.
 - Show a lightweight Chat Info screen with per-chat filters for all previewable chat media, photos, videos, and documents, with available local media prioritized and selectable for grouped sharing/export; voice-message audio stays in chat rows instead of the media grid.
 - Share photos and videos from their local preview sheets without uploading them.
