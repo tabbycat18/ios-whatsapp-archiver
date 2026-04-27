@@ -2516,14 +2516,19 @@ private struct MessageContentView: View {
         VStack(alignment: message.isFromMe ? .trailing : .leading, spacing: 6) {
             if let media = message.media, shouldShowAttachment(for: media) {
                 attachmentView(for: media)
-                    .frame(maxWidth: mediaContentMaxWidth(for: media), alignment: mediaContentAlignment)
+                    .messageAttachmentFrame(
+                        kind: media.kind,
+                        maxWidth: mediaContentMaxWidth(for: media),
+                        alignment: mediaContentAlignment
+                    )
             } else if let displayText, let url = MessageLinkDetector.firstWebURL(in: displayText) {
                 LinkPreviewAttachmentView(media: nil, fallbackURL: url, isFromMe: message.isFromMe)
             }
 
             if let media = message.media, isCaptionedAttachment(media), let renderedDisplayText {
                 LinkedMessageText(text: renderedDisplayText)
-                    .frame(maxWidth: mediaContentMaxWidth(for: media), alignment: mediaContentAlignment)
+                    .frame(maxWidth: captionMaxWidth(for: media), alignment: mediaContentAlignment)
+                    .fixedSize(horizontal: false, vertical: true)
                     .textSelection(.enabled)
             } else if let renderedDisplayText {
                 LinkedMessageText(text: renderedDisplayText)
@@ -2595,7 +2600,24 @@ private struct MessageContentView: View {
         case .video:
             return 260
         case .audio, .voiceMessage:
-            return 300
+            return 230
+        case .document:
+            return 280
+        default:
+            return 268
+        }
+    }
+
+    private func captionMaxWidth(for media: MediaMetadata) -> CGFloat {
+        switch media.kind {
+        case .photo:
+            return 220
+        case .audio, .voiceMessage:
+            return 230
+        case .videoMessage:
+            return 220
+        case .video:
+            return 260
         case .document:
             return 280
         default:
@@ -2663,6 +2685,20 @@ private struct VoiceCallAttachmentView: View {
 
     private var iconForeground: Color {
         ChatBubblePalette.subtleIconForeground(isFromMe: isFromMe, colorScheme: colorScheme)
+    }
+}
+
+private extension View {
+    @ViewBuilder
+    func messageAttachmentFrame(kind: MediaAttachmentKind, maxWidth: CGFloat, alignment: Alignment) -> some View {
+        switch kind {
+        case .photo, .audio, .voiceMessage:
+            self
+        case .call:
+            self.fixedSize(horizontal: true, vertical: false)
+        default:
+            self.frame(maxWidth: maxWidth, alignment: alignment)
+        }
     }
 }
 
@@ -3377,15 +3413,7 @@ private struct VideoAttachmentView: View {
                                     .font(.system(size: playIconSize, weight: .bold))
                                     .foregroundStyle(.white)
                             }
-                            .contentShape(Circle())
-                            .highPriorityGesture(
-                                TapGesture()
-                                    .onEnded {
-                                        handleInlinePlaybackTap(url: url)
-                                    }
-                            )
-                            .accessibilityLabel(isInlinePlaying ? "Pause video message" : "Play video message")
-                            .accessibilityAddTraits(.isButton)
+                            .allowsHitTesting(false)
                     }
 
                     if thumbnail == nil && !didFailThumbnail {
@@ -3420,10 +3448,20 @@ private struct VideoAttachmentView: View {
                     }
                 }
                 .accessibilityLabel(accessibilityLabel)
-                .onTapGesture {
-                    playbackController.load(url: url, restart: true)
-                    isPlayerPresented = true
+                .accessibilityHint(accessibilityHint)
+                .accessibilityAction {
+                    if isVideoMessage {
+                        handleInlinePlaybackTap(url: url)
+                    } else {
+                        presentFullScreenVideo(url: url)
+                    }
                 }
+                .gesture(
+                    SpatialTapGesture()
+                        .onEnded { value in
+                            handleAttachmentTap(at: value.location, url: url)
+                        }
+                )
                 .task(id: media.fileURL) {
                     await loadThumbnailIfNeeded()
                 }
@@ -3483,6 +3521,15 @@ private struct VideoAttachmentView: View {
         26
     }
 
+    private var playButtonFrame: CGRect {
+        CGRect(
+            x: (previewSize.width - playButtonSize) / 2,
+            y: (previewSize.height - playButtonSize) / 2,
+            width: playButtonSize,
+            height: playButtonSize
+        )
+    }
+
     private var durationText: String? {
         guard isVideoMessage, let durationSeconds = media.durationSeconds else {
             return nil
@@ -3523,8 +3570,29 @@ private struct VideoAttachmentView: View {
         isVideoMessage ? "Video message" : "Video attachment"
     }
 
+    private var accessibilityHint: String {
+        isVideoMessage ? "Tap the play button for inline playback, or tap the video outside the play button for full screen." : "Opens full-screen video playback."
+    }
+
     private var unavailableTitle: String {
         isVideoMessage ? "Video message unavailable" : "Video unavailable"
+    }
+
+    private func handleAttachmentTap(at location: CGPoint, url: URL) {
+        if isVideoMessage, playButtonFrame.contains(location) {
+            handleInlinePlaybackTap(url: url)
+        } else {
+            presentFullScreenVideo(url: url)
+        }
+    }
+
+    private func presentFullScreenVideo(url: URL) {
+        if isVideoMessage, inlineVideoPlaybackCoordinator.activeMessageID == messageID {
+            inlineVideoPlaybackCoordinator.setActiveMessageID(nil)
+            playbackController.pause()
+        }
+        playbackController.load(url: url, restart: true)
+        isPlayerPresented = true
     }
 
     private func handleInlinePlaybackTap(url: URL) {
@@ -3639,7 +3707,7 @@ private struct VideoPlayerSheet: View {
 
 @MainActor
 private final class VideoPlaybackController: ObservableObject {
-    let player = AVPlayer()
+    @Published private(set) var player: AVPlayer?
     @Published private(set) var loadingState: VideoPlaybackLoadState = .idle
     @Published private(set) var isActivePlayback: Bool = false
     @Published private(set) var shouldShowInlineVideo: Bool = false
@@ -3651,19 +3719,23 @@ private final class VideoPlaybackController: ObservableObject {
     deinit {
         statusObservation?.invalidate()
         timeControlStatusObservation?.invalidate()
-        player.pause()
-        player.replaceCurrentItem(with: nil)
+        player?.pause()
+        player?.replaceCurrentItem(with: nil)
     }
 
     func load(url: URL, restart: Bool) {
         if loadedURL == url, loadingState != .failed {
             if restart {
-                player.seek(to: .zero)
+                player?.seek(to: .zero)
             }
             return
         }
 
-        player.pause()
+        let activePlayer = player ?? AVPlayer()
+        if player == nil {
+            player = activePlayer
+        }
+        activePlayer.pause()
         isActivePlayback = false
         shouldShowInlineVideo = false
         statusObservation?.invalidate()
@@ -3676,18 +3748,18 @@ private final class VideoPlaybackController: ObservableObject {
         loadingState = .loading
         shouldShowInlineVideo = true
         observeStatus(for: item, itemIdentifier: itemIdentifier)
-        observeTimeControlStatusIfNeeded()
-        player.replaceCurrentItem(with: item)
+        observeTimeControlStatusIfNeeded(for: activePlayer)
+        activePlayer.replaceCurrentItem(with: item)
     }
 
     func play() {
         guard loadedURL != nil, loadingState != .failed else { return }
         prepareMediaPlaybackSession()
-        player.play()
+        player?.play()
     }
 
     func pause() {
-        player.pause()
+        player?.pause()
         isActivePlayback = false
     }
 
@@ -3700,7 +3772,7 @@ private final class VideoPlaybackController: ObservableObject {
         }
     }
 
-    private func observeTimeControlStatusIfNeeded() {
+    private func observeTimeControlStatusIfNeeded(for player: AVPlayer) {
         guard timeControlStatusObservation == nil else { return }
         timeControlStatusObservation = player.observe(\.timeControlStatus, options: [.new]) { [weak self] observedPlayer, change in
             let status = change.newValue ?? observedPlayer.timeControlStatus

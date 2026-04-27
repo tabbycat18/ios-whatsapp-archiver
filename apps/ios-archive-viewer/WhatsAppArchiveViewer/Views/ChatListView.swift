@@ -86,6 +86,9 @@ struct ChatListView: View {
             guard let chat = store.selectedChat else { return }
             store.loadMessages(for: chat)
         }
+        .task {
+            store.loadDefaultArchiveIfAvailable()
+        }
     }
 
     private var chatNavigation: some View {
@@ -258,7 +261,7 @@ private struct StartupArchiveOpeningView: View {
 
                         Image(systemName: "archivebox.fill")
                             .font(.system(size: 18, weight: .semibold))
-                            .foregroundStyle(.accentColor)
+                            .foregroundStyle(Color.accentColor)
                     }
                     .frame(width: 38, height: 38)
 
@@ -645,7 +648,7 @@ private struct ArchiveSlotCardView: View {
 
                     Image(systemName: needsRelink ? "exclamationmark.triangle.fill" : kind.systemImage)
                         .font(.system(size: 17, weight: .semibold))
-                        .foregroundStyle(needsRelink ? .orange : .accentColor)
+                        .foregroundStyle(needsRelink ? Color.orange : Color.accentColor)
                 }
                 .frame(width: 38, height: 38)
 

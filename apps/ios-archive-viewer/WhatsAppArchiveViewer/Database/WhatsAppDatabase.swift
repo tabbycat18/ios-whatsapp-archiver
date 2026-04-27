@@ -2237,6 +2237,9 @@ final class WhatsAppDatabase: @unchecked Sendable {
         if hasReliableVCard(name: input.vCardName, string: input.vCardString, messageType: input.messageType) {
             return .contact
         }
+        if hasVideoEvidence(input: input, mimeType: mimeType, fileName: fileName) {
+            return input.messageType == 5 ? .videoMessage : .video
+        }
         if hasPlausibleLocationEvidence(latitude: input.latitude, longitude: input.longitude) {
             return .location
         }

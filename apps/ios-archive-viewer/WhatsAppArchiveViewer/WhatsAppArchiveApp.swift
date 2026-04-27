@@ -533,7 +533,7 @@ final class ArchiveStore: ObservableObject {
     @Published var savedArchives: [SavedArchive]
     @Published var archivesNeedingRelink = Set<UUID>()
     @Published var openingArchiveID: UUID?
-    @Published private(set) var openingMode: ArchiveOpenMode = .manual
+    @Published private var openingMode: ArchiveOpenMode = .manual
     @Published private(set) var openingArchiveName: String?
     @Published var chats: [ChatSummary] = []
     @Published var selectedChat: ChatSummary?
@@ -583,6 +583,7 @@ final class ArchiveStore: ObservableObject {
     private var baseMessages: [MessageRow] = []
     private var messageLoadRequestID: UUID?
     private var contactNameResolverCancellable: AnyCancellable?
+    private var didAttemptStartupRestore = false
 
     private static let wallpaperThemeDefaultsKey = "ChatWallpaperTheme.v2"
 
@@ -610,8 +611,6 @@ final class ArchiveStore: ObservableObject {
         if libraryStore.didTrimArchivesDuringLastLoad {
             errorMessage = "Only the WhatsApp and WhatsApp Business slots are kept. Extra saved archive records were removed from this app, but archive files were not deleted."
         }
-
-        loadDefaultArchiveIfAvailable()
     }
 
     func loadDefaultArchiveIfAvailable() {
@@ -619,6 +618,8 @@ final class ArchiveStore: ObservableObject {
         AppLaunchDebugLog.mark("loading startup restore")
         #endif
 
+        guard !didAttemptStartupRestore else { return }
+        didAttemptStartupRestore = true
         guard openingArchiveID == nil else { return }
         guard let archive = savedArchives.first(where: { $0.lastOpenedAt != nil }) else {
             #if DEBUG
@@ -636,6 +637,7 @@ final class ArchiveStore: ObservableObject {
 
         Task { @MainActor [weak self] in
             guard let self else { return }
+            await Task.yield()
             await self.openSavedArchiveImmediately(archive)
         }
     }
