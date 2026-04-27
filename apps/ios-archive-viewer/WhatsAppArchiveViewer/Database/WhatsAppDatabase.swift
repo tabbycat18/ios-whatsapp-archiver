@@ -2223,7 +2223,7 @@ final class WhatsAppDatabase: @unchecked Sendable {
             if hasVideoEvidence(input: input, mimeType: mimeType, fileName: fileName) {
                 return .videoMessage
             }
-            return hasNonzeroLocation(latitude: input.latitude, longitude: input.longitude) ? .location : .media
+            return hasPlausibleLocationEvidence(latitude: input.latitude, longitude: input.longitude) ? .location : .media
         }
         if input.messageType == 15 {
             return .sticker
@@ -2237,7 +2237,7 @@ final class WhatsAppDatabase: @unchecked Sendable {
         if hasReliableVCard(name: input.vCardName, string: input.vCardString, messageType: input.messageType) {
             return .contact
         }
-        if hasNonzeroLocation(latitude: input.latitude, longitude: input.longitude) {
+        if hasPlausibleLocationEvidence(latitude: input.latitude, longitude: input.longitude) {
             return .location
         }
 
@@ -2307,14 +2307,20 @@ final class WhatsAppDatabase: @unchecked Sendable {
            ["mp4", "mov", "m4v"].contains(fileExtension) {
             return true
         }
-        return input.messageType == 4 && (input.durationSeconds ?? 0) > 0
+        return (input.messageType == 4 || input.messageType == 5) && (input.durationSeconds ?? 0) > 0
     }
 
-    private func hasNonzeroLocation(latitude: Double?, longitude: Double?) -> Bool {
+    private func hasPlausibleLocationEvidence(
+        latitude: Double?,
+        longitude: Double?
+    ) -> Bool {
         guard let latitude, let longitude else {
             return false
         }
-        return latitude != 0 || longitude != 0
+        if latitude == 0 && longitude == 0 {
+            return false
+        }
+        return abs(latitude) <= 90 && abs(longitude) <= 180
     }
 
     private func fileExtension(fileName: String?, localPath: String?, mediaURL: String?) -> String? {
