@@ -32,6 +32,9 @@ struct MessageListView: View {
     @State private var edgeBackDragOffset: CGFloat = 0
     private let olderLoadThreshold = 8
     private let bottomSpacerID = "message-list-bottom-spacer"
+    private let topScrollSafeInset: CGFloat = 10
+    private let bottomSearchSafeInset: CGFloat = 44
+    private let bottomAnchorSpacerHeight: CGFloat = 8
     private let edgeBackStartWidth: CGFloat = 24
     private let edgeBackMaxOffset: CGFloat = 52
     private let edgeBackDismissThreshold: CGFloat = 44
@@ -87,6 +90,16 @@ struct MessageListView: View {
                 .listStyle(.plain)
                 .scrollContentBackground(.hidden)
                 .background(Color.clear)
+                .safeAreaInset(edge: .top, spacing: 0) {
+                    Color.clear
+                        .frame(height: topScrollSafeInset)
+                        .allowsHitTesting(false)
+                }
+                .safeAreaInset(edge: .bottom, spacing: 0) {
+                    Color.clear
+                        .frame(height: bottomSearchSafeInset)
+                        .allowsHitTesting(false)
+                }
                 .onAppear {
                     scrollToLatestMessageIfNeeded(using: proxy, animated: false)
                 }
@@ -175,7 +188,7 @@ struct MessageListView: View {
 
     private var messageListBottomSpacer: some View {
         Color.clear
-            .frame(height: 16)
+            .frame(height: bottomAnchorSpacerHeight)
             .id(bottomSpacerID)
             .listRowSeparator(.hidden)
             .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
