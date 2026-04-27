@@ -2300,7 +2300,7 @@ private struct MessageContentView: View {
             if let media = message.media, shouldShowAttachment(for: media) {
                 attachmentView(for: media)
             } else if let displayText, let url = MessageLinkDetector.firstWebURL(in: displayText) {
-                LinkPreviewAttachmentView(media: nil, fallbackURL: url)
+                LinkPreviewAttachmentView(media: nil, fallbackURL: url, isFromMe: message.isFromMe)
             }
 
             if let media = message.media, isCaptionedAttachment(media), let renderedDisplayText {
@@ -2375,7 +2375,7 @@ private struct MessageContentView: View {
         case .document:
             DocumentAttachmentView(media: media)
         case .linkPreview:
-            LinkPreviewAttachmentView(media: media, fallbackURL: displayText.flatMap(MessageLinkDetector.firstWebURL(in:)))
+            LinkPreviewAttachmentView(media: media, fallbackURL: displayText.flatMap(MessageLinkDetector.firstWebURL(in:)), isFromMe: message.isFromMe)
         case .call:
             VoiceCallAttachmentView(isFromMe: message.isFromMe)
         default:
@@ -2456,6 +2456,7 @@ private struct LinkedMessageText: View {
 private struct LinkPreviewAttachmentView: View {
     let media: MediaMetadata?
     let fallbackURL: URL?
+    let isFromMe: Bool
     @Environment(\.colorScheme) private var colorScheme
     @State private var thumbnail: CGImage?
     @State private var loadedThumbnailURL: URL?
@@ -2505,26 +2506,48 @@ private struct LinkPreviewAttachmentView: View {
     }
 
     private var previewCard: some View {
-        HStack(spacing: 8) {
-            thumbnailOrIcon
-
-            VStack(alignment: .leading, spacing: 3) {
-                Text(title)
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.primary)
-                    .lineLimit(2)
-                    .multilineTextAlignment(.leading)
-
-                Text(subtitle)
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
+        VStack(alignment: .leading, spacing: 8) {
+            if let thumbnail {
+                Image(decorative: thumbnail, scale: 1, orientation: .up)
+                    .resizable()
+                    .scaledToFill()
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 112)
+                    .clipped()
+                    .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
+
+            HStack(alignment: .top, spacing: 10) {
+                if thumbnail == nil {
+                    linkIcon
+                }
+
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(title)
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(.primary)
+                        .lineLimit(2)
+                        .multilineTextAlignment(.leading)
+
+                    HStack(spacing: 4) {
+                        if thumbnail != nil {
+                            Image(systemName: "link")
+                                .font(.system(size: 10, weight: .semibold))
+                                .accessibilityHidden(true)
+                        }
+
+                        Text(subtitle)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                    }
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
         }
-        .frame(width: thumbnailURL == nil ? 192 : 234, alignment: .leading)
-        .padding(8)
+        .padding(10)
+        .frame(width: 268, alignment: .leading)
         .background(ChatBubblePalette.attachmentBackground(for: colorScheme))
         .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
         .task(id: thumbnailURL) {
@@ -2532,26 +2555,16 @@ private struct LinkPreviewAttachmentView: View {
         }
     }
 
-    @ViewBuilder
-    private var thumbnailOrIcon: some View {
-        if let thumbnail {
-            Image(decorative: thumbnail, scale: 1, orientation: .up)
-                .resizable()
-                .scaledToFill()
-                .frame(width: 60, height: 60)
-                .clipped()
-                .clipShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
-        } else {
-            ZStack {
-                RoundedRectangle(cornerRadius: 7, style: .continuous)
-                    .fill(Color.accentColor.opacity(0.15))
+    private var linkIcon: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                .fill(ChatBubblePalette.subtleIconBackground(isFromMe: isFromMe, colorScheme: colorScheme))
 
-                Image(systemName: "link")
-                    .font(.system(size: 15, weight: .semibold))
-                    .foregroundStyle(Color.accentColor)
-            }
-            .frame(width: thumbnailURL == nil ? 34 : 60, height: thumbnailURL == nil ? 34 : 60)
+            Image(systemName: "link")
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(ChatBubblePalette.subtleIconForeground(isFromMe: isFromMe, colorScheme: colorScheme))
         }
+        .frame(width: 32, height: 32)
     }
 
     private func loadThumbnailIfNeeded() async {
@@ -2573,7 +2586,7 @@ private struct LinkPreviewAttachmentView: View {
         }
 
         let loadedThumbnail = await Task.detached(priority: .utility) {
-            downsampleImage(at: thumbnailURL, maxPixelSize: 180)
+            downsampleImage(at: thumbnailURL, maxPixelSize: 420)
         }.value
 
         if let loadedThumbnail {
