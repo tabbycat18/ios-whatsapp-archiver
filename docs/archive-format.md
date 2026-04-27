@@ -70,10 +70,9 @@ root:
 - `current_wallpaper_dark.jpg`
 
 If one is present, it is loaded lazily and used as the message-list background.
-When both light and dark files are present, dark mode prefers
-`current_wallpaper_dark.jpg`. The app also has a local wallpaper selector:
-Default uses these archive files, while built-in Classic, Soft Pattern, Demo,
-and Plain styles are app-generated and do not modify the archive.
+The app also has a local wallpaper selector: Archive Default uses these archive
+files consistently, while built-in Classic, Soft Pattern, Demo, and Plain
+styles are app-generated and do not modify the archive.
 
 The viewer can also use local profile/avatar cache images when they are present
 in the selected archive. Resolution is best-effort and conservative: the app

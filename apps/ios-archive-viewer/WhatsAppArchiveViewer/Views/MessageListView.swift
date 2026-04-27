@@ -265,7 +265,7 @@ private struct ChatWallpaperBackgroundView: View {
         ZStack {
             switch wallpaperTheme {
             case .archiveDefault:
-                Color.gray.opacity(0.08)
+                Color(.systemBackground)
 
                 if let image {
                     Image(decorative: image, scale: 1, orientation: .up)
@@ -287,16 +287,7 @@ private struct ChatWallpaperBackgroundView: View {
 
     private var resolvedWallpaperURL: URL? {
         guard wallpaperTheme == .archiveDefault else { return nil }
-        guard let wallpaperURL else { return nil }
-        guard colorScheme == .dark, wallpaperURL.lastPathComponent == "current_wallpaper.jpg" else {
-            return wallpaperURL
-        }
-
-        let darkWallpaperURL = wallpaperURL
-            .deletingLastPathComponent()
-            .appendingPathComponent("current_wallpaper_dark.jpg")
-            .standardizedFileURL
-        return FileManager.default.fileExists(atPath: darkWallpaperURL.path) ? darkWallpaperURL : wallpaperURL
+        return wallpaperURL
     }
 
     private var wallpaperTaskID: String {
@@ -331,7 +322,7 @@ private struct ChatWallpaperBackgroundView: View {
     }
 }
 
-private struct ProceduralChatWallpaperView: View {
+struct ProceduralChatWallpaperView: View {
     @Environment(\.colorScheme) private var colorScheme
     let theme: ChatWallpaperTheme
 
@@ -342,15 +333,28 @@ private struct ProceduralChatWallpaperView: View {
                 with: .color(palette.background)
             )
 
-            drawDots(in: &context, size: size)
-            drawLines(in: &context, size: size)
-            drawRings(in: &context, size: size)
+            switch theme {
+            case .classic:
+                drawClassicSymbols(in: &context, size: size)
+            case .softPattern:
+                drawSoftPattern(in: &context, size: size)
+            case .demo:
+                drawDemoCompanionPattern(in: &context, size: size)
+            case .archiveDefault, .plain:
+                break
+            }
         }
         .background(palette.background)
     }
 
     private var palette: WallpaperPalette {
         WallpaperPalette(theme: theme, isDark: colorScheme == .dark)
+    }
+
+    private func drawSoftPattern(in context: inout GraphicsContext, size: CGSize) {
+        drawDots(in: &context, size: size)
+        drawLines(in: &context, size: size)
+        drawRings(in: &context, size: size)
     }
 
     private func drawDots(in context: inout GraphicsContext, size: CGSize) {
@@ -409,6 +413,105 @@ private struct ProceduralChatWallpaperView: View {
             row += 1
         }
     }
+
+    private func drawClassicSymbols(in context: inout GraphicsContext, size: CGSize) {
+        drawFineTexture(in: &context, size: size)
+
+        let spacing: CGFloat = 150
+        var y: CGFloat = 90
+        var row = 0
+
+        while y < size.height + spacing {
+            var x: CGFloat = 70 + CGFloat(row % 2) * 18
+            var column = 0
+
+            while x < size.width + spacing {
+                let symbol = (row + column) % 4
+                let center = CGPoint(x: x + CGFloat(symbol % 2) * 18, y: y + CGFloat(symbol / 2) * 18)
+                drawClassicSymbol(symbol, center: center, in: &context)
+                x += spacing
+                column += 1
+            }
+
+            y += spacing
+            row += 1
+        }
+    }
+
+    private func drawClassicSymbol(_ symbol: Int, center: CGPoint, in context: inout GraphicsContext) {
+        switch symbol {
+        case 0:
+            context.fill(
+                Path(ellipseIn: CGRect(x: center.x - 7, y: center.y - 7, width: 14, height: 14)),
+                with: .color(palette.ring)
+            )
+
+            strokeLine(from: CGPoint(x: center.x + 22, y: center.y - 8), to: CGPoint(x: center.x + 54, y: center.y - 8), in: &context)
+            strokeLine(from: CGPoint(x: center.x + 22, y: center.y + 8), to: CGPoint(x: center.x + 44, y: center.y + 8), in: &context)
+        case 1:
+            strokeLine(from: CGPoint(x: center.x - 22, y: center.y), to: CGPoint(x: center.x + 22, y: center.y), in: &context)
+            strokeLine(from: CGPoint(x: center.x, y: center.y - 22), to: CGPoint(x: center.x, y: center.y + 22), in: &context)
+        case 2:
+            let outer = CGRect(x: center.x - 25, y: center.y - 13, width: 50, height: 26)
+            let inner = CGRect(x: center.x - 18, y: center.y - 7, width: 36, height: 14)
+            context.fill(Path(outer), with: .color(palette.line))
+            context.fill(Path(inner), with: .color(palette.background))
+        default:
+            strokeLine(from: CGPoint(x: center.x - 22, y: center.y + 12), to: CGPoint(x: center.x, y: center.y - 14), in: &context)
+            strokeLine(from: CGPoint(x: center.x, y: center.y - 14), to: CGPoint(x: center.x + 24, y: center.y + 12), in: &context)
+        }
+    }
+
+    private func drawDemoCompanionPattern(in context: inout GraphicsContext, size: CGSize) {
+        drawFineTexture(in: &context, size: size)
+
+        let spacing: CGFloat = 178
+        var y: CGFloat = 82
+        var row = 0
+
+        while y < size.height + spacing {
+            var x: CGFloat = 46 + CGFloat(row % 3) * 22
+            var column = 0
+
+            while x < size.width + spacing {
+                let symbol = (row * 2 + column) % 4
+                let center = CGPoint(
+                    x: x + CGFloat((symbol + row) % 2) * 20,
+                    y: y + CGFloat((symbol + column) % 2) * 16
+                )
+                drawClassicSymbol(symbol, center: center, in: &context)
+                x += spacing
+                column += 1
+            }
+
+            y += spacing * 0.92
+            row += 1
+        }
+    }
+
+    private func drawFineTexture(in context: inout GraphicsContext, size: CGSize) {
+        guard palette.lineOpacity > 0 else { return }
+        var y: CGFloat = 0
+
+        while y < size.height {
+            var path = Path()
+            path.move(to: CGPoint(x: 0, y: y))
+            path.addLine(to: CGPoint(x: size.width, y: y + 8))
+            context.stroke(
+                path,
+                with: .color(palette.line.opacity(palette.lineOpacity * 0.36)),
+                lineWidth: 0.5
+            )
+            y += 10
+        }
+    }
+
+    private func strokeLine(from start: CGPoint, to end: CGPoint, in context: inout GraphicsContext) {
+        var path = Path()
+        path.move(to: start)
+        path.addLine(to: end)
+        context.stroke(path, with: .color(palette.line), lineWidth: palette.lineWidth)
+    }
 }
 
 private struct WallpaperPalette {
@@ -429,29 +532,29 @@ private struct WallpaperPalette {
     init(theme: ChatWallpaperTheme, isDark: Bool) {
         switch (theme, isDark) {
         case (.classic, false):
-            background = Color(red: 0.88, green: 0.91, blue: 0.85)
-            dot = Color(red: 0.28, green: 0.45, blue: 0.38).opacity(0.12)
-            line = Color(red: 0.35, green: 0.48, blue: 0.42)
-            ring = Color(red: 0.24, green: 0.42, blue: 0.34)
+            background = Color(red: 0.957, green: 0.937, blue: 0.898)
+            dot = Color(red: 0.965, green: 0.945, blue: 0.910)
+            line = Color(red: 0.776, green: 0.824, blue: 0.792).opacity(0.72)
+            ring = Color(red: 0.839, green: 0.863, blue: 0.827).opacity(0.78)
             dotSpacing = 34
             dotSize = 2.5
             lineSpacing = 96
-            lineWidth = 0.8
+            lineWidth = 3
             lineOpacity = 0.08
             ringSpacing = 118
             ringSize = 16
             ringLineWidth = 1
             ringOpacity = 0.08
         case (.classic, true):
-            background = Color(red: 0.10, green: 0.16, blue: 0.14)
-            dot = Color(red: 0.80, green: 0.92, blue: 0.84).opacity(0.10)
-            line = Color(red: 0.66, green: 0.82, blue: 0.74)
-            ring = Color(red: 0.74, green: 0.88, blue: 0.80)
+            background = Color(red: 0.071, green: 0.106, blue: 0.122)
+            dot = Color(red: 0.075, green: 0.118, blue: 0.134)
+            line = Color(red: 0.220, green: 0.300, blue: 0.330).opacity(0.70)
+            ring = Color(red: 0.160, green: 0.230, blue: 0.255).opacity(0.74)
             dotSpacing = 34
             dotSize = 2.5
             lineSpacing = 96
-            lineWidth = 0.8
-            lineOpacity = 0.07
+            lineWidth = 3
+            lineOpacity = 0.09
             ringSpacing = 118
             ringSize = 16
             ringLineWidth = 1
@@ -485,28 +588,28 @@ private struct WallpaperPalette {
             ringLineWidth = 0.8
             ringOpacity = 0.05
         case (.demo, false):
-            background = Color(red: 0.88, green: 0.89, blue: 0.82)
-            dot = Color(red: 0.45, green: 0.37, blue: 0.25).opacity(0.10)
-            line = Color(red: 0.47, green: 0.42, blue: 0.31)
-            ring = Color(red: 0.50, green: 0.40, blue: 0.30)
+            background = Color(red: 0.935, green: 0.913, blue: 0.842)
+            dot = Color(red: 0.955, green: 0.932, blue: 0.860)
+            line = Color(red: 0.690, green: 0.750, blue: 0.705).opacity(0.66)
+            ring = Color(red: 0.808, green: 0.690, blue: 0.470).opacity(0.62)
             dotSpacing = 42
             dotSize = 3
             lineSpacing = 120
-            lineWidth = 0.8
-            lineOpacity = 0.05
+            lineWidth = 3
+            lineOpacity = 0.06
             ringSpacing = 104
             ringSize = 14
             ringLineWidth = 1
             ringOpacity = 0.08
         case (.demo, true):
-            background = Color(red: 0.12, green: 0.13, blue: 0.12)
-            dot = Color(red: 0.79, green: 0.74, blue: 0.62).opacity(0.08)
-            line = Color(red: 0.74, green: 0.69, blue: 0.58)
-            ring = Color(red: 0.78, green: 0.72, blue: 0.60)
+            background = Color(red: 0.105, green: 0.122, blue: 0.112)
+            dot = Color(red: 0.125, green: 0.145, blue: 0.132)
+            line = Color(red: 0.255, green: 0.335, blue: 0.300).opacity(0.64)
+            ring = Color(red: 0.430, green: 0.345, blue: 0.215).opacity(0.62)
             dotSpacing = 42
             dotSize = 3
             lineSpacing = 120
-            lineWidth = 0.8
+            lineWidth = 3
             lineOpacity = 0.04
             ringSpacing = 104
             ringSize = 14

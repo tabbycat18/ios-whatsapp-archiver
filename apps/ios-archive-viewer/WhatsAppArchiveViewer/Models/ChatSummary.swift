@@ -21,7 +21,7 @@ enum ChatWallpaperTheme: String, CaseIterable, Identifiable {
     var displayName: String {
         switch self {
         case .archiveDefault:
-            return "Default"
+            return "Archive Default"
         case .classic:
             return "Classic"
         case .softPattern:
@@ -36,13 +36,13 @@ enum ChatWallpaperTheme: String, CaseIterable, Identifiable {
     var detailText: String {
         switch self {
         case .archiveDefault:
-            return "Use the existing wallpaper from the selected archive when available."
+            return "Use the selected archive's wallpaper when available."
         case .classic:
-            return "A subtle chat-style pattern with warm light and deep dark variants."
+            return "The subtle icon pattern, with matching light and dark variants."
         case .softPattern:
             return "A quiet app-style pattern tuned for readable message bubbles."
         case .demo:
-            return "A new synthetic sample pattern. Use Default to keep the demo archive wallpaper."
+            return "A synthetic companion to Classic with a warmer demo palette."
         case .plain:
             return "Disable wallpaper and use a simple background."
         }
