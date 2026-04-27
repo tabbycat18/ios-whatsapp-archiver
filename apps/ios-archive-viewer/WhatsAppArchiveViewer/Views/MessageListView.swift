@@ -3854,8 +3854,6 @@ private final class VideoPlaybackController: ObservableObject {
     deinit {
         statusObservation?.invalidate()
         timeControlStatusObservation?.invalidate()
-        player?.pause()
-        player?.replaceCurrentItem(with: nil)
     }
 
     func load(url: URL, restart: Bool) {
