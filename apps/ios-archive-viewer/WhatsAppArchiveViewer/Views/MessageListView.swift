@@ -1737,6 +1737,60 @@ private struct ChatInfoMediaTile: View {
     }
 }
 
+private struct MediaViewerTopOverlay: View {
+    let shareURL: URL?
+    let closeAccessibilityLabel: String
+    let shareAccessibilityLabel: String
+    let onClose: () -> Void
+
+    var body: some View {
+        HStack {
+            Button(action: onClose) {
+                topControlImage(systemName: "xmark.circle.fill")
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(closeAccessibilityLabel)
+
+            Spacer(minLength: 12)
+
+            if let shareURL {
+                ShareLink(item: shareURL) {
+                    topControlImage(systemName: "square.and.arrow.up.circle.fill")
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(shareAccessibilityLabel)
+            } else {
+                Color.clear
+                    .frame(width: 44, height: 44)
+                    .accessibilityHidden(true)
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.top, 8)
+        .padding(.bottom, 14)
+        .background(alignment: .top) {
+            LinearGradient(
+                colors: [
+                    Color.black.opacity(0.72),
+                    Color.black.opacity(0.38),
+                    Color.black.opacity(0)
+                ],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+            .ignoresSafeArea(edges: .top)
+        }
+    }
+
+    private func topControlImage(systemName: String) -> some View {
+        Image(systemName: systemName)
+            .font(.system(size: 32))
+            .foregroundStyle(.white, .black.opacity(0.35))
+            .frame(width: 44, height: 44)
+            .contentShape(Circle())
+    }
+}
+
 private struct ChatInfoMediaBrowserView: View {
     let items: [ChatMediaItem]
     let initialItemID: String
@@ -1754,7 +1808,7 @@ private struct ChatInfoMediaBrowserView: View {
     }
 
     var body: some View {
-        ZStack(alignment: .top) {
+        ZStack {
             Color.black
                 .ignoresSafeArea()
 
@@ -1768,29 +1822,15 @@ private struct ChatInfoMediaBrowserView: View {
             .tabViewStyle(.page(indexDisplayMode: .automatic))
             #endif
             .ignoresSafeArea()
-
-            HStack {
-                Button {
-                    dismiss()
-                } label: {
-                    Image(systemName: "xmark.circle.fill")
-                        .font(.system(size: 32))
-                        .foregroundStyle(.white, .black.opacity(0.35))
-                }
-                .accessibilityLabel("Close media")
-
-                Spacer()
-
-                if let url = selectedItem?.media.fileURL {
-                    ShareLink(item: url) {
-                        Image(systemName: "square.and.arrow.up.circle.fill")
-                            .font(.system(size: 32))
-                            .foregroundStyle(.white, .black.opacity(0.35))
-                    }
-                    .accessibilityLabel("Share media")
-                }
+        }
+        .safeAreaInset(edge: .top, spacing: 0) {
+            MediaViewerTopOverlay(
+                shareURL: selectedItem?.media.fileURL,
+                closeAccessibilityLabel: "Close media",
+                shareAccessibilityLabel: "Share media"
+            ) {
+                dismiss()
             }
-            .padding()
         }
     }
 }
@@ -1852,8 +1892,11 @@ private struct ChatInfoMediaBrowserPage: View {
         if let url = item.media.fileURL {
             VideoPlayer(player: playbackController.player)
                 .ignoresSafeArea()
+                .overlay {
+                    VideoPlaybackStatusOverlay(state: playbackController.loadingState)
+                }
                 .onAppear {
-                    playbackController.load(url: url, restart: true)
+                    playbackController.load(url: url, restart: false)
                     playbackController.play()
                 }
                 .onDisappear {
@@ -3142,7 +3185,7 @@ private struct VideoAttachmentView: View {
                 .task(id: media.fileURL) {
                     await loadThumbnailIfNeeded()
                 }
-                .sheet(isPresented: $isPlayerPresented) {
+                .fullScreenCover(isPresented: $isPlayerPresented) {
                     if let url = media.fileURL {
                         VideoPlayerSheet(controller: playbackController, url: url)
                     }
@@ -3188,41 +3231,86 @@ private struct VideoAttachmentView: View {
     }
 }
 
+private enum VideoPlaybackLoadState: Equatable {
+    case idle
+    case loading
+    case ready
+    case failed
+}
+
+private struct VideoPlaybackStatusOverlay: View {
+    let state: VideoPlaybackLoadState
+
+    var body: some View {
+        Group {
+            switch state {
+            case .idle, .ready:
+                EmptyView()
+            case .loading:
+                VStack(spacing: 12) {
+                    ProgressView()
+                        .tint(.white)
+
+                    Text("Loading video...")
+                        .font(.subheadline.weight(.semibold))
+                }
+                .accessibilityElement(children: .combine)
+                .accessibilityLabel("Loading video")
+                .statusOverlayStyle()
+            case .failed:
+                VStack(spacing: 10) {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .font(.title2)
+
+                    Text("Could not load video")
+                        .font(.subheadline.weight(.semibold))
+                }
+                .accessibilityElement(children: .combine)
+                .accessibilityLabel("Could not load video")
+                .statusOverlayStyle()
+            }
+        }
+        .allowsHitTesting(false)
+    }
+}
+
+private extension View {
+    func statusOverlayStyle() -> some View {
+        self
+            .foregroundStyle(.white)
+            .padding(.horizontal, 18)
+            .padding(.vertical, 16)
+            .background(Color.black.opacity(0.62), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+    }
+}
+
 private struct VideoPlayerSheet: View {
     @ObservedObject var controller: VideoPlaybackController
     let url: URL
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
-        ZStack(alignment: .top) {
+        ZStack {
             Color.black
                 .ignoresSafeArea()
 
             VideoPlayer(player: controller.player)
                 .ignoresSafeArea()
-
-            HStack {
-                Button {
-                    dismiss()
-                } label: {
-                    Image(systemName: "xmark.circle.fill")
-                        .font(.system(size: 32))
-                        .foregroundStyle(.white, .black.opacity(0.35))
+                .overlay {
+                    VideoPlaybackStatusOverlay(state: controller.loadingState)
                 }
-                .accessibilityLabel("Close video")
-
-                Spacer()
-
-                ShareLink(item: url) {
-                    Image(systemName: "square.and.arrow.up.circle.fill")
-                        .font(.system(size: 32))
-                        .foregroundStyle(.white, .black.opacity(0.35))
-                }
-                .accessibilityLabel("Share video")
+        }
+        .safeAreaInset(edge: .top, spacing: 0) {
+            MediaViewerTopOverlay(
+                shareURL: url,
+                closeAccessibilityLabel: "Close video",
+                shareAccessibilityLabel: "Share video"
+            ) {
+                dismiss()
             }
-            .padding()
         }
         .onAppear {
+            controller.load(url: url, restart: false)
             controller.play()
         }
         .onDisappear {
@@ -3233,11 +3321,22 @@ private struct VideoPlayerSheet: View {
 
 @MainActor
 private final class VideoPlaybackController: ObservableObject {
-    @Published private(set) var player = AVPlayer()
+    let player = AVPlayer()
+    @Published private(set) var loadingState: VideoPlaybackLoadState = .idle
     private var loadedURL: URL?
+    private var currentItemIdentifier: ObjectIdentifier?
+    private var statusObservation: NSKeyValueObservation?
+    private var timeControlStatusObservation: NSKeyValueObservation?
+
+    deinit {
+        statusObservation?.invalidate()
+        timeControlStatusObservation?.invalidate()
+        player.pause()
+        player.replaceCurrentItem(with: nil)
+    }
 
     func load(url: URL, restart: Bool) {
-        guard loadedURL != url else {
+        guard loadedURL != url || loadingState == .failed else {
             if restart {
                 player.seek(to: .zero)
             }
@@ -3245,18 +3344,66 @@ private final class VideoPlaybackController: ObservableObject {
         }
 
         player.pause()
-        player = AVPlayer(url: url)
+        statusObservation?.invalidate()
+        statusObservation = nil
+
+        let item = AVPlayerItem(url: url)
+        let itemIdentifier = ObjectIdentifier(item)
         loadedURL = url
+        currentItemIdentifier = itemIdentifier
+        loadingState = .loading
+        observeStatus(for: item, itemIdentifier: itemIdentifier)
+        observeTimeControlStatusIfNeeded()
+        player.replaceCurrentItem(with: item)
     }
 
     func play() {
-        guard loadedURL != nil else { return }
+        guard loadedURL != nil, loadingState != .failed else { return }
         prepareMediaPlaybackSession()
         player.play()
     }
 
     func pause() {
         player.pause()
+    }
+
+    private func observeStatus(for item: AVPlayerItem, itemIdentifier: ObjectIdentifier) {
+        statusObservation = item.observe(\.status, options: [.initial, .new]) { [weak self] observedItem, change in
+            let status = change.newValue ?? observedItem.status
+            Task { @MainActor in
+                self?.updateLoadingState(for: status, itemIdentifier: itemIdentifier)
+            }
+        }
+    }
+
+    private func observeTimeControlStatusIfNeeded() {
+        guard timeControlStatusObservation == nil else { return }
+        timeControlStatusObservation = player.observe(\.timeControlStatus, options: [.new]) { [weak self] observedPlayer, change in
+            let status = change.newValue ?? observedPlayer.timeControlStatus
+            Task { @MainActor in
+                self?.handleTimeControlStatus(status)
+            }
+        }
+    }
+
+    private func updateLoadingState(for status: AVPlayerItem.Status, itemIdentifier: ObjectIdentifier) {
+        guard currentItemIdentifier == itemIdentifier else { return }
+
+        switch status {
+        case .unknown:
+            loadingState = .loading
+        case .readyToPlay:
+            loadingState = .ready
+        case .failed:
+            loadingState = .failed
+        @unknown default:
+            loadingState = .failed
+        }
+    }
+
+    private func handleTimeControlStatus(_ status: AVPlayer.TimeControlStatus) {
+        guard loadedURL != nil, loadingState == .loading, status == .playing else { return }
+        loadingState = .ready
     }
 }
 
