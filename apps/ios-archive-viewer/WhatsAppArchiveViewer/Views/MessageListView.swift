@@ -532,6 +532,20 @@ private struct WallpaperPalette {
     init(theme: ChatWallpaperTheme, isDark: Bool) {
         switch (theme, isDark) {
         case (.classic, false):
+            background = Color(red: 0.957, green: 0.937, blue: 0.898)
+            dot = Color(red: 0.965, green: 0.945, blue: 0.910)
+            line = Color(red: 0.776, green: 0.824, blue: 0.792).opacity(0.72)
+            ring = Color(red: 0.839, green: 0.863, blue: 0.827).opacity(0.78)
+            dotSpacing = 34
+            dotSize = 2.5
+            lineSpacing = 96
+            lineWidth = 3
+            lineOpacity = 0.08
+            ringSpacing = 118
+            ringSize = 16
+            ringLineWidth = 1
+            ringOpacity = 0.08
+        case (.classic, true):
             background = Color(red: 0.071, green: 0.106, blue: 0.122)
             dot = Color(red: 0.075, green: 0.118, blue: 0.134)
             line = Color(red: 0.220, green: 0.300, blue: 0.330).opacity(0.70)
@@ -545,20 +559,6 @@ private struct WallpaperPalette {
             ringSize = 16
             ringLineWidth = 1
             ringOpacity = 0.07
-        case (.classic, true):
-            background = Color(red: 0.045, green: 0.074, blue: 0.086)
-            dot = Color(red: 0.055, green: 0.090, blue: 0.104)
-            line = Color(red: 0.155, green: 0.230, blue: 0.260).opacity(0.76)
-            ring = Color(red: 0.115, green: 0.180, blue: 0.205).opacity(0.80)
-            dotSpacing = 34
-            dotSize = 2.5
-            lineSpacing = 96
-            lineWidth = 3
-            lineOpacity = 0.10
-            ringSpacing = 118
-            ringSize = 16
-            ringLineWidth = 1
-            ringOpacity = 0.08
         case (.softPattern, false):
             background = Color(red: 0.91, green: 0.92, blue: 0.91)
             dot = Color(red: 0.32, green: 0.38, blue: 0.44).opacity(0.10)
