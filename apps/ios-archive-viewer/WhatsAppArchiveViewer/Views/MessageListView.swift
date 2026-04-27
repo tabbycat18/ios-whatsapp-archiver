@@ -67,13 +67,17 @@ struct MessageListView: View {
 
             ScrollViewReader { proxy in
                 List {
-                    if isSearchingMessages, displayedMessages.isEmpty {
-                        noMessageSearchResults
-                    } else {
-                        olderPaginationStatus
+                        if isSearchingMessages, displayedMessages.isEmpty {
+                            noMessageSearchResults
+                        } else {
+                            olderPaginationStatus
 
                         ForEach(displayedMessages, id: \.element.id) { index, message in
-                            MessageBubbleView(message: message, isGroupChat: chat.isGroupChat)
+                            MessageBubbleView(
+                                message: message,
+                                isGroupChat: chat.isGroupChat,
+                                showSenderAvatar: shouldShowSenderAvatar(at: index)
+                            )
                                 .environmentObject(audioPlayback)
                                 .id(message.id)
                                 .listRowSeparator(.hidden)
@@ -223,6 +227,21 @@ struct MessageListView: View {
             .listRowSeparator(.hidden)
             .listRowBackground(Color.clear)
         }
+    }
+
+    private func shouldShowSenderAvatar(at index: Int) -> Bool {
+        guard chat.isGroupChat else { return false }
+
+        let currentMessage = displayedMessages[index].element
+        guard !currentMessage.isFromMe else { return false }
+
+        let nextIndex = index + 1
+        guard nextIndex < displayedMessages.count else {
+            return true
+        }
+
+        let nextMessage = displayedMessages[nextIndex].element
+        return nextMessage.isFromMe || currentMessage.senderAvatarGroupingKey != nextMessage.senderAvatarGroupingKey
     }
 
     private func scrollToLatestMessageIfNeeded(using proxy: ScrollViewProxy, animated: Bool) {
@@ -2107,8 +2126,12 @@ private final class AudioPlaybackController: ObservableObject {
 private struct MessageBubbleView: View {
     let message: MessageRow
     let isGroupChat: Bool
+    let showSenderAvatar: Bool
     @Environment(\.colorScheme) private var colorScheme
     @EnvironmentObject private var audioPlayback: AudioPlaybackController
+    @EnvironmentObject private var store: ArchiveStore
+    @State private var avatarImage: CGImage?
+    @State private var loadedAvatarID: String?
 
     var body: some View {
         HStack {
@@ -2116,33 +2139,43 @@ private struct MessageBubbleView: View {
                 Spacer(minLength: 36)
             }
 
-            VStack(alignment: message.isFromMe ? .trailing : .leading, spacing: 2) {
-                VStack(alignment: contentAlignment, spacing: 5) {
-                    if let senderLabel {
-                        Text(senderLabel)
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(senderNameColor)
-                            .lineLimit(1)
-                            .textSelection(.enabled)
+            HStack(alignment: .top, spacing: 7) {
+                if shouldShowAvatar {
+                    MessageSenderAvatarView(
+                        image: avatarImage,
+                        initials: message.senderInitials,
+                        seed: message.senderAvatarGroupingKey
+                    )
+                }
+
+                VStack(alignment: message.isFromMe ? .trailing : .leading, spacing: 2) {
+                    VStack(alignment: contentAlignment, spacing: 5) {
+                        if let senderLabel {
+                            Text(senderLabel)
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(senderNameColor)
+                                .lineLimit(1)
+                                .textSelection(.enabled)
+                        }
+
+                        MessageContentView(message: message)
+                            .foregroundStyle(bubblePalette.primaryText)
+                            .tint(bubblePalette.linkText)
                     }
+                    .padding(.horizontal, bubbleContentPadding.horizontal)
+                    .padding(.vertical, bubbleContentPadding.vertical)
+                    .background(bubblePalette.background, in: bubbleShape)
+                    .overlay {
+                        bubbleShape
+                            .stroke(bubblePalette.border, lineWidth: 0.7)
+                    }
+                    .textSelection(.enabled)
 
-                    MessageContentView(message: message)
-                        .foregroundStyle(bubblePalette.primaryText)
-                        .tint(bubblePalette.linkText)
-                }
-                .padding(.horizontal, bubbleContentPadding.horizontal)
-                .padding(.vertical, bubbleContentPadding.vertical)
-                .background(bubblePalette.background, in: bubbleShape)
-                .overlay {
-                    bubbleShape
-                        .stroke(bubblePalette.border, lineWidth: 0.7)
-                }
-                .textSelection(.enabled)
-
-                if let messageDate = message.messageDate {
-                    Text(Self.dateFormatter.string(from: messageDate))
-                        .font(.caption2)
-                        .foregroundStyle(bubblePalette.metadataText)
+                    if let messageDate = message.messageDate {
+                        Text(Self.dateFormatter.string(from: messageDate))
+                            .font(.caption2)
+                            .foregroundStyle(bubblePalette.metadataText)
+                    }
                 }
             }
 
@@ -2151,6 +2184,9 @@ private struct MessageBubbleView: View {
             }
         }
         .padding(.vertical, 1)
+        .task(id: avatarTaskID) {
+            await loadAvatarIfNeeded()
+        }
         .onDisappear {
             if audioPlayback.isPlaying(message.id) {
                 audioPlayback.stop()
@@ -2163,12 +2199,43 @@ private struct MessageBubbleView: View {
             return "You"
         }
         if isGroupChat {
-            if let friendlyName = DisplayNameSanitizer.friendlyName(message.friendlySenderName) {
+            if let friendlyName = message.senderDisplayName {
                 return friendlyName
             }
-            return message.safeSenderPhoneNumber ?? "Unknown sender"
+            return "Unknown sender"
         }
         return nil
+    }
+
+    private var shouldShowAvatar: Bool {
+        isGroupChat && !message.isFromMe && showSenderAvatar
+    }
+
+    private var avatarTaskID: String {
+        let senderSeed = message.senderAvatarGroupingKey
+        return "\(senderSeed)|\(showSenderAvatar)|\(store.profileAvatarLoadingEnabled)"
+    }
+
+    private func loadAvatarIfNeeded() async {
+        if loadedAvatarID != avatarTaskID {
+            avatarImage = nil
+            loadedAvatarID = avatarTaskID
+        }
+
+        guard shouldShowAvatar else { return }
+        guard avatarImage == nil else { return }
+        guard store.profileAvatarLoadingEnabled else { return }
+        guard !Task.isCancelled else { return }
+
+        if let loadedImage = await store.profileAvatarImage(
+            forSenderJID: message.senderProfilePhotoJID,
+            senderIdentifier: message.senderProfilePhotoIdentifier,
+            fallbackIdentifier: message.senderAvatarGroupingKey,
+            priority: .visible
+        ) {
+            guard !Task.isCancelled else { return }
+            avatarImage = loadedImage
+        }
     }
 
     private var senderNameColor: Color {
@@ -2230,6 +2297,58 @@ private struct MessageBubbleView: View {
         formatter.timeStyle = .short
         return formatter
     }()
+}
+
+private struct MessageSenderAvatarView: View {
+    let image: CGImage?
+    let initials: String?
+    let seed: String
+
+    private var fallbackInitials: String {
+        let cleanedInitials = initials?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return cleanedInitials.isEmpty ? "?" : cleanedInitials
+    }
+
+    private var seedIndex: Int {
+        let clamped = Int(seed.unicodeScalars.reduce(0) { $0 + Int($1.value) })
+        return abs(clamped % senderAvatarPalette.count)
+    }
+
+    var body: some View {
+        ZStack {
+            Circle()
+                .fill(senderAvatarPalette[seedIndex].gradient)
+
+            if let image {
+                Image(decorative: image, scale: 1, orientation: .up)
+                    .resizable()
+                    .scaledToFill()
+            } else if initials != nil {
+                Text(fallbackInitials)
+                    .font(.system(size: 10.5, weight: .semibold))
+                    .foregroundStyle(.white)
+            } else {
+                Image(systemName: "person.fill")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(.white)
+            }
+        }
+        .frame(width: 28, height: 28)
+        .clipShape(Circle())
+    }
+
+    private static let senderAvatarPalette: [Color] = [
+        Color(red: 0.19, green: 0.51, blue: 0.75),
+        Color(red: 0.35, green: 0.62, blue: 0.40),
+        Color(red: 0.64, green: 0.38, blue: 0.17),
+        Color(red: 0.69, green: 0.26, blue: 0.35),
+        Color(red: 0.36, green: 0.35, blue: 0.70),
+        Color(red: 0.22, green: 0.54, blue: 0.58)
+    ]
+
+    private var senderAvatarPalette: [Color] {
+        Self.senderAvatarPalette
+    }
 }
 
 private struct ChatBubblePalette {

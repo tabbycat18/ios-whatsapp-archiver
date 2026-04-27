@@ -234,6 +234,49 @@ struct MessageRow: Identifiable, Hashable, Sendable {
             ?? DisplayNameSanitizer.friendlyName(deviceContactsDisplayName)
     }
 
+    var senderDisplayName: String? {
+        friendlySenderName
+    }
+
+    var senderProfilePhotoJID: String? {
+        let groupMember = groupMemberJID?.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let groupMember, !groupMember.isEmpty {
+            return groupMember
+        }
+
+        let sender = senderJID?.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let sender, !sender.isEmpty {
+            return sender
+        }
+
+        return nil
+    }
+
+    var senderProfilePhotoIdentifier: String? {
+        safeSenderPhoneNumber
+    }
+
+    var senderAvatarGroupingKey: String {
+        if let senderProfilePhotoJID {
+            return senderProfilePhotoJID
+        }
+
+        if let senderProfilePhotoIdentifier {
+            return senderProfilePhotoIdentifier
+        }
+
+        if let senderDisplayName {
+            return senderDisplayName
+        }
+
+        return "unknown sender"
+    }
+
+    var senderInitials: String? {
+        guard let senderDisplayName else { return nil }
+        return Self.senderInitials(from: senderDisplayName)
+    }
+
     var safeSenderPhoneNumber: String? {
         PhoneNumberNormalizer.safeDisplayPhoneNumber(from: groupMemberJID)
             ?? PhoneNumberNormalizer.safeDisplayPhoneNumber(from: senderJID)
@@ -272,6 +315,33 @@ struct MessageRow: Identifiable, Hashable, Sendable {
 
     var isVoiceCallEvent: Bool {
         media?.kind == .call || Self.isCallMessageType(messageType)
+    }
+
+    private static func senderInitials(from value: String?) -> String? {
+        guard let value else { return nil }
+        let sanitized = DisplayNameSanitizer.friendlyName(value) ?? value
+
+        let chunks = sanitized
+            .split(whereSeparator: { !$0.isLetter && !$0.isNumber && $0 != "+" })
+            .compactMap { chunk -> String? in
+                let normalized = chunk.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !normalized.isEmpty else { return nil }
+                for scalar in normalized.unicodeScalars {
+                    if CharacterSet.letters.contains(scalar) || CharacterSet.decimalDigits.contains(scalar) {
+                        return String(scalar)
+                            .folding(options: [.diacriticInsensitive, .caseInsensitive], locale: .current)
+                            .uppercased()
+                    }
+                }
+                return nil
+            }
+
+        if let chunkInitial = chunks.first, chunks.count == 1 {
+            return chunkInitial
+        }
+
+        let combined = chunks.prefix(2).joined()
+        return combined.isEmpty ? nil : String(combined)
     }
 
     private static func isSystemMessageType(_ value: Int?) -> Bool {

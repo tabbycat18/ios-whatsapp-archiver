@@ -270,6 +270,18 @@ private actor ProfilePhotoService {
             additionalIdentifiers: chat.profilePhotoIdentifiers
         )
     }
+
+    func profilePhotoURL(
+        for senderJID: String?,
+        senderIdentifier: String?,
+        additionalIdentifiers: [String] = []
+    ) -> URL? {
+        resolver.profilePhotoURL(
+            contactJID: senderJID,
+            contactIdentifier: senderIdentifier,
+            additionalIdentifiers: additionalIdentifiers
+        )
+    }
 }
 
 private struct ProfileAvatarCacheKey: Hashable {
@@ -277,7 +289,7 @@ private struct ProfileAvatarCacheKey: Hashable {
     let contactJID: String?
     let contactIdentifier: String?
     let additionalIdentifiers: [String]
-    let fallbackChatID: Int64?
+    let fallbackIdentifier: String?
 
     init(archiveID: UUID, chat: ChatSummary) {
         func cleaned(_ value: String?) -> String? {
@@ -297,7 +309,34 @@ private struct ProfileAvatarCacheKey: Hashable {
         self.contactJID = contactJID
         self.contactIdentifier = contactIdentifier
         self.additionalIdentifiers = additionalIdentifiers
-        self.fallbackChatID = hasContactKey ? nil : chat.id
+        self.fallbackIdentifier = hasContactKey ? nil : String(chat.id)
+    }
+
+    init(
+        archiveID: UUID,
+        senderJID: String?,
+        senderIdentifier: String?,
+        additionalIdentifiers: [String] = [],
+        fallbackIdentifier: String? = nil
+    ) {
+        func cleaned(_ value: String?) -> String? {
+            let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            return trimmed.isEmpty ? nil : trimmed
+        }
+
+        let contactJID = cleaned(senderJID)
+        let contactIdentifier = cleaned(senderIdentifier)
+        let normalizedAdditionalIdentifiers = additionalIdentifiers
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+            .sorted()
+        let hasContactKey = contactJID != nil || contactIdentifier != nil || !normalizedAdditionalIdentifiers.isEmpty
+
+        self.archiveID = archiveID
+        self.contactJID = contactJID
+        self.contactIdentifier = contactIdentifier
+        self.additionalIdentifiers = normalizedAdditionalIdentifiers
+        self.fallbackIdentifier = hasContactKey ? nil : cleaned(fallbackIdentifier)
     }
 }
 
@@ -333,6 +372,24 @@ private actor ProfileAvatarLoader {
         service: ProfilePhotoService,
         priority: ProfileAvatarLoadPriority
     ) async -> CGImage? {
+        await image(
+            for: key,
+            senderJID: chat.contactJID,
+            senderIdentifier: chat.contactIdentifier,
+            additionalIdentifiers: chat.profilePhotoIdentifiers,
+            service: service,
+            priority: priority
+        )
+    }
+
+    func image(
+        for key: ProfileAvatarCacheKey,
+        senderJID: String?,
+        senderIdentifier: String?,
+        additionalIdentifiers: [String] = [],
+        service: ProfilePhotoService,
+        priority: ProfileAvatarLoadPriority
+    ) async -> CGImage? {
         if let cachedEntry = entries[key] {
             #if DEBUG
             if cachedEntry.image == nil {
@@ -355,7 +412,11 @@ private actor ProfileAvatarLoader {
             return nil
         }
 
-        let imageURL = await service.profilePhotoURL(for: chat)
+        let imageURL = await service.profilePhotoURL(
+            for: senderJID,
+            senderIdentifier: senderIdentifier,
+            additionalIdentifiers: additionalIdentifiers
+        )
         guard !Task.isCancelled else {
             releaseLoadSlot()
             inFlightKeys.remove(key)
@@ -1147,6 +1208,32 @@ final class ArchiveStore: ObservableObject {
         return await profileAvatarLoader.image(
             for: ProfileAvatarCacheKey(archiveID: archiveID, chat: chat),
             chat: chat,
+            service: profilePhotoService,
+            priority: priority
+        )
+    }
+
+    func profileAvatarImage(
+        forSenderJID senderJID: String?,
+        senderIdentifier: String?,
+        fallbackIdentifier: String?,
+        priority: ProfileAvatarLoadPriority
+    ) async -> CGImage? {
+        guard profileAvatarLoadingEnabled,
+              let archiveID = currentArchiveID,
+              let profilePhotoService else {
+            return nil
+        }
+
+        return await profileAvatarLoader.image(
+            for: ProfileAvatarCacheKey(
+                archiveID: archiveID,
+                senderJID: senderJID,
+                senderIdentifier: senderIdentifier,
+                fallbackIdentifier: fallbackIdentifier
+            ),
+            senderJID: senderJID,
+            senderIdentifier: senderIdentifier,
             service: profilePhotoService,
             priority: priority
         )
