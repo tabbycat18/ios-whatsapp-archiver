@@ -1545,11 +1545,11 @@ private struct MessageContentView: View {
                 LinkPreviewAttachmentView(media: nil, fallbackURL: url)
             }
 
-            if let media = message.media, isCaptionedAttachment(media), let displayText {
-                LinkedMessageText(text: displayText)
+            if let media = message.media, isCaptionedAttachment(media), let renderedDisplayText {
+                LinkedMessageText(text: renderedDisplayText)
                     .textSelection(.enabled)
-            } else if let displayText {
-                LinkedMessageText(text: displayText)
+            } else if let renderedDisplayText {
+                LinkedMessageText(text: renderedDisplayText)
                     .textSelection(.enabled)
             } else if message.media == nil && message.isVoiceCallEvent {
                 VoiceCallAttachmentView(isFromMe: message.isFromMe)
@@ -1562,6 +1562,27 @@ private struct MessageContentView: View {
 
     private var displayText: String? {
         message.displayText ?? message.media?.fallbackCaptionText
+    }
+
+    private var renderedDisplayText: String? {
+        guard let displayText else { return nil }
+        if shouldSuppressStandaloneLinkText(displayText) {
+            return nil
+        }
+        return displayText
+    }
+
+    private func shouldSuppressStandaloneLinkText(_ text: String) -> Bool {
+        let previewURL: URL?
+        if let media = message.media, media.kind == .linkPreview {
+            previewURL = media.linkPreviewURL ?? MessageLinkDetector.firstWebURL(in: media.title)
+        } else if message.media == nil {
+            previewURL = MessageLinkDetector.firstWebURL(in: text)
+        } else {
+            previewURL = nil
+        }
+
+        return MessageLinkDetector.isStandaloneWebURL(text, matching: previewURL)
     }
 
     private func shouldShowAttachment(for media: MediaMetadata) -> Bool {
@@ -1678,6 +1699,9 @@ private struct LinkPreviewAttachmentView: View {
     let media: MediaMetadata?
     let fallbackURL: URL?
     @Environment(\.colorScheme) private var colorScheme
+    @State private var thumbnail: CGImage?
+    @State private var loadedThumbnailURL: URL?
+    @State private var didFailThumbnail = false
 
     private var previewURL: URL? {
         media?.linkPreviewURL
@@ -1698,6 +1722,18 @@ private struct LinkPreviewAttachmentView: View {
         previewURL?.host(percentEncoded: false) ?? previewURL?.absoluteString ?? "Link preview"
     }
 
+    private var thumbnailURL: URL? {
+        guard let media,
+              media.isFileAvailableInArchive,
+              media.isFileReadableInArchive,
+              let fileURL = media.fileURL,
+              isImagePreview(media, fileURL: fileURL)
+        else {
+            return nil
+        }
+        return fileURL
+    }
+
     var body: some View {
         if let previewURL {
             Link(destination: previewURL) {
@@ -1711,33 +1747,91 @@ private struct LinkPreviewAttachmentView: View {
     }
 
     private var previewCard: some View {
-        HStack(spacing: 10) {
-            RoundedRectangle(cornerRadius: 2)
-                .fill(Color.accentColor.opacity(0.72))
-                .frame(width: 4)
+        HStack(spacing: 8) {
+            thumbnailOrIcon
 
             VStack(alignment: .leading, spacing: 3) {
                 Text(title)
-                    .font(.subheadline.weight(.semibold))
+                    .font(.caption.weight(.semibold))
                     .foregroundStyle(.primary)
                     .lineLimit(2)
+                    .multilineTextAlignment(.leading)
 
                 Text(subtitle)
-                    .font(.caption)
+                    .font(.caption2)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
+                    .truncationMode(.middle)
             }
-
-            Spacer(minLength: 0)
-
-            Image(systemName: "link")
-                .font(.subheadline.weight(.semibold))
-                .foregroundStyle(.secondary)
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .frame(maxWidth: 260, alignment: .leading)
-        .padding(10)
+        .frame(width: thumbnailURL == nil ? 192 : 234, alignment: .leading)
+        .padding(8)
         .background(ChatBubblePalette.attachmentBackground(for: colorScheme))
-        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .task(id: thumbnailURL) {
+            await loadThumbnailIfNeeded()
+        }
+    }
+
+    @ViewBuilder
+    private var thumbnailOrIcon: some View {
+        if let thumbnail {
+            Image(decorative: thumbnail, scale: 1, orientation: .up)
+                .resizable()
+                .scaledToFill()
+                .frame(width: 60, height: 60)
+                .clipped()
+                .clipShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
+        } else {
+            ZStack {
+                RoundedRectangle(cornerRadius: 7, style: .continuous)
+                    .fill(Color.accentColor.opacity(0.15))
+
+                Image(systemName: "link")
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(Color.accentColor)
+            }
+            .frame(width: thumbnailURL == nil ? 34 : 60, height: thumbnailURL == nil ? 34 : 60)
+        }
+    }
+
+    private func loadThumbnailIfNeeded() async {
+        guard let thumbnailURL else {
+            thumbnail = nil
+            loadedThumbnailURL = nil
+            didFailThumbnail = false
+            return
+        }
+
+        if loadedThumbnailURL != thumbnailURL {
+            thumbnail = nil
+            loadedThumbnailURL = thumbnailURL
+            didFailThumbnail = false
+        }
+
+        guard thumbnail == nil, !didFailThumbnail else {
+            return
+        }
+
+        let loadedThumbnail = await Task.detached(priority: .utility) {
+            downsampleImage(at: thumbnailURL, maxPixelSize: 180)
+        }.value
+
+        if let loadedThumbnail {
+            thumbnail = loadedThumbnail
+        } else {
+            didFailThumbnail = true
+        }
+    }
+
+    private func isImagePreview(_ media: MediaMetadata, fileURL: URL) -> Bool {
+        if media.mimeType?.lowercased().hasPrefix("image/") == true {
+            return true
+        }
+
+        let fileExtension = (media.fileExtensionLabel ?? fileURL.pathExtension).lowercased()
+        return ["jpg", "jpeg", "png", "heic", "webp", "gif"].contains(fileExtension)
     }
 }
 
@@ -1751,6 +1845,19 @@ private enum MessageLinkDetector {
 
     static func firstWebURL(in text: String?) -> URL? {
         webLinks(in: text).first?.url
+    }
+
+    static func isStandaloneWebURL(_ text: String, matching url: URL?) -> Bool {
+        let trimmedText = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedText.isEmpty,
+              let url,
+              let match = webLinks(in: trimmedText).first,
+              match.range.location == 0,
+              match.range.length == (trimmedText as NSString).length else {
+            return false
+        }
+
+        return normalizedURLString(match.url) == normalizedURLString(url)
     }
 
     static func webLinks(in text: String?) -> [Match] {
@@ -1767,6 +1874,16 @@ private enum MessageLinkDetector {
                 }
                 return Match(range: result.range, url: url)
             }
+    }
+
+    private static func normalizedURLString(_ url: URL) -> String {
+        var absoluteString = url.absoluteString
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+        while absoluteString.last == "/" {
+            absoluteString.removeLast()
+        }
+        return absoluteString
     }
 }
 
