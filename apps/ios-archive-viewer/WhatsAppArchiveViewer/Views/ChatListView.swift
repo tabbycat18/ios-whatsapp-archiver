@@ -114,7 +114,7 @@ struct ChatListView: View {
                         if !filteredStatusStoryChats.isEmpty {
                             ChatListSectionHeader(title: "Stories")
                                 .listRowSeparator(.hidden)
-                                .listRowInsets(chatRowInsets)
+                                .listRowInsets(sectionHeaderInsets)
                                 .listRowBackground(Color(.systemGroupedBackground))
 
                             ForEach(filteredStatusStoryChats) { chat in
@@ -137,7 +137,7 @@ struct ChatListView: View {
                         if !filteredNormalChats.isEmpty {
                             ChatListSectionHeader(title: "Chats")
                                 .listRowSeparator(.hidden)
-                                .listRowInsets(chatRowInsets)
+                                .listRowInsets(sectionHeaderInsets)
                                 .listRowBackground(Color(.systemGroupedBackground))
 
                             ForEach(filteredNormalChats) { chat in
@@ -221,6 +221,10 @@ struct ChatListView: View {
     }
 
     private var chatRowInsets: EdgeInsets {
+        EdgeInsets(top: 1, leading: 0, bottom: 1, trailing: 18)
+    }
+
+    private var sectionHeaderInsets: EdgeInsets {
         EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0)
     }
 
@@ -1270,14 +1274,15 @@ private struct ChatRowView: View {
                 }
             }
             .padding(.leading, 16)
-            .padding(.trailing, 8)
-            .padding(.vertical, 10)
-            .frame(maxWidth: .infinity, minHeight: 82, alignment: .leading)
+            .padding(.trailing, 10)
+            .padding(.vertical, 11)
+            .frame(maxWidth: .infinity, minHeight: 84, alignment: .leading)
 
             Rectangle()
                 .fill(separatorColor)
                 .frame(height: 1 / UIScreen.main.scale)
                 .padding(.leading, 91)
+                .padding(.trailing, 10)
                 .accessibilityHidden(true)
         }
         .background(isSelected ? selectionBackground : rowBackground)
@@ -1285,7 +1290,7 @@ private struct ChatRowView: View {
     }
 
     private var rowBackground: Color {
-        colorScheme == .dark ? Color(.secondarySystemGroupedBackground) : Color(.systemBackground)
+        Color(.secondarySystemGroupedBackground)
     }
 
     private var selectionBackground: Color {
@@ -1293,7 +1298,7 @@ private struct ChatRowView: View {
     }
 
     private var separatorColor: Color {
-        Color(.separator).opacity(colorScheme == .dark ? 0.36 : 0.48)
+        Color(.separator).opacity(colorScheme == .dark ? 0.54 : 0.66)
     }
 }
 
