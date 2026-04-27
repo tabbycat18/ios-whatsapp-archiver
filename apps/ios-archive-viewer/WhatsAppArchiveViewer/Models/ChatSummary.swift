@@ -38,7 +38,7 @@ enum ChatWallpaperTheme: String, CaseIterable, Identifiable {
         case .archiveDefault:
             return "Use the selected archive's wallpaper when available."
         case .classic:
-            return "The subtle icon pattern, with matching light and dark variants."
+            return "The dark archive-style icon pattern, with a deeper dark variant."
         case .softPattern:
             return "A quiet app-style pattern tuned for readable message bubbles."
         case .demo:
