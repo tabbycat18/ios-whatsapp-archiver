@@ -297,6 +297,7 @@ final class ArchiveStore: ObservableObject {
     @Published var initialMessageLoadGeneration = 0
     @Published var archiveName = "No Archive"
     @Published var wallpaperURL: URL?
+    @Published var wallpaperDarkURL: URL?
     @Published var wallpaperTheme: ChatWallpaperTheme {
         didSet {
             defaults.set(wallpaperTheme.rawValue, forKey: Self.wallpaperThemeDefaultsKey)
@@ -581,6 +582,7 @@ final class ArchiveStore: ObservableObject {
         resetPaginationState()
         archiveName = "No Archive"
         wallpaperURL = nil
+        wallpaperDarkURL = nil
     }
 
     func loadMessages(for chat: ChatSummary) {
@@ -695,7 +697,10 @@ final class ArchiveStore: ObservableObject {
             messages = []
             resetPaginationState()
             archiveName = savedArchive.displayName
-            wallpaperURL = Self.wallpaperURL(in: access.archiveRootURL)
+            wallpaperURL = Self.wallpaperURL(in: access.archiveRootURL, filename: "current_wallpaper.jpg")
+                ?? Self.wallpaperURL(in: access.archiveRootURL, filename: "current_wallpaper_dark.jpg")
+            wallpaperDarkURL = Self.wallpaperURL(in: access.archiveRootURL, filename: "current_wallpaper_dark.jpg")
+                ?? wallpaperURL
             errorMessage = nil
 
             savedArchive.lastOpenedAt = Date()
@@ -716,6 +721,7 @@ final class ArchiveStore: ObservableObject {
             resetPaginationState()
             archiveName = "No Archive"
             wallpaperURL = nil
+            wallpaperDarkURL = nil
             errorMessage = error.localizedDescription
         }
     }
@@ -750,16 +756,10 @@ final class ArchiveStore: ObservableObject {
         return image
     }
 
-    private static func wallpaperURL(in archiveRootURL: URL) -> URL? {
-        let candidates = [
-            "current_wallpaper.jpg",
-            "current_wallpaper_dark.jpg"
-        ]
-
+    private static func wallpaperURL(in archiveRootURL: URL, filename: String) -> URL? {
         let archiveRootURL = archiveRootURL.standardizedFileURL
-        return candidates
-            .map { archiveRootURL.appendingPathComponent($0).standardizedFileURL }
-            .first { FileManager.default.fileExists(atPath: $0.path) }
+        let url = archiveRootURL.appendingPathComponent(filename).standardizedFileURL
+        return FileManager.default.fileExists(atPath: url.path) ? url : nil
     }
 
     private func refreshContactEnrichment() {

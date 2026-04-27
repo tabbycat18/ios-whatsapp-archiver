@@ -18,6 +18,7 @@ struct MessageListView: View {
     let olderMessagesErrorMessage: String?
     let initialMessageLoadGeneration: Int
     let wallpaperURL: URL?
+    let wallpaperDarkURL: URL?
     let wallpaperTheme: ChatWallpaperTheme
     let onLoadOlderMessages: () -> Void
     @StateObject private var audioPlayback = AudioPlaybackController()
@@ -55,7 +56,11 @@ struct MessageListView: View {
 
     var body: some View {
         ZStack {
-            ChatWallpaperBackgroundView(wallpaperURL: wallpaperURL, wallpaperTheme: wallpaperTheme)
+            ChatWallpaperBackgroundView(
+                wallpaperURL: wallpaperURL,
+                wallpaperDarkURL: wallpaperDarkURL,
+                wallpaperTheme: wallpaperTheme
+            )
 
             ScrollViewReader { proxy in
                 List {
@@ -256,6 +261,7 @@ struct MessageListView: View {
 private struct ChatWallpaperBackgroundView: View {
     @Environment(\.colorScheme) private var colorScheme
     let wallpaperURL: URL?
+    let wallpaperDarkURL: URL?
     let wallpaperTheme: ChatWallpaperTheme
     @State private var image: CGImage?
     @State private var didFail = false
@@ -275,8 +281,12 @@ private struct ChatWallpaperBackgroundView: View {
                 }
             case .plain:
                 Color(.systemBackground)
-            case .classic, .softPattern, .demo:
+            case .classic:
+                ClassicDoodleWallpaperView()
+            case .softPattern:
                 ProceduralChatWallpaperView(theme: wallpaperTheme)
+            case .demo:
+                AssetChatWallpaperView(assetName: "WallpaperDemoArchive")
             }
         }
         .ignoresSafeArea()
@@ -287,6 +297,9 @@ private struct ChatWallpaperBackgroundView: View {
 
     private var resolvedWallpaperURL: URL? {
         guard wallpaperTheme == .archiveDefault else { return nil }
+        if colorScheme == .dark {
+            return wallpaperDarkURL ?? wallpaperURL
+        }
         return wallpaperURL
     }
 
@@ -294,7 +307,8 @@ private struct ChatWallpaperBackgroundView: View {
         [
             wallpaperTheme.rawValue,
             colorScheme == .dark ? "dark" : "light",
-            resolvedWallpaperURL?.path ?? "none"
+            wallpaperURL?.path ?? "none",
+            wallpaperDarkURL?.path ?? "none"
         ].joined(separator: "|")
     }
 
@@ -322,6 +336,30 @@ private struct ChatWallpaperBackgroundView: View {
     }
 }
 
+struct ClassicDoodleWallpaperView: View {
+    var body: some View {
+        AssetChatWallpaperView(assetName: "WallpaperClassicDoodles")
+    }
+}
+
+struct AssetChatWallpaperView: View {
+    let assetName: String
+
+    var body: some View {
+        GeometryReader { proxy in
+            ZStack {
+                Color(.systemBackground)
+
+                Image(assetName)
+                    .resizable()
+                    .scaledToFill()
+                    .frame(width: proxy.size.width, height: proxy.size.height)
+                    .clipped()
+            }
+        }
+    }
+}
+
 struct ProceduralChatWallpaperView: View {
     @Environment(\.colorScheme) private var colorScheme
     let theme: ChatWallpaperTheme
@@ -337,9 +375,9 @@ struct ProceduralChatWallpaperView: View {
             case .classic:
                 drawClassicSymbols(in: &context, size: size)
             case .softPattern:
-                drawSoftPattern(in: &context, size: size)
-            case .demo:
                 drawDemoCompanionPattern(in: &context, size: size)
+            case .demo:
+                break
             case .archiveDefault, .plain:
                 break
             }
@@ -560,34 +598,6 @@ private struct WallpaperPalette {
             ringLineWidth = 1
             ringOpacity = 0.07
         case (.softPattern, false):
-            background = Color(red: 0.91, green: 0.92, blue: 0.91)
-            dot = Color(red: 0.32, green: 0.38, blue: 0.44).opacity(0.10)
-            line = Color(red: 0.38, green: 0.45, blue: 0.50)
-            ring = Color(red: 0.36, green: 0.43, blue: 0.48)
-            dotSpacing = 28
-            dotSize = 2
-            lineSpacing = 82
-            lineWidth = 0.7
-            lineOpacity = 0.06
-            ringSpacing = 140
-            ringSize = 22
-            ringLineWidth = 0.8
-            ringOpacity = 0.05
-        case (.softPattern, true):
-            background = Color(red: 0.13, green: 0.14, blue: 0.15)
-            dot = Color(red: 0.74, green: 0.78, blue: 0.82).opacity(0.08)
-            line = Color(red: 0.70, green: 0.75, blue: 0.78)
-            ring = Color(red: 0.70, green: 0.75, blue: 0.78)
-            dotSpacing = 28
-            dotSize = 2
-            lineSpacing = 82
-            lineWidth = 0.7
-            lineOpacity = 0.05
-            ringSpacing = 140
-            ringSize = 22
-            ringLineWidth = 0.8
-            ringOpacity = 0.05
-        case (.demo, false):
             background = Color(red: 0.935, green: 0.913, blue: 0.842)
             dot = Color(red: 0.955, green: 0.932, blue: 0.860)
             line = Color(red: 0.690, green: 0.750, blue: 0.705).opacity(0.66)
@@ -601,7 +611,7 @@ private struct WallpaperPalette {
             ringSize = 14
             ringLineWidth = 1
             ringOpacity = 0.08
-        case (.demo, true):
+        case (.softPattern, true):
             background = Color(red: 0.105, green: 0.122, blue: 0.112)
             dot = Color(red: 0.125, green: 0.145, blue: 0.132)
             line = Color(red: 0.255, green: 0.335, blue: 0.300).opacity(0.64)
@@ -1355,6 +1365,10 @@ private struct MessageBubbleView: View {
                 .padding(.horizontal, 12)
                 .padding(.vertical, 8)
                 .background(bubblePalette.background, in: bubbleShape)
+                .overlay {
+                    bubbleShape
+                        .stroke(bubblePalette.border, lineWidth: 0.7)
+                }
                 .textSelection(.enabled)
 
                 if let messageDate = message.messageDate {
@@ -1433,7 +1447,17 @@ private struct ChatBubblePalette {
 
         return isFromMe
             ? Color(red: 0.00, green: 0.36, blue: 0.30)
-            : Color(red: 0.12, green: 0.17, blue: 0.20)
+            : Color(red: 0.205, green: 0.205, blue: 0.205)
+    }
+
+    var border: Color {
+        guard colorScheme == .dark else {
+            return Color.black.opacity(isFromMe ? 0.04 : 0.06)
+        }
+
+        return isFromMe
+            ? Color.white.opacity(0.05)
+            : Color.white.opacity(0.14)
     }
 
     var primaryText: Color {

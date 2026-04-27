@@ -150,6 +150,7 @@ struct ChatListView: View {
                     olderMessagesErrorMessage: store.olderMessagesErrorMessage,
                     initialMessageLoadGeneration: store.initialMessageLoadGeneration,
                     wallpaperURL: store.wallpaperURL,
+                    wallpaperDarkURL: store.wallpaperDarkURL,
                     wallpaperTheme: store.wallpaperTheme,
                     onLoadOlderMessages: store.loadOlderMessages
                 )
@@ -254,8 +255,14 @@ private struct WallpaperThemeThumbnail: View {
                 Image(systemName: "rectangle")
                     .font(.title3)
                     .foregroundStyle(.secondary)
-            case .classic, .softPattern, .demo:
+            case .classic:
+                ClassicDoodleWallpaperView()
+                    .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+            case .softPattern:
                 ProceduralChatWallpaperView(theme: theme)
+                    .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+            case .demo:
+                AssetChatWallpaperView(assetName: "WallpaperDemoArchive")
                     .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
             }
         }
@@ -277,9 +284,9 @@ private struct WallpaperThemeThumbnail: View {
         case (.classic, false):
             return Color(red: 0.88, green: 0.91, blue: 0.85)
         case (.softPattern, true):
-            return Color(red: 0.13, green: 0.14, blue: 0.15)
+            return Color(red: 0.12, green: 0.13, blue: 0.12)
         case (.softPattern, false):
-            return Color(red: 0.91, green: 0.92, blue: 0.91)
+            return Color(red: 0.88, green: 0.89, blue: 0.82)
         case (.demo, true):
             return Color(red: 0.12, green: 0.13, blue: 0.12)
         case (.demo, false):
