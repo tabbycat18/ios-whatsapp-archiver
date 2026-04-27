@@ -33,6 +33,11 @@ live under `tools`, and the public synthetic demo fixture lives under
 - Never commit local signing noise such as `DEVELOPMENT_TEAM`.
 - Report final git status.
 
+## Codex Workflows
+
+- For ambiguous technical or product decisions, use the Codex-specific
+  [Decision Council](docs/ai-council.md) workflow.
+
 ## Validation Expectations
 
 - Run `git diff --check`.
