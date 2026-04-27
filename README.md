@@ -52,9 +52,17 @@ For detailed steps, transfer notes, and troubleshooting, read the
 
 Developers can build and install the app with Xcode. A stable personal install
 on your own iPhone requires Apple Developer Program signing; free Apple account
-builds can expire and require reinstalling. TestFlight is the recommended path
-for pre-release testers, but it is not currently published for this project.
-GitHub is not a one-tap iPhone install path.
+builds can expire and require reinstalling. TestFlight is the realistic
+near-term path for early users and pre-release testers, but it is not currently
+published for this project. GitHub is not a one-tap iPhone install path.
+
+### Can I Install This Directly From GitHub?
+
+Not today. GitHub can host source code, documentation, demo fixtures, and even
+downloadable build artifacts such as an `.ipa`. iOS will only install builds
+that are properly signed, provisioned, and distributed through an
+Apple-supported path. A random GitHub-hosted `.ipa` download alone is not
+enough for most iPhone users.
 
 See [installation and distribution](docs/distribution.md) for details.
 

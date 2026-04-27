@@ -20,8 +20,14 @@ Build and run with full Xcode on an iOS simulator or device. Command Line Tools
 alone are not enough for simulator builds.
 
 The current install path is developer/Xcode-oriented. GitHub source is not a
-universal one-tap iPhone install path, and this repository does not currently
-provide TestFlight or App Store distribution.
+universal one-tap iPhone install path. Hosting an `.ipa` on GitHub or another
+website would not by itself make it installable for most users; iOS still
+requires valid signing/provisioning and an Apple-supported distribution path.
+This repository does not currently provide TestFlight or App Store
+distribution.
+
+For the full install-path breakdown, see
+[installation and distribution](../../docs/distribution.md).
 
 ## What the App Opens
 

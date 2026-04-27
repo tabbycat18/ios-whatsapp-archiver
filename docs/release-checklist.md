@@ -39,5 +39,8 @@ signed release build.
 - Archive in Xcode.
 - Upload to TestFlight when ready for tester validation.
 - Complete beta review for external TestFlight testing when required.
+- Do not publish a standalone IPA as if it were a universal install path.
+- If hosting any build artifact, document the exact supported signing,
+  provisioning, and installation path.
 - Update GitHub release notes with user-facing changes and known limits.
 - Tag the release after the release artifact and notes are final.
