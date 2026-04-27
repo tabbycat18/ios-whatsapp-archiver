@@ -22,6 +22,7 @@ struct MessageListView: View {
     let wallpaperTheme: ChatWallpaperTheme
     let onLoadOlderMessages: () -> Void
     @StateObject private var audioPlayback = AudioPlaybackController()
+    @StateObject private var instantVideoPlaybackCoordinator = InstantVideoPlaybackCoordinator()
     @State private var latestScrolledGeneration: Int?
     @State private var didCompleteInitialScroll = false
     @State private var lastOlderLoadTriggerMessageID: Int64?
@@ -34,7 +35,7 @@ struct MessageListView: View {
     private let bottomSpacerID = "message-list-bottom-spacer"
     private let topScrollSafeInset: CGFloat = 10
     private let bottomSearchSafeInset: CGFloat = 44
-    private let bottomAnchorSpacerHeight: CGFloat = 8
+    private let bottomAnchorSpacerHeight: CGFloat = 0
     private let edgeBackStartWidth: CGFloat = 24
     private let edgeBackMaxOffset: CGFloat = 52
     private let edgeBackDismissThreshold: CGFloat = 44
@@ -79,6 +80,7 @@ struct MessageListView: View {
                                 showSenderAvatar: shouldShowSenderAvatar(at: index)
                             )
                                 .environmentObject(audioPlayback)
+                                .environmentObject(instantVideoPlaybackCoordinator)
                                 .id(message.id)
                                 .listRowSeparator(.hidden)
                                 .listRowInsets(EdgeInsets(top: 1, leading: 16, bottom: 1, trailing: 16))
@@ -248,13 +250,14 @@ struct MessageListView: View {
         guard latestScrolledGeneration != initialMessageLoadGeneration else { return }
         latestScrolledGeneration = initialMessageLoadGeneration
         guard !messages.isEmpty else { return }
+        guard let latestMessageID = messages.last?.id else { return }
         DispatchQueue.main.async {
             if animated {
                 withAnimation {
-                    proxy.scrollTo(bottomSpacerID, anchor: .bottom)
+                    proxy.scrollTo(latestMessageID, anchor: .bottom)
                 }
             } else {
-                proxy.scrollTo(bottomSpacerID, anchor: .bottom)
+                proxy.scrollTo(latestMessageID, anchor: .bottom)
             }
             didCompleteInitialScroll = true
         }
@@ -2274,11 +2277,11 @@ private struct MessageBubbleView: View {
     }
 
     private var bubbleContentPadding: (horizontal: CGFloat, vertical: CGFloat) {
-        guard isPhotoOnlyBubble else {
+        guard isCompactMediaBubble else {
             return (12, 8)
         }
 
-        return (3, 3)
+        return (6, 6)
     }
 
     private var isPhotoOnlyBubble: Bool {
@@ -2289,6 +2292,28 @@ private struct MessageBubbleView: View {
             return false
         }
         return true
+    }
+
+    private var isCompactMediaBubble: Bool {
+        guard message.media != nil else { return false }
+        if isPhotoOnlyBubble { return true }
+        return hasCaptionedAttachmentContent
+    }
+
+    private var hasCaptionedAttachmentContent: Bool {
+        guard let media = message.media,
+              messageSupportsCaptionedAttachment(media) else { return false }
+        let candidate = message.mediaCaptionText ?? message.displayText ?? media.fallbackCaptionText
+        return !(candidate ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    private func messageSupportsCaptionedAttachment(_ media: MediaMetadata) -> Bool {
+        switch media.kind {
+        case .photo, .video, .videoMessage, .audio, .voiceMessage, .document, .media:
+            return true
+        case .contact, .location, .sticker, .linkPreview, .call, .callOrSystem, .system, .deleted:
+            return false
+        }
     }
 
     private static let dateFormatter: DateFormatter = {
@@ -2475,12 +2500,14 @@ private struct MessageContentView: View {
         VStack(alignment: message.isFromMe ? .trailing : .leading, spacing: 6) {
             if let media = message.media, shouldShowAttachment(for: media) {
                 attachmentView(for: media)
+                    .frame(maxWidth: mediaContentMaxWidth(for: media), alignment: mediaContentAlignment)
             } else if let displayText, let url = MessageLinkDetector.firstWebURL(in: displayText) {
                 LinkPreviewAttachmentView(media: nil, fallbackURL: url, isFromMe: message.isFromMe)
             }
 
             if let media = message.media, isCaptionedAttachment(media), let renderedDisplayText {
                 LinkedMessageText(text: renderedDisplayText)
+                    .frame(maxWidth: mediaContentMaxWidth(for: media), alignment: mediaContentAlignment)
                     .textSelection(.enabled)
             } else if let renderedDisplayText {
                 LinkedMessageText(text: renderedDisplayText)
@@ -2539,13 +2566,34 @@ private struct MessageContentView: View {
         }
     }
 
+    private var mediaContentAlignment: Alignment {
+        message.isFromMe ? .trailing : .leading
+    }
+
+    private func mediaContentMaxWidth(for media: MediaMetadata) -> CGFloat {
+        switch media.kind {
+        case .photo:
+            return 268
+        case .videoMessage:
+            return 248
+        case .video:
+            return 260
+        case .audio, .voiceMessage:
+            return 300
+        case .document:
+            return 280
+        default:
+            return 268
+        }
+    }
+
     @ViewBuilder
     private func attachmentView(for media: MediaMetadata) -> some View {
         switch media.kind {
         case .photo:
             PhotoAttachmentView(media: media)
         case .video, .videoMessage:
-            VideoAttachmentView(media: media)
+            VideoAttachmentView(messageID: message.id, media: media, isFromMe: message.isFromMe)
         case .audio, .voiceMessage:
             AudioAttachmentView(messageID: message.id, media: media)
         case .contact:
@@ -3257,58 +3305,128 @@ private struct ZoomableImageView: UIViewRepresentable {
 }
 #endif
 
+@MainActor
+private final class InstantVideoPlaybackCoordinator: ObservableObject {
+    @Published private(set) var activeMessageID: Int64?
+
+    func setActiveMessageID(_ messageID: Int64?) {
+        activeMessageID = messageID
+    }
+}
+
 private struct VideoAttachmentView: View {
+    let messageID: Int64
     let media: MediaMetadata
+    let isFromMe: Bool
+    @Environment(\.colorScheme) private var colorScheme
+    @EnvironmentObject private var inlineVideoPlaybackCoordinator: InstantVideoPlaybackCoordinator
     @StateObject private var playbackController = VideoPlaybackController()
     @State private var thumbnail: CGImage?
     @State private var didFailThumbnail = false
     @State private var isPlayerPresented = false
+    @ScaledMetric(relativeTo: .subheadline) private var statusOverlayInset: CGFloat = 10
 
     var body: some View {
         Group {
             if !media.isFileAvailableInArchive || media.fileURL == nil {
                 AttachmentPlaceholderView(title: unavailableTitle, systemImage: "video")
-            } else {
-                Button {
-                    if let url = media.fileURL {
-                        playbackController.load(url: url, restart: true)
-                        isPlayerPresented = true
+            } else if let url = media.fileURL {
+                ZStack(alignment: .center) {
+                    if let thumbnail {
+                        Image(decorative: thumbnail, scale: 1, orientation: .up)
+                            .resizable()
+                            .scaledToFill()
+                    } else {
+                        Rectangle()
+                            .fill(Color.black.opacity(0.72))
                     }
-                } label: {
-                    ZStack {
-                        if let thumbnail {
-                            Image(decorative: thumbnail, scale: 1, orientation: .up)
-                                .resizable()
-                                .scaledToFill()
-                        } else {
-                            Rectangle()
-                                .fill(Color.black.opacity(0.72))
-                        }
 
+                    if !isVideoMessage {
                         Image(systemName: "play.circle.fill")
                             .font(.system(size: 48))
                             .foregroundStyle(.white)
                             .shadow(radius: 3)
-
-                        if thumbnail == nil && !didFailThumbnail {
-                            ProgressView()
-                                .tint(.white)
-                                .offset(y: 46)
-                        }
+                    } else {
+                        Circle()
+                            .fill(Color.black.opacity(0.35))
+                            .frame(width: playButtonSize, height: playButtonSize)
+                            .overlay {
+                                Image(systemName: isInlinePlaying ? "pause.fill" : "play.fill")
+                                    .font(.system(size: playIconSize, weight: .bold))
+                                    .foregroundStyle(.white)
+                            }
+                            .contentShape(Circle())
+                            .highPriorityGesture(
+                                TapGesture()
+                                    .onEnded {
+                                        handleInlinePlaybackTap(url: url)
+                                    }
+                            )
+                            .accessibilityLabel(isInlinePlaying ? "Pause video message" : "Play video message")
+                            .accessibilityAddTraits(.isButton)
                     }
-                    .frame(width: previewSize.width, height: previewSize.height)
-                    .clipShape(previewShape)
-                    .accessibilityLabel(accessibilityLabel)
+
+                    if thumbnail == nil && !didFailThumbnail {
+                        ProgressView()
+                            .tint(.white)
+                            .offset(y: isVideoMessage ? statusOverlayInset : 46)
+                    }
+
+                    if isVideoMessage,
+                       playbackController.loadingState == .loading || playbackController.loadingState == .failed {
+                        VideoPlaybackStatusOverlay(state: playbackController.loadingState)
+                    }
+
+                    if let durationText {
+                        Text(durationText)
+                            .font(.caption2.weight(.semibold))
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                            .foregroundStyle(.white)
+                            .background(Color.black.opacity(0.55), in: Capsule())
+                            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
+                            .padding(8)
+                    }
                 }
-                .buttonStyle(.plain)
+                .frame(width: previewSize.width, height: previewSize.height)
+                .clipShape(previewShape)
+                .contentShape(previewShape)
+                .overlay {
+                    if isVideoMessage {
+                        previewShape
+                            .stroke(previewBorderColor, lineWidth: 0.9)
+                    }
+                }
+                .accessibilityLabel(accessibilityLabel)
+                .onTapGesture {
+                    playbackController.load(url: url, restart: true)
+                    isPlayerPresented = true
+                }
                 .task(id: media.fileURL) {
                     await loadThumbnailIfNeeded()
+                }
+                .onDisappear {
+                    if inlineVideoPlaybackCoordinator.activeMessageID == messageID {
+                        inlineVideoPlaybackCoordinator.setActiveMessageID(nil)
+                    }
+                    playbackController.pause()
+                }
+                .onChange(of: inlineVideoPlaybackCoordinator.activeMessageID) { _, activeMessageID in
+                    if !isVideoMessage {
+                        return
+                    }
+                    guard activeMessageID != messageID else {
+                        return
+                    }
+                    playbackController.pause()
                 }
                 .fullScreenCover(isPresented: $isPlayerPresented) {
                     if let url = media.fileURL {
                         VideoPlayerSheet(controller: playbackController, url: url)
                     }
                 }
+            } else {
+                AttachmentPlaceholderView(title: unavailableTitle, systemImage: "video")
             }
         }
     }
@@ -3331,8 +3449,46 @@ private struct VideoAttachmentView: View {
         media.kind == .videoMessage
     }
 
+    private var isInlinePlaying: Bool {
+        inlineVideoPlaybackCoordinator.activeMessageID == messageID && playbackController.isActivePlayback
+    }
+
+    private var playButtonSize: CGFloat {
+        54
+    }
+
+    private var playIconSize: CGFloat {
+        26
+    }
+
+    private var durationText: String? {
+        guard isVideoMessage, let durationSeconds = media.durationSeconds else {
+            return nil
+        }
+        let roundedSeconds = Int(durationSeconds.rounded())
+        guard roundedSeconds > 0 else { return nil }
+        return String(format: "%d:%02d", roundedSeconds / 60, roundedSeconds % 60)
+    }
+
+    private var previewBorderColor: Color {
+        isVideoMessage
+            ? ChatBubblePalette(isFromMe: isFromMe, colorScheme: colorScheme).border.opacity(0.7)
+            : .clear
+    }
+
     private var previewSize: CGSize {
-        isVideoMessage ? CGSize(width: 184, height: 184) : CGSize(width: 260, height: 160)
+        isVideoMessage
+            ? CGSize(width: instantVideoDiameter, height: instantVideoDiameter)
+            : CGSize(width: 260, height: 160)
+    }
+
+    private var instantVideoDiameter: CGFloat {
+        #if os(iOS)
+        let fallbackWidth = UIScreen.main.bounds.width * 0.56
+        #else
+        let fallbackWidth: CGFloat = 230
+        #endif
+        return min(max(fallbackWidth, 220), 248)
     }
 
     private var previewShape: AnyShape {
@@ -3347,6 +3503,18 @@ private struct VideoAttachmentView: View {
 
     private var unavailableTitle: String {
         isVideoMessage ? "Video message unavailable" : "Video unavailable"
+    }
+
+    private func handleInlinePlaybackTap(url: URL) {
+        if inlineVideoPlaybackCoordinator.activeMessageID == messageID {
+            inlineVideoPlaybackCoordinator.setActiveMessageID(nil)
+            playbackController.pause()
+            return
+        }
+
+        inlineVideoPlaybackCoordinator.setActiveMessageID(messageID)
+        playbackController.load(url: url, restart: false)
+        playbackController.play()
     }
 }
 
@@ -3442,6 +3610,7 @@ private struct VideoPlayerSheet: View {
 private final class VideoPlaybackController: ObservableObject {
     let player = AVPlayer()
     @Published private(set) var loadingState: VideoPlaybackLoadState = .idle
+    @Published private(set) var isActivePlayback: Bool = false
     private var loadedURL: URL?
     private var currentItemIdentifier: ObjectIdentifier?
     private var statusObservation: NSKeyValueObservation?
@@ -3463,6 +3632,7 @@ private final class VideoPlaybackController: ObservableObject {
         }
 
         player.pause()
+        isActivePlayback = false
         statusObservation?.invalidate()
         statusObservation = nil
 
@@ -3484,6 +3654,7 @@ private final class VideoPlaybackController: ObservableObject {
 
     func pause() {
         player.pause()
+        isActivePlayback = false
     }
 
     private func observeStatus(for item: AVPlayerItem, itemIdentifier: ObjectIdentifier) {
@@ -3521,9 +3692,15 @@ private final class VideoPlaybackController: ObservableObject {
     }
 
     private func handleTimeControlStatus(_ status: AVPlayer.TimeControlStatus) {
-        guard loadedURL != nil, loadingState == .loading, status == .playing else { return }
-        loadingState = .ready
+        guard loadedURL != nil else { return }
+
+        isActivePlayback = status == .playing
+
+        if loadingState == .loading, status == .playing {
+            loadingState = .ready
+        }
     }
+
 }
 
 private struct AudioAttachmentView: View {
