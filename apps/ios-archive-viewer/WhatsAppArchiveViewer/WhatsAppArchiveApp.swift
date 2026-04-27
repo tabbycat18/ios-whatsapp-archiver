@@ -246,41 +246,226 @@ private actor ProfilePhotoService {
         resolver = ProfilePhotoResolver(archiveRootURL: archiveRootURL)
     }
 
-    func profilePhotoURL(for chat: ChatSummary) -> URL? {
+    func profilePhotoURL(for chat: ChatSummary, allowIndexedFallback: Bool) -> URL? {
         resolver.profilePhotoURL(
             contactJID: chat.contactJID,
             contactIdentifier: chat.contactIdentifier,
-            additionalIdentifiers: chat.profilePhotoIdentifiers
+            additionalIdentifiers: chat.profilePhotoIdentifiers,
+            allowIndexedFallback: allowIndexedFallback
         )
     }
 }
 
 private struct ProfileAvatarCacheKey: Hashable {
     let archiveID: UUID
-    let chatID: Int64
     let contactJID: String?
     let contactIdentifier: String?
     let additionalIdentifiers: [String]
+    let fallbackChatID: Int64?
+
+    init(archiveID: UUID, chat: ChatSummary) {
+        func cleaned(_ value: String?) -> String? {
+            let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            return trimmed.isEmpty ? nil : trimmed
+        }
+
+        let contactJID = cleaned(chat.contactJID)
+        let contactIdentifier = cleaned(chat.contactIdentifier)
+        let additionalIdentifiers = chat.profilePhotoIdentifiers
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+            .sorted()
+        let hasContactKey = contactJID != nil || contactIdentifier != nil || !additionalIdentifiers.isEmpty
+
+        self.archiveID = archiveID
+        self.contactJID = contactJID
+        self.contactIdentifier = contactIdentifier
+        self.additionalIdentifiers = additionalIdentifiers
+        self.fallbackChatID = hasContactKey ? nil : chat.id
+    }
 }
 
 private struct ProfileAvatarCacheEntry {
     let image: CGImage?
 }
 
-private actor ProfileAvatarCache {
-    private var entries: [ProfileAvatarCacheKey: ProfileAvatarCacheEntry] = [:]
+enum ProfileAvatarLoadPriority {
+    case initialBatch
+    case visible
 
-    func cachedImage(for key: ProfileAvatarCacheKey) -> ProfileAvatarCacheEntry? {
-        entries[key]
+    var taskPriority: TaskPriority {
+        switch self {
+        case .initialBatch:
+            return .utility
+        case .visible:
+            return .background
+        }
     }
 
-    func store(_ image: CGImage?, for key: ProfileAvatarCacheKey) {
-        if entries.count > 512 {
+    var loadDelay: Duration {
+        switch self {
+        case .initialBatch:
+            return .milliseconds(350)
+        case .visible:
+            return .milliseconds(700)
+        }
+    }
+}
+
+private actor ProfileAvatarLoader {
+    private var entries: [ProfileAvatarCacheKey: ProfileAvatarCacheEntry] = [:]
+    private var inFlightKeys = Set<ProfileAvatarCacheKey>()
+    private var activeLoadCount = 0
+    #if DEBUG
+    private var cacheHitCount = 0
+    private var missingHitCount = 0
+    private var decodedCount = 0
+    private var missingLoadCount = 0
+    #endif
+
+    private let maxCachedEntries = 512
+    private let maxConcurrentLoads = 2
+
+    func image(
+        for key: ProfileAvatarCacheKey,
+        chat: ChatSummary,
+        service: ProfilePhotoService,
+        priority: ProfileAvatarLoadPriority
+    ) async -> CGImage? {
+        if let cachedEntry = entries[key] {
+            #if DEBUG
+            if cachedEntry.image == nil {
+                missingHitCount += 1
+            } else {
+                cacheHitCount += 1
+            }
+            #endif
+            return cachedEntry.image
+        }
+
+        if inFlightKeys.contains(key) {
+            return await imageFromInFlightLoad(for: key)
+        }
+
+        guard !Task.isCancelled else { return nil }
+        inFlightKeys.insert(key)
+        guard await acquireLoadSlot(priority: priority) else {
+            inFlightKeys.remove(key)
+            return nil
+        }
+
+        let imageURL = await service.profilePhotoURL(for: chat, allowIndexedFallback: false)
+        guard !Task.isCancelled else {
+            releaseLoadSlot()
+            inFlightKeys.remove(key)
+            return nil
+        }
+
+        let image: CGImage?
+        if let imageURL {
+            let taskPriority = priority.taskPriority
+            #if DEBUG
+            let decodeStart = Date()
+            #endif
+            image = await Task.detached(priority: taskPriority) {
+                downsampleAvatarImage(at: imageURL, maxPixelSize: 96)
+            }.value
+            #if DEBUG
+            let decodeMilliseconds = Date().timeIntervalSince(decodeStart) * 1000
+            if decodeMilliseconds > 50 {
+                print("[AvatarLoad] slow decode: \(Int(decodeMilliseconds)) ms")
+            }
+            #endif
+        } else {
+            image = nil
+        }
+
+        releaseLoadSlot()
+        inFlightKeys.remove(key)
+        store(image, for: key)
+        return image
+    }
+
+    private func store(_ image: CGImage?, for key: ProfileAvatarCacheKey) {
+        if entries.count > maxCachedEntries {
             entries.removeAll(keepingCapacity: true)
         }
         entries[key] = ProfileAvatarCacheEntry(image: image)
+        #if DEBUG
+        if image == nil {
+            missingLoadCount += 1
+        } else {
+            decodedCount += 1
+        }
+        let totalLookups = cacheHitCount + missingHitCount + decodedCount + missingLoadCount
+        if totalLookups > 0, totalLookups.isMultiple(of: 100) {
+            print("[AvatarLoad] cache hits=\(cacheHitCount) missingHits=\(missingHitCount) decoded=\(decodedCount) missing=\(missingLoadCount)")
+        }
+        #endif
+    }
+
+    private func imageFromInFlightLoad(for key: ProfileAvatarCacheKey) async -> CGImage? {
+        while inFlightKeys.contains(key) {
+            if Task.isCancelled {
+                return nil
+            }
+            try? await Task.sleep(for: .milliseconds(40))
+            if let cachedEntry = entries[key] {
+                return cachedEntry.image
+            }
+        }
+        return entries[key]?.image
+    }
+
+    private func acquireLoadSlot(priority: ProfileAvatarLoadPriority) async -> Bool {
+        let waitDuration: Duration
+        switch priority {
+        case .initialBatch:
+            waitDuration = .milliseconds(35)
+        case .visible:
+            waitDuration = .milliseconds(60)
+        }
+        while activeLoadCount >= maxConcurrentLoads {
+            if Task.isCancelled {
+                return false
+            }
+            try? await Task.sleep(for: waitDuration)
+        }
+        activeLoadCount += 1
+        return true
+    }
+
+    private func releaseLoadSlot() {
+        activeLoadCount = max(activeLoadCount - 1, 0)
     }
 }
+
+private struct OpenArchiveSnapshot: @unchecked Sendable {
+    let database: WhatsAppDatabase
+    let chats: [ChatSummary]
+    let wallpaperURL: URL?
+    let wallpaperDarkURL: URL?
+    let openedAt: Date
+}
+
+#if DEBUG
+private struct ArchiveOpenDebugTimer {
+    private let start = Date()
+    private var last = Date()
+
+    mutating func mark(_ phase: String) {
+        let now = Date()
+        let phaseMilliseconds = now.timeIntervalSince(last) * 1000
+        let totalMilliseconds = now.timeIntervalSince(start) * 1000
+        print("[ArchiveOpen] \(phase): \(Int(phaseMilliseconds)) ms (total \(Int(totalMilliseconds)) ms)")
+        last = now
+    }
+
+    static func milliseconds(since date: Date) -> Int {
+        Int(Date().timeIntervalSince(date) * 1000)
+    }
+}
+#endif
 
 @MainActor
 final class ArchiveStore: ObservableObject {
@@ -315,7 +500,7 @@ final class ArchiveStore: ObservableObject {
         openingArchiveID != nil
     }
 
-    let messageLimit = 500
+    let messageLimit = 250
     private var messageFetchLimit: Int {
         messageLimit + 1
     }
@@ -325,9 +510,10 @@ final class ArchiveStore: ObservableObject {
     private var database: WhatsAppDatabase?
     private var archiveAccess: ArchiveAccess?
     private var profilePhotoService: ProfilePhotoService?
-    private let profileAvatarCache = ProfileAvatarCache()
+    private let profileAvatarLoader = ProfileAvatarLoader()
     private var baseChats: [ChatSummary] = []
     private var baseMessages: [MessageRow] = []
+    private var messageLoadRequestID: UUID?
     private var contactNameResolverCancellable: AnyCancellable?
 
     private static let wallpaperThemeDefaultsKey = "ChatWallpaperTheme.v2"
@@ -336,8 +522,14 @@ final class ArchiveStore: ObservableObject {
         self.defaults = defaults
         wallpaperTheme = ChatWallpaperTheme(rawValue: defaults.string(forKey: Self.wallpaperThemeDefaultsKey) ?? "")
             ?? .archiveDefault
+        #if DEBUG
+        let savedMetadataStart = Date()
+        #endif
         let loadedArchives = libraryStore.load().sorted(by: Self.archiveSort)
         savedArchives = loadedArchives
+        #if DEBUG
+        print("[ArchiveOpen] loading saved archive metadata: \(ArchiveOpenDebugTimer.milliseconds(since: savedMetadataStart)) ms count=\(loadedArchives.count)")
+        #endif
         contactNameResolverCancellable = contactNameResolver.$changeToken.sink { [weak self] _ in
             Task { @MainActor [weak self] in
                 self?.refreshContactEnrichment()
@@ -371,7 +563,7 @@ final class ArchiveStore: ObservableObject {
         openingArchiveID = openingID
         Task { @MainActor [weak self] in
             await Task.yield()
-            self?.openPickedURLImmediately(url, kind: kind, openingID: openingID)
+            await self?.openPickedURLImmediately(url, kind: kind, openingID: openingID)
         }
     }
 
@@ -380,7 +572,7 @@ final class ArchiveStore: ObservableObject {
         openingArchiveID = archive.id
         Task { @MainActor [weak self] in
             await Task.yield()
-            self?.openSavedArchiveImmediately(archive)
+            await self?.openSavedArchiveImmediately(archive)
         }
     }
 
@@ -389,7 +581,7 @@ final class ArchiveStore: ObservableObject {
         openingArchiveID = Self.demoArchiveID
         Task { @MainActor [weak self] in
             await Task.yield()
-            self?.openDemoArchiveImmediately()
+            await self?.openDemoArchiveImmediately()
         }
     }
 
@@ -398,18 +590,24 @@ final class ArchiveStore: ObservableObject {
         openingArchiveID = id
         Task { @MainActor [weak self] in
             await Task.yield()
-            self?.relinkArchiveImmediately(id: id, with: url)
+            await self?.relinkArchiveImmediately(id: id, with: url)
         }
     }
 
-    private func openPickedURLImmediately(_ url: URL, kind: ArchiveKind, openingID: UUID) {
+    private func openPickedURLImmediately(_ url: URL, kind: ArchiveKind, openingID: UUID) async {
         defer {
             if openingArchiveID == openingID {
                 openingArchiveID = nil
             }
         }
 
+        #if DEBUG
+        let bookmarkStart = Date()
+        #endif
         let didStartSecurityScope = url.startAccessingSecurityScopedResource()
+        #if DEBUG
+        print("[ArchiveOpen] resolving security-scoped bookmark: \(ArchiveOpenDebugTimer.milliseconds(since: bookmarkStart)) ms source=picker access=\(didStartSecurityScope)")
+        #endif
         defer {
             if didStartSecurityScope {
                 url.stopAccessingSecurityScopedResource()
@@ -439,14 +637,14 @@ final class ArchiveStore: ObservableObject {
                 selectedURL: url,
                 selectedResourceIsDirectory: selectedResourceIsDirectory
             )
-            openArchive(savedArchive: &savedArchive, access: access, shouldSave: true)
+            try await openArchive(savedArchive: &savedArchive, access: access, shouldSave: true)
         } catch {
             closeArchive()
             errorMessage = error.localizedDescription
         }
     }
 
-    private func openSavedArchiveImmediately(_ archive: SavedArchive) {
+    private func openSavedArchiveImmediately(_ archive: SavedArchive) async {
         defer {
             if openingArchiveID == archive.id {
                 openingArchiveID = nil
@@ -455,8 +653,14 @@ final class ArchiveStore: ObservableObject {
 
         do {
             var savedArchive = archive
+            #if DEBUG
+            let bookmarkStart = Date()
+            #endif
             let access = try ArchiveAccess(savedArchive: archive)
-            openArchive(savedArchive: &savedArchive, access: access, shouldSave: true)
+            #if DEBUG
+            print("[ArchiveOpen] resolving security-scoped bookmark: \(ArchiveOpenDebugTimer.milliseconds(since: bookmarkStart)) ms source=saved")
+            #endif
+            try await openArchive(savedArchive: &savedArchive, access: access, shouldSave: true)
             archivesNeedingRelink.remove(archive.id)
         } catch ArchiveImportError.staleBookmark {
             archivesNeedingRelink.insert(archive.id)
@@ -469,7 +673,7 @@ final class ArchiveStore: ObservableObject {
         }
     }
 
-    private func openDemoArchiveImmediately() {
+    private func openDemoArchiveImmediately() async {
         defer {
             if openingArchiveID == Self.demoArchiveID {
                 openingArchiveID = nil
@@ -493,14 +697,14 @@ final class ArchiveStore: ObservableObject {
                 selectedURL: demoArchiveURL,
                 selectedResourceIsDirectory: true
             )
-            openArchive(savedArchive: &demoArchive, access: access, shouldSave: false)
+            try await openArchive(savedArchive: &demoArchive, access: access, shouldSave: false)
         } catch {
             closeArchive()
             errorMessage = error.localizedDescription
         }
     }
 
-    private func relinkArchiveImmediately(id: UUID, with url: URL) {
+    private func relinkArchiveImmediately(id: UUID, with url: URL) async {
         defer {
             if openingArchiveID == id {
                 openingArchiveID = nil
@@ -508,7 +712,13 @@ final class ArchiveStore: ObservableObject {
         }
 
         guard let index = savedArchives.firstIndex(where: { $0.id == id }) else { return }
+        #if DEBUG
+        let bookmarkStart = Date()
+        #endif
         let didStartSecurityScope = url.startAccessingSecurityScopedResource()
+        #if DEBUG
+        print("[ArchiveOpen] resolving security-scoped bookmark: \(ArchiveOpenDebugTimer.milliseconds(since: bookmarkStart)) ms source=relink access=\(didStartSecurityScope)")
+        #endif
         defer {
             if didStartSecurityScope {
                 url.stopAccessingSecurityScopedResource()
@@ -536,7 +746,7 @@ final class ArchiveStore: ObservableObject {
                 selectedURL: url,
                 selectedResourceIsDirectory: selectedResourceIsDirectory
             )
-            openArchive(savedArchive: &savedArchive, access: access, shouldSave: true)
+            try await openArchive(savedArchive: &savedArchive, access: access, shouldSave: true)
             archivesNeedingRelink.remove(id)
         } catch {
             archivesNeedingRelink.insert(id)
@@ -575,6 +785,7 @@ final class ArchiveStore: ObservableObject {
         currentArchiveID = nil
         baseChats = []
         baseMessages = []
+        messageLoadRequestID = nil
         openingArchiveID = nil
         chats = []
         selectedChat = nil
@@ -587,23 +798,52 @@ final class ArchiveStore: ObservableObject {
 
     func loadMessages(for chat: ChatSummary) {
         guard let database else { return }
-        do {
-            let loadedMessages = try database.fetchMessages(
-                sessionIDs: chat.sessionIDs,
-                limit: messageFetchLimit,
-                includeStatusStoryMessages: chat.classification == .statusStoryFragment
-            )
-            hasMoreOlderMessages = loadedMessages.count > messageLimit
-            baseMessages = hasMoreOlderMessages ? Array(loadedMessages.dropFirst()) : loadedMessages
-            messages = enrichedMessages(baseMessages)
-            olderMessagesErrorMessage = nil
-            isLoadingOlder = false
-            initialMessageLoadGeneration += 1
-            errorMessage = nil
-        } catch {
-            messages = []
-            resetPaginationState()
-            errorMessage = error.localizedDescription
+        let requestID = UUID()
+        messageLoadRequestID = requestID
+        let chatID = chat.id
+        let sessionIDs = chat.sessionIDs
+        let includeStatusStoryMessages = chat.classification == .statusStoryFragment
+        let fetchLimit = messageFetchLimit
+        let visibleLimit = messageLimit
+
+        baseMessages = []
+        messages = []
+        olderMessagesErrorMessage = nil
+        isLoadingOlder = false
+        hasMoreOlderMessages = false
+
+        Task { @MainActor [weak self] in
+            await Task.yield()
+            guard let self else { return }
+
+            do {
+                let loadedMessages = try await Self.fetchMessages(
+                    database: database,
+                    sessionIDs: sessionIDs,
+                    limit: fetchLimit,
+                    includeStatusStoryMessages: includeStatusStoryMessages
+                )
+                guard self.messageLoadRequestID == requestID,
+                      self.selectedChat?.id == chatID else {
+                    return
+                }
+
+                self.hasMoreOlderMessages = loadedMessages.count > visibleLimit
+                self.baseMessages = self.hasMoreOlderMessages ? Array(loadedMessages.dropFirst()) : loadedMessages
+                self.messages = self.enrichedMessages(self.baseMessages)
+                self.olderMessagesErrorMessage = nil
+                self.isLoadingOlder = false
+                self.initialMessageLoadGeneration += 1
+                self.errorMessage = nil
+            } catch {
+                guard self.messageLoadRequestID == requestID,
+                      self.selectedChat?.id == chatID else {
+                    return
+                }
+                self.messages = []
+                self.resetPaginationState()
+                self.errorMessage = error.localizedDescription
+            }
         }
     }
 
@@ -616,8 +856,12 @@ final class ArchiveStore: ObservableObject {
         }
 
         isLoadingOlder = true
+        let requestID = messageLoadRequestID
         let chatID = chat.id
         let sessionIDs = chat.sessionIDs
+        let fetchLimit = messageFetchLimit
+        let visibleLimit = messageLimit
+        let includeStatusStoryMessages = chat.classification == .statusStoryFragment
 
         Task { @MainActor [weak self] in
             await Task.yield()
@@ -625,21 +869,28 @@ final class ArchiveStore: ObservableObject {
             defer { self.isLoadingOlder = false }
 
             do {
-                let olderMessages = try database.fetchOlderMessages(
+                let olderMessages = try await Self.fetchOlderMessages(
+                    database: database,
                     sessionIDs: sessionIDs,
                     before: cursor,
-                    limit: self.messageFetchLimit,
-                    includeStatusStoryMessages: chat.classification == .statusStoryFragment
+                    limit: fetchLimit,
+                    includeStatusStoryMessages: includeStatusStoryMessages
                 )
-                guard self.selectedChat?.id == chatID else { return }
-                self.hasMoreOlderMessages = olderMessages.count > self.messageLimit
+                guard self.messageLoadRequestID == requestID,
+                      self.selectedChat?.id == chatID else {
+                    return
+                }
+                self.hasMoreOlderMessages = olderMessages.count > visibleLimit
                 let visibleOlderMessages = self.hasMoreOlderMessages ? Array(olderMessages.dropFirst()) : olderMessages
                 self.baseMessages.insert(contentsOf: visibleOlderMessages, at: 0)
                 self.messages = self.enrichedMessages(self.baseMessages)
                 self.olderMessagesErrorMessage = nil
                 self.errorMessage = nil
             } catch {
-                guard self.selectedChat?.id == chatID else { return }
+                guard self.messageLoadRequestID == requestID,
+                      self.selectedChat?.id == chatID else {
+                    return
+                }
                 self.olderMessagesErrorMessage = "Could not load older messages: \(error.localizedDescription)"
             }
         }
@@ -649,7 +900,7 @@ final class ArchiveStore: ObservableObject {
         try mediaLibraryPage(for: chat, filter: filter).items
     }
 
-    func mediaLibraryPage(for chat: ChatSummary, filter: ChatMediaFilter) throws -> ChatMediaLibraryPage {
+    func mediaLibraryPage(for chat: ChatSummary, filter: ChatMediaFilter, limit: Int = 300) throws -> ChatMediaLibraryPage {
         guard let database else {
             return ChatMediaLibraryPage(
                 items: [],
@@ -674,37 +925,40 @@ final class ArchiveStore: ObservableObject {
         return try database.fetchChatMediaLibraryPage(
             sessionIDs: chat.sessionIDs,
             filter: filter,
-            includeStatusStoriesInAll: chat.classification == .statusStoryFragment
+            includeStatusStoriesInAll: chat.classification == .statusStoryFragment,
+            limit: limit
         )
     }
 
-    private func openArchive(savedArchive: inout SavedArchive, access: ArchiveAccess, shouldSave: Bool) {
+    private func openArchive(savedArchive: inout SavedArchive, access: ArchiveAccess, shouldSave: Bool) async throws {
         do {
-            let openedDatabase = try WhatsAppDatabase(
+            let snapshot = try await Self.loadArchiveSnapshot(
                 databaseURL: access.databaseURL,
-                archiveRootURL: access.archiveRootURL,
-                securityScopedURL: nil
+                archiveRootURL: access.archiveRootURL
             )
-            let loadedChats = try openedDatabase.fetchChats()
-            database = openedDatabase
+            guard openingArchiveID != nil else { return }
+
+            database = snapshot.database
             archiveAccess = access
             profilePhotoService = ProfilePhotoService(archiveRootURL: access.archiveRootURL)
             currentArchiveID = savedArchive.id
-            baseChats = loadedChats
+            baseChats = snapshot.chats
             baseMessages = []
-            chats = enrichedChats(loadedChats)
+            messageLoadRequestID = nil
+            chats = enrichedChats(snapshot.chats)
+            #if DEBUG
+            print("[ArchiveOpen] first chat list render handoff: \(ArchiveOpenDebugTimer.milliseconds(since: snapshot.openedAt)) ms chats=\(snapshot.chats.count)")
+            #endif
             selectedChat = nil
             messages = []
             resetPaginationState()
             archiveName = savedArchive.displayName
-            wallpaperURL = Self.wallpaperURL(in: access.archiveRootURL, filename: "current_wallpaper.jpg")
-                ?? Self.wallpaperURL(in: access.archiveRootURL, filename: "current_wallpaper_dark.jpg")
-            wallpaperDarkURL = Self.wallpaperURL(in: access.archiveRootURL, filename: "current_wallpaper_dark.jpg")
-                ?? wallpaperURL
+            wallpaperURL = snapshot.wallpaperURL
+            wallpaperDarkURL = snapshot.wallpaperDarkURL
             errorMessage = nil
 
             savedArchive.lastOpenedAt = Date()
-            savedArchive.chatCount = loadedChats.count
+            savedArchive.chatCount = snapshot.chats.count
             if shouldSave {
                 upsert(savedArchive)
             }
@@ -715,6 +969,7 @@ final class ArchiveStore: ObservableObject {
             currentArchiveID = nil
             baseChats = []
             baseMessages = []
+            messageLoadRequestID = nil
             chats = []
             selectedChat = nil
             messages = []
@@ -722,41 +977,97 @@ final class ArchiveStore: ObservableObject {
             archiveName = "No Archive"
             wallpaperURL = nil
             wallpaperDarkURL = nil
-            errorMessage = error.localizedDescription
+            throw error
         }
     }
 
-    func profileAvatarImage(for chat: ChatSummary) async -> CGImage? {
+    nonisolated private static func loadArchiveSnapshot(databaseURL: URL, archiveRootURL: URL) async throws -> OpenArchiveSnapshot {
+        let openedAt = Date()
+        return try await Task.detached(priority: .userInitiated) {
+            #if DEBUG
+            var timer = ArchiveOpenDebugTimer()
+            #endif
+
+            let openedDatabase = try WhatsAppDatabase(
+                databaseURL: databaseURL,
+                archiveRootURL: archiveRootURL,
+                securityScopedURL: nil
+            )
+            #if DEBUG
+            timer.mark("opening ChatStorage.sqlite")
+            #endif
+
+            let loadedChats = try openedDatabase.fetchChats()
+            #if DEBUG
+            timer.mark("fetchChats returned count=\(loadedChats.count)")
+            #endif
+
+            let lightWallpaperURL = Self.wallpaperURL(in: archiveRootURL, filename: "current_wallpaper.jpg")
+                ?? Self.wallpaperURL(in: archiveRootURL, filename: "current_wallpaper_dark.jpg")
+            let darkWallpaperURL = Self.wallpaperURL(in: archiveRootURL, filename: "current_wallpaper_dark.jpg")
+                ?? lightWallpaperURL
+            #if DEBUG
+            timer.mark("wallpaper preparation")
+            #endif
+
+            return OpenArchiveSnapshot(
+                database: openedDatabase,
+                chats: loadedChats,
+                wallpaperURL: lightWallpaperURL,
+                wallpaperDarkURL: darkWallpaperURL,
+                openedAt: openedAt
+            )
+        }.value
+    }
+
+    nonisolated private static func fetchMessages(
+        database: WhatsAppDatabase,
+        sessionIDs: [Int64],
+        limit: Int,
+        includeStatusStoryMessages: Bool
+    ) async throws -> [MessageRow] {
+        try await Task.detached(priority: .userInitiated) {
+            try database.fetchMessages(
+                sessionIDs: sessionIDs,
+                limit: limit,
+                includeStatusStoryMessages: includeStatusStoryMessages
+            )
+        }.value
+    }
+
+    nonisolated private static func fetchOlderMessages(
+        database: WhatsAppDatabase,
+        sessionIDs: [Int64],
+        before cursor: MessagePaginationCursor,
+        limit: Int,
+        includeStatusStoryMessages: Bool
+    ) async throws -> [MessageRow] {
+        try await Task.detached(priority: .utility) {
+            try database.fetchOlderMessages(
+                sessionIDs: sessionIDs,
+                before: cursor,
+                limit: limit,
+                includeStatusStoryMessages: includeStatusStoryMessages
+            )
+        }.value
+    }
+
+    func profileAvatarImage(for chat: ChatSummary, priority: ProfileAvatarLoadPriority) async -> CGImage? {
         guard let archiveID = currentArchiveID,
               let profilePhotoService,
               chat.classification != .statusStoryFragment else {
             return nil
         }
 
-        let cacheKey = ProfileAvatarCacheKey(
-            archiveID: archiveID,
-            chatID: chat.id,
-            contactJID: chat.contactJID,
-            contactIdentifier: chat.contactIdentifier,
-            additionalIdentifiers: chat.profilePhotoIdentifiers
+        return await profileAvatarLoader.image(
+            for: ProfileAvatarCacheKey(archiveID: archiveID, chat: chat),
+            chat: chat,
+            service: profilePhotoService,
+            priority: priority
         )
-        if let cachedResult = await profileAvatarCache.cachedImage(for: cacheKey) {
-            return cachedResult.image
-        }
-
-        guard let imageURL = await profilePhotoService.profilePhotoURL(for: chat) else {
-            await profileAvatarCache.store(nil, for: cacheKey)
-            return nil
-        }
-
-        let image = await Task.detached(priority: .utility) {
-            downsampleAvatarImage(at: imageURL, maxPixelSize: 96)
-        }.value
-        await profileAvatarCache.store(image, for: cacheKey)
-        return image
     }
 
-    private static func wallpaperURL(in archiveRootURL: URL, filename: String) -> URL? {
+    nonisolated private static func wallpaperURL(in archiveRootURL: URL, filename: String) -> URL? {
         let archiveRootURL = archiveRootURL.standardizedFileURL
         let url = archiveRootURL.appendingPathComponent(filename).standardizedFileURL
         return FileManager.default.fileExists(atPath: url.path) ? url : nil

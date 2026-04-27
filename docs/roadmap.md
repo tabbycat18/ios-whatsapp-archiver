@@ -10,7 +10,7 @@
 - Per-chat message loading from `ZWAMESSAGE`.
 - Message dates, ordering, and sender direction validation.
 - Media metadata and path discovery merged on `main`.
-- Full-history pagination with latest 500 messages initially and older batches
+- Full-history pagination with latest 250 messages initially and older batches
   loaded on demand.
 - Chat title search, compact message UI, conservative system/call labels, and
   safer group sender fallbacks.

@@ -99,7 +99,7 @@ Chat summaries are loaded from `ZWACHATSESSION` with per-chat message counts der
 
 Messages are loaded per selected chat only. There is no global message loading path.
 
-Initial chat open loads the latest 500 messages, ordered newest-first in SQL and then displayed oldest-to-newest. Full-history access uses keyset pagination with a stable cursor:
+Initial chat open loads the latest 250 messages, ordered newest-first in SQL and then displayed oldest-to-newest. Full-history access uses keyset pagination with a stable cursor:
 
 - oldest loaded message date;
 - oldest loaded message primary key.

@@ -35,7 +35,7 @@ not implemented.
 - Search loaded chat titles.
 - Search loaded in-chat message text, including media captions stored on the
   message row.
-- Open large chats incrementally by loading the latest 500 messages first and
+- Open large chats incrementally by loading the latest 250 messages first and
   older messages as the user scrolls upward.
 - Preserve message order, dates, sender direction, and bounded memory use.
 - Use stable keyset pagination by message date and primary key.

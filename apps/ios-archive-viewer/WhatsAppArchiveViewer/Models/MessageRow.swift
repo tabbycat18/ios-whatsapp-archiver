@@ -1,6 +1,6 @@
 import Foundation
 
-enum MediaAttachmentKind: String, Hashable {
+enum MediaAttachmentKind: String, Hashable, Sendable {
     case photo
     case video
     case videoMessage
@@ -53,12 +53,12 @@ enum MediaAttachmentKind: String, Hashable {
     }
 }
 
-enum MediaAttachmentSource: String, Hashable {
+enum MediaAttachmentSource: String, Hashable, Sendable {
     case normal
     case statusStory
 }
 
-struct MediaMetadata: Hashable {
+struct MediaMetadata: Hashable, Sendable {
     let itemID: Int64?
     let localPath: String?
     let fileURL: URL?
@@ -202,7 +202,7 @@ struct MediaMetadata: Hashable {
     }
 }
 
-struct MessageRow: Identifiable, Hashable {
+struct MessageRow: Identifiable, Hashable, Sendable {
     let id: Int64
     let isFromMe: Bool
     let senderJID: String?
@@ -293,7 +293,7 @@ struct MessageRow: Identifiable, Hashable {
     }
 }
 
-enum ChatMediaFilter: String, CaseIterable, Identifiable {
+enum ChatMediaFilter: String, CaseIterable, Identifiable, Sendable {
     case all
     case photos
     case videos
@@ -315,14 +315,14 @@ enum ChatMediaFilter: String, CaseIterable, Identifiable {
     }
 }
 
-struct ChatMediaItem: Identifiable, Hashable {
+struct ChatMediaItem: Identifiable, Hashable, Sendable {
     let id: String
     let messageID: Int64
     let messageDate: Date?
     let media: MediaMetadata
 }
 
-struct ChatMediaLoadSummary: Hashable {
+struct ChatMediaLoadSummary: Hashable, Sendable {
     let totalRowsMatchingFilter: Int
     let rowsScanned: Int
     let displayedRows: Int
@@ -339,12 +339,12 @@ struct ChatMediaLoadSummary: Hashable {
     let queryCapMayHideRows: Bool
 }
 
-struct ChatMediaLibraryPage: Hashable {
+struct ChatMediaLibraryPage: Hashable, Sendable {
     let items: [ChatMediaItem]
     let summary: ChatMediaLoadSummary
 }
 
-struct MessagePaginationCursor: Hashable {
+struct MessagePaginationCursor: Hashable, Sendable {
     let messageDate: Date
     let messageID: Int64
 }

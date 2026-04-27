@@ -84,7 +84,7 @@ probe the filesystem.
 
 ## Ordering and Pagination
 
-Messages are displayed oldest-to-newest. The initial load fetches the latest 500 rows for the selected chat. Older history is loaded incrementally with a keyset cursor made from:
+Messages are displayed oldest-to-newest. The initial load fetches the latest 250 rows for the selected chat. Older history is loaded incrementally with a keyset cursor made from:
 
 - `ZMESSAGEDATE`
 - `Z_PK`

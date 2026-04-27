@@ -60,6 +60,20 @@ private struct ChatSummaryRow {
     let fallbackMessageDate: Date?
 }
 
+private struct RawChatSummaryRow {
+    let id: Int64
+    let contactJID: String?
+    let contactIdentifier: String?
+    let partnerName: String?
+    let sanitizedLastMessageDate: Date?
+    let totalMessageCount: Int
+    let userVisibleMessageCount: Int
+    let systemMessageCount: Int
+    let statusStoryMessageCount: Int
+    let latestUserVisibleMessageDate: Date?
+    let latestAnyMessageDate: Date?
+}
+
 private struct ContactIdentity {
     let key: String
     let displayName: String?
@@ -99,19 +113,52 @@ private struct ChatSummaryDraft {
     let activity: ChatActivityMetrics
 }
 
+#if DEBUG
+private struct FetchChatsDebugTimer {
+    private let start = Date()
+    private var last = Date()
+
+    mutating func mark(_ phase: String) {
+        let now = Date()
+        let phaseMilliseconds = now.timeIntervalSince(last) * 1000
+        let totalMilliseconds = now.timeIntervalSince(start) * 1000
+        print("[ArchiveOpen] \(phase): \(Int(phaseMilliseconds)) ms (fetchChats total \(Int(totalMilliseconds)) ms)")
+        last = now
+    }
+
+    static func milliseconds(since date: Date) -> Int {
+        Int(Date().timeIntervalSince(date) * 1000)
+    }
+}
+#endif
+
 final class ProfilePhotoResolver {
     private let archiveRootURL: URL
     private let fileManager: FileManager
     private var resolvedURLsByCacheKey: [String: URL] = [:]
     private var unresolvedCacheKeys = Set<String>()
     private var indexedProfilePhotos: [ProfilePhotoCandidate]?
+    private lazy var existingProfileDirectoryURLs: [URL] = Self.profileDirectories.compactMap { directory in
+        let directoryURL = archiveRootURL.appendingPathComponent(directory, isDirectory: true)
+        var isDirectory: ObjCBool = false
+        guard fileManager.fileExists(atPath: directoryURL.path, isDirectory: &isDirectory),
+              isDirectory.boolValue else {
+            return nil
+        }
+        return directoryURL
+    }
 
     init(archiveRootURL: URL, fileManager: FileManager = .default) {
         self.archiveRootURL = archiveRootURL.standardizedFileURL
         self.fileManager = fileManager
     }
 
-    func profilePhotoURL(contactJID: String?, contactIdentifier: String?, additionalIdentifiers: [String] = []) -> URL? {
+    func profilePhotoURL(
+        contactJID: String?,
+        contactIdentifier: String?,
+        additionalIdentifiers: [String] = [],
+        allowIndexedFallback: Bool = false
+    ) -> URL? {
         let candidateFileNames = candidateFileNames(
             contactJID: contactJID,
             contactIdentifier: contactIdentifier,
@@ -127,7 +174,10 @@ final class ProfilePhotoResolver {
             return nil
         }
 
-        let resolvedURL = resolveProfilePhotoURL(candidateFileNames: candidateFileNames)
+        let resolvedURL = resolveProfilePhotoURL(
+            candidateFileNames: candidateFileNames,
+            allowIndexedFallback: allowIndexedFallback
+        )
         if let resolvedURL {
             resolvedURLsByCacheKey[cacheKey] = resolvedURL
         } else {
@@ -136,9 +186,8 @@ final class ProfilePhotoResolver {
         return resolvedURL
     }
 
-    private func resolveProfilePhotoURL(candidateFileNames: [String]) -> URL? {
-        for directory in Self.profileDirectories {
-            let directoryURL = archiveRootURL.appendingPathComponent(directory, isDirectory: true)
+    private func resolveProfilePhotoURL(candidateFileNames: [String], allowIndexedFallback: Bool) -> URL? {
+        for directoryURL in existingProfileDirectoryURLs {
             for fileName in candidateFileNames {
                 for fileExtension in Self.imageExtensions {
                     let candidate = directoryURL
@@ -151,6 +200,7 @@ final class ProfilePhotoResolver {
                 }
             }
         }
+        guard allowIndexedFallback else { return nil }
         return resolveProfilePhotoURLFromIndex(candidateFileNames: candidateFileNames)
     }
 
@@ -182,16 +232,12 @@ final class ProfilePhotoResolver {
         var candidates: [ProfilePhotoCandidate] = []
         var seenPaths = Set<String>()
 
-        for directory in Self.profileDirectories {
-            let directoryURL = archiveRootURL.appendingPathComponent(directory, isDirectory: true)
-            var isDirectory: ObjCBool = false
-            guard fileManager.fileExists(atPath: directoryURL.path, isDirectory: &isDirectory),
-                  isDirectory.boolValue,
-                  let enumerator = fileManager.enumerator(
-                    at: directoryURL,
-                    includingPropertiesForKeys: Array(keys),
-                    options: options
-                  )
+        for directoryURL in existingProfileDirectoryURLs {
+            guard let enumerator = fileManager.enumerator(
+                at: directoryURL,
+                includingPropertiesForKeys: Array(keys),
+                options: options
+            )
             else {
                 continue
             }
@@ -560,7 +606,7 @@ enum WhatsAppDatabaseError: LocalizedError {
     }
 }
 
-final class WhatsAppDatabase {
+final class WhatsAppDatabase: @unchecked Sendable {
     private let databaseURL: URL
     private let archiveRootURL: URL
     private let securityScopedURL: URL?
@@ -599,7 +645,14 @@ final class WhatsAppDatabase {
             messageColumns = try columns(in: "ZWAMESSAGE")
             mediaSchema = try discoverMediaSchema()
             canJoinProfilePushNames = try discoverProfilePushNameJoin()
+            #if DEBUG
+            let contactsStart = Date()
+            #endif
             contactsResolver = ContactsV2Resolver(archiveRootURL: self.archiveRootURL)
+            #if DEBUG
+            let contactsMilliseconds = Date().timeIntervalSince(contactsStart) * 1000
+            print("[ArchiveOpen] opening ContactsV2.sqlite: \(Int(contactsMilliseconds)) ms available=\(contactsResolver != nil)")
+            #endif
         } catch {
             if let database {
                 sqlite3_close(database)
@@ -622,10 +675,33 @@ final class WhatsAppDatabase {
     }
 
     func fetchChats() throws -> [ChatSummary] {
-        let userVisibleMessageSQL = userVisibleMessageSQL(messageAlias: "m", chatAlias: "c")
-        let systemMessageSQL = systemMessageSQL(alias: "m")
-        let statusStoryMessageSQL = statusStoryMessageSQL(messageAlias: "m", chatAlias: "c")
+        #if DEBUG
+        var timer = FetchChatsDebugTimer()
+        #endif
+        let messageFlagsSystemSQL = systemMessageSQL(alias: "m")
+        let messageFlagsStatusStorySQL = statusStoryMessageSQL(messageAlias: "m", chatAlias: "c_flag")
+        let messageFlagsUserVisibleSQL = """
+            (NOT \(messageFlagsSystemSQL)
+            AND NOT \(messageFlagsStatusStorySQL)
+            AND (
+                \(textMessageSQL(alias: "m"))
+                OR \(chatSummaryMediaEvidenceSQL(messageAlias: "m", mediaPresenceAlias: "media_presence"))
+                OR \(callMessageSQL(alias: "m"))
+            ))
+            """
         let sql = """
+            WITH message_flags AS (
+                SELECT
+                    m.Z_PK AS message_id,
+                    m.ZCHATSESSION AS chat_id,
+                    m.ZMESSAGEDATE AS message_date,
+                    CASE WHEN \(messageFlagsSystemSQL) THEN 1 ELSE 0 END AS is_system,
+                    CASE WHEN \(messageFlagsStatusStorySQL) THEN 1 ELSE 0 END AS is_status_story,
+                    CASE WHEN \(messageFlagsUserVisibleSQL) THEN 1 ELSE 0 END AS is_user_visible
+                FROM ZWAMESSAGE m
+                \(chatSessionJoinSQL(alias: "c_flag"))
+                \(mediaPresenceJoinSQL())
+            )
             SELECT
                 c.Z_PK,
                 c.ZCONTACTJID,
@@ -636,14 +712,14 @@ final class WhatsAppDatabase {
                     THEN c.ZLASTMESSAGEDATE
                     ELSE NULL
                 END AS sanitized_last_message_date,
-                COUNT(m.Z_PK) AS total_message_count,
-                SUM(CASE WHEN \(userVisibleMessageSQL) THEN 1 ELSE 0 END) AS user_visible_message_count,
-                SUM(CASE WHEN \(systemMessageSQL) THEN 1 ELSE 0 END) AS system_message_count,
-                SUM(CASE WHEN \(statusStoryMessageSQL) THEN 1 ELSE 0 END) AS status_story_message_count,
-                MAX(CASE WHEN \(userVisibleMessageSQL) THEN m.ZMESSAGEDATE ELSE NULL END) AS latest_user_visible_message_date,
-                MAX(m.ZMESSAGEDATE) AS latest_any_message_date
+                COUNT(f.message_id) AS total_message_count,
+                COALESCE(SUM(f.is_user_visible), 0) AS user_visible_message_count,
+                COALESCE(SUM(f.is_system), 0) AS system_message_count,
+                COALESCE(SUM(f.is_status_story), 0) AS status_story_message_count,
+                MAX(CASE WHEN f.is_user_visible = 1 THEN f.message_date ELSE NULL END) AS latest_user_visible_message_date,
+                MAX(f.message_date) AS latest_any_message_date
             FROM ZWACHATSESSION c
-            LEFT JOIN ZWAMESSAGE m ON m.ZCHATSESSION = c.Z_PK
+            LEFT JOIN message_flags f ON f.chat_id = c.Z_PK
             GROUP BY
                 c.Z_PK,
                 c.ZCONTACTJID,
@@ -655,76 +731,85 @@ final class WhatsAppDatabase {
 
         let statement = try prepare(sql)
         defer { sqlite3_finalize(statement) }
+        #if DEBUG
+        timer.mark("fetchChats prepare")
+        #endif
 
-        var rows: [ChatSummaryRow] = []
+        var rawRows: [RawChatSummaryRow] = []
         var stepResult = sqlite3_step(statement)
         while stepResult == SQLITE_ROW {
             let id = sqlite3_column_int64(statement, 0)
-            let contactJID = string(statement, 1)
-            let contactIdentifier = string(statement, 2)
-            let partnerName = string(statement, 3)
-            let contactIdentity = contactsResolver?.identity(for: contactJID)
-            let title = DisplayNameSanitizer.friendlyName(contactIdentity?.displayName)
-                ?? DisplayNameSanitizer.friendlyName(partnerName)
-                ?? DisplayNameSanitizer.friendlyName(contactIdentifier)
-                ?? (isGroupJID(contactJID) ? "Group chat" : "Unknown chat")
-            let totalMessageCount = max(Int(sqlite3_column_int64(statement, 5)), 0)
-            let userVisibleMessageCount = max(Int(sqlite3_column_int64(statement, 6)), 0)
-            let systemMessageCount = max(Int(sqlite3_column_int64(statement, 7)), 0)
-            let statusStoryMessageCount = max(Int(sqlite3_column_int64(statement, 8)), 0)
-            let isStatusStoryOnlySession = totalMessageCount > 0 && statusStoryMessageCount == totalMessageCount
-            let messageCount = isStatusStoryOnlySession ? statusStoryMessageCount : userVisibleMessageCount
-            let latestUserVisibleMessageDate = date(statement, 9)
-            let latestAnyMessageDate = date(statement, 10)
-            let fallbackMessageDate = latestUserVisibleMessageDate ?? latestAnyMessageDate ?? date(statement, 4)
-
-            rows.append(
-                ChatSummaryRow(
+            rawRows.append(
+                RawChatSummaryRow(
                     id: id,
-                    identityKey: isStatusStoryOnlySession
-                        ? "status-stories"
-                        : chatIdentityKey(id: id, contactJID: contactJID, contactIdentity: contactIdentity),
-                    contactJID: contactJID,
-                    contactIdentifier: contactIdentifier,
-                    profilePhotoIdentifiers: contactIdentity?.profilePhotoIdentifiers ?? [],
-                    partnerName: partnerName,
-                    title: title,
-                    profilePhotoURL: nil,
-                    messageCount: messageCount,
-                    totalMessageCount: totalMessageCount,
-                    userVisibleMessageCount: userVisibleMessageCount,
-                    systemMessageCount: systemMessageCount,
-                    statusStoryMessageCount: statusStoryMessageCount,
-                    latestUserVisibleMessageDate: latestUserVisibleMessageDate,
-                    latestAnyMessageDate: latestAnyMessageDate,
-                    fallbackMessageDate: fallbackMessageDate
+                    contactJID: string(statement, 1),
+                    contactIdentifier: string(statement, 2),
+                    partnerName: string(statement, 3),
+                    sanitizedLastMessageDate: date(statement, 4),
+                    totalMessageCount: max(Int(sqlite3_column_int64(statement, 5)), 0),
+                    userVisibleMessageCount: max(Int(sqlite3_column_int64(statement, 6)), 0),
+                    systemMessageCount: max(Int(sqlite3_column_int64(statement, 7)), 0),
+                    statusStoryMessageCount: max(Int(sqlite3_column_int64(statement, 8)), 0),
+                    latestUserVisibleMessageDate: date(statement, 9),
+                    latestAnyMessageDate: date(statement, 10)
                 )
             )
             stepResult = sqlite3_step(statement)
         }
 
         try throwIfStatementFailed(stepResult)
-        return mergedChatSummaries(from: rows)
-    }
+        #if DEBUG
+        let totalMessages = rawRows.reduce(0) { $0 + $1.totalMessageCount }
+        let statusStoryMessages = rawRows.reduce(0) { $0 + $1.statusStoryMessageCount }
+        timer.mark("stories/status fetch sessions=\(rawRows.count) messages=\(totalMessages) statusStoryMessages=\(statusStoryMessages)")
+        let contactStart = Date()
+        #endif
 
-    static func resolveProfilePhotoURLs(for chats: [ChatSummary], archiveRootURL: URL) -> [Int64: URL] {
-        let resolver = ProfilePhotoResolver(archiveRootURL: archiveRootURL)
-        var urlsByChatID: [Int64: URL] = [:]
+        let rows = rawRows.map { row -> ChatSummaryRow in
+            let contactIdentity = contactsResolver?.identity(for: row.contactJID)
+            let title = DisplayNameSanitizer.friendlyName(contactIdentity?.displayName)
+                ?? DisplayNameSanitizer.friendlyName(row.partnerName)
+                ?? DisplayNameSanitizer.friendlyName(row.contactIdentifier)
+                ?? (isGroupJID(row.contactJID) ? "Group chat" : "Unknown chat")
+            let isStatusStoryOnlySession = row.totalMessageCount > 0 && row.statusStoryMessageCount == row.totalMessageCount
+            let messageCount = isStatusStoryOnlySession ? row.statusStoryMessageCount : row.userVisibleMessageCount
+            let fallbackMessageDate = row.latestUserVisibleMessageDate ?? row.latestAnyMessageDate ?? row.sanitizedLastMessageDate
 
-        for chat in chats where chat.classification != .statusStoryFragment {
-            if Task.isCancelled {
-                break
-            }
-            if let profilePhotoURL = resolver.profilePhotoURL(
-                contactJID: chat.contactJID,
-                contactIdentifier: chat.contactIdentifier,
-                additionalIdentifiers: chat.profilePhotoIdentifiers
-            ) {
-                urlsByChatID[chat.id] = profilePhotoURL
-            }
+            return ChatSummaryRow(
+                id: row.id,
+                identityKey: isStatusStoryOnlySession
+                    ? "status-stories"
+                    : chatIdentityKey(id: row.id, contactJID: row.contactJID, contactIdentity: contactIdentity),
+                contactJID: row.contactJID,
+                contactIdentifier: row.contactIdentifier,
+                profilePhotoIdentifiers: contactIdentity?.profilePhotoIdentifiers ?? [],
+                partnerName: row.partnerName,
+                title: title,
+                profilePhotoURL: nil,
+                messageCount: messageCount,
+                totalMessageCount: row.totalMessageCount,
+                userVisibleMessageCount: row.userVisibleMessageCount,
+                systemMessageCount: row.systemMessageCount,
+                statusStoryMessageCount: row.statusStoryMessageCount,
+                latestUserVisibleMessageDate: row.latestUserVisibleMessageDate,
+                latestAnyMessageDate: row.latestAnyMessageDate,
+                fallbackMessageDate: fallbackMessageDate
+            )
         }
 
-        return urlsByChatID
+        #if DEBUG
+        print("[ArchiveOpen] contact enrichment: \(FetchChatsDebugTimer.milliseconds(since: contactStart)) ms lookups=\(rawRows.count)")
+        timer.mark("contact enrichment")
+        let mergeStart = Date()
+        #endif
+        let summaries = mergedChatSummaries(from: rows)
+        #if DEBUG
+        let statusStorySummaries = summaries.filter { $0.classification == .statusStoryFragment }.count
+        let normalSummaries = summaries.count - statusStorySummaries
+        print("[ArchiveOpen] chat classification + fragment filtering: \(FetchChatsDebugTimer.milliseconds(since: mergeStart)) ms sourceSessions=\(rows.count) visible=\(summaries.count) normal=\(normalSummaries) stories=\(statusStorySummaries)")
+        timer.mark("fetchChats total")
+        #endif
+        return summaries
     }
 
     private func chatIdentityKey(id: Int64, contactJID: String?, contactIdentity: ContactIdentity?) -> String {
@@ -763,6 +848,23 @@ final class WhatsAppDatabase {
         }
         if messageColumns.contains("ZMESSAGETYPE") {
             predicates.append("\(alias).ZMESSAGETYPE IN (1, 2, 3, 4, 5, 7, 8, 15)")
+        }
+        guard !predicates.isEmpty else {
+            return "0"
+        }
+        return "(\(predicates.joined(separator: " OR ")))"
+    }
+
+    private func chatSummaryMediaEvidenceSQL(messageAlias: String, mediaPresenceAlias: String) -> String {
+        var predicates: [String] = []
+        if mediaSchema?.canJoinMessages == true {
+            predicates.append("\(mediaPresenceAlias).ZMESSAGE IS NOT NULL")
+        }
+        if messageColumns.contains("ZMEDIAITEM") {
+            predicates.append("\(messageAlias).ZMEDIAITEM IS NOT NULL")
+        }
+        if messageColumns.contains("ZMESSAGETYPE") {
+            predicates.append("\(messageAlias).ZMESSAGETYPE IN (1, 2, 3, 4, 5, 7, 8, 15)")
         }
         guard !predicates.isEmpty else {
             return "0"
@@ -1566,8 +1668,25 @@ final class WhatsAppDatabase {
         return "LEFT JOIN ZWAMEDIAITEM mi ON mi.ZMESSAGE = m.Z_PK"
     }
 
+    private func mediaPresenceJoinSQL() -> String {
+        guard mediaSchema?.canJoinMessages == true else {
+            return ""
+        }
+        return """
+            LEFT JOIN (
+                SELECT DISTINCT ZMESSAGE
+                FROM ZWAMEDIAITEM
+                WHERE ZMESSAGE IS NOT NULL
+            ) media_presence ON media_presence.ZMESSAGE = m.Z_PK
+            """
+    }
+
     private func chatSessionJoinSQL() -> String {
         "LEFT JOIN ZWACHATSESSION c ON c.Z_PK = m.ZCHATSESSION"
+    }
+
+    private func chatSessionJoinSQL(alias: String) -> String {
+        "LEFT JOIN ZWACHATSESSION \(alias) ON \(alias).Z_PK = m.ZCHATSESSION"
     }
 
     private func groupMemberJoinSQL() -> String {

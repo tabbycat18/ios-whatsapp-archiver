@@ -95,20 +95,37 @@ struct ChatListView: View {
                             Section("Stories") {
                                 ForEach(filteredStatusStoryChats) { chat in
                                     NavigationLink(value: chat) {
-                                        ChatRowView(chat: chat)
+                                        ChatRowView(
+                                            chat: chat,
+                                            avatarPriority: .visible,
+                                            isSelected: store.selectedChat?.id == chat.id
+                                        )
                                     }
+                                    .listRowSeparator(.hidden)
+                                    .listRowInsets(chatRowInsets)
+                                    .listRowBackground(Color.clear)
                                 }
                             }
                         }
 
                         Section("Chats") {
-                            ForEach(filteredNormalChats) { chat in
+                            ForEach(Array(filteredNormalChats.enumerated()), id: \.element.id) { index, chat in
                                 NavigationLink(value: chat) {
-                                    ChatRowView(chat: chat)
+                                    ChatRowView(
+                                        chat: chat,
+                                        avatarPriority: index < 15 ? .initialBatch : .visible,
+                                        isSelected: store.selectedChat?.id == chat.id
+                                    )
                                 }
+                                .listRowSeparator(.hidden)
+                                .listRowInsets(chatRowInsets)
+                                .listRowBackground(Color.clear)
                             }
                         }
                     }
+                    .listStyle(.plain)
+                    .scrollContentBackground(.hidden)
+                    .background(Color(.systemGroupedBackground))
                 }
             }
             .navigationTitle("Chats")
@@ -168,6 +185,10 @@ struct ChatListView: View {
     private func presentRelinkArchive(_ archive: SavedArchive) {
         importMode = .relink(archive.id)
         isImporterPresented = true
+    }
+
+    private var chatRowInsets: EdgeInsets {
+        EdgeInsets(top: 3, leading: 8, bottom: 3, trailing: 8)
     }
 }
 
@@ -448,13 +469,6 @@ private struct ArchiveLibraryView: View {
                     archiveWallpaperAvailable: store.wallpaperURL != nil
                 )
             }
-            .overlay(alignment: .bottom) {
-                if store.isOpeningArchive {
-                    ArchiveOpeningOverlay()
-                        .padding(.bottom, 18)
-                        .transition(.move(edge: .bottom).combined(with: .opacity))
-                }
-            }
             .alert(
                 "Rename Archive",
                 isPresented: Binding(
@@ -501,12 +515,6 @@ private struct ArchiveSlotCardView: View {
                     Image(systemName: needsRelink ? "exclamationmark.triangle.fill" : kind.systemImage)
                         .font(.system(size: 17, weight: .semibold))
                         .foregroundStyle(needsRelink ? .orange : .accentColor)
-                        .overlay {
-                            if isOpening {
-                                ProgressView()
-                                    .controlSize(.small)
-                            }
-                        }
                 }
                 .frame(width: 38, height: 38)
 
@@ -559,12 +567,15 @@ private struct ArchiveSlotCardView: View {
             .disabled(!canAdd)
         } else {
             HStack(spacing: 8) {
-                ArchiveIconActionButton(
-                    accessibilityTitle: isOpening ? "Opening" : "Open",
-                    systemImage: "arrow.right.circle.fill",
-                    showsProgress: isOpening,
+                ArchiveActionButton(
+                    title: isOpening ? "Opening…" : "Open",
+                    systemImage: isOpening ? nil : "arrow.right.circle.fill",
+                    style: .primary,
+                    width: 122,
+                    isLoading: isOpening,
                     action: onOpen
                 )
+                .disabled(isOpening)
 
                 ArchiveActionButton(
                     title: "Relink",
@@ -714,11 +725,11 @@ private struct DemoArchiveCardView: View {
             }
 
             ArchiveActionButton(
-                title: isOpening ? "Opening" : "Try Demo Archive",
+                title: isOpening ? "Opening…" : "Try Demo Archive",
                 systemImage: isOpening ? nil : "play.circle.fill",
-                showsProgress: isOpening,
                 style: .secondary,
                 maxWidth: .infinity,
+                isLoading: isOpening,
                 action: onOpen
             )
             .disabled(isDisabled)
@@ -736,31 +747,6 @@ private struct DemoArchiveCardView: View {
     }
 }
 
-private struct ArchiveIconActionButton: View {
-    let accessibilityTitle: String
-    let systemImage: String
-    var showsProgress = false
-    let action: () -> Void
-
-    var body: some View {
-        Button {
-            guard !showsProgress else { return }
-            action()
-        } label: {
-            ArchiveActionPillLabel(
-                title: nil,
-                systemImage: systemImage,
-                showsProgress: showsProgress,
-                style: .primary,
-                width: 72
-            )
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel(accessibilityTitle)
-        .allowsHitTesting(!showsProgress)
-    }
-}
-
 private struct ArchiveActionButton: View {
     @Environment(\.isEnabled) private var isEnabled
 
@@ -773,10 +759,10 @@ private struct ArchiveActionButton: View {
 
     let title: String
     var systemImage: String?
-    var showsProgress = false
     var style: Style
     var width: CGFloat?
     var maxWidth: CGFloat?
+    var isLoading = false
     let action: () -> Void
 
     var body: some View {
@@ -784,10 +770,10 @@ private struct ArchiveActionButton: View {
             ArchiveActionPillLabel(
                 title: title,
                 systemImage: systemImage,
-                showsProgress: showsProgress,
                 style: style,
                 width: width,
-                maxWidth: maxWidth
+                maxWidth: maxWidth,
+                isLoading: isLoading
             )
         }
         .buttonStyle(.plain)
@@ -801,18 +787,20 @@ private struct ArchiveActionPillLabel: View {
 
     let title: String?
     var systemImage: String?
-    var showsProgress = false
     let style: ArchiveActionButton.Style
     var width: CGFloat?
     var maxWidth: CGFloat?
+    var isLoading = false
 
     var body: some View {
         HStack(spacing: title == nil ? 0 : 7) {
-            if showsProgress {
+            if isLoading {
                 ProgressView()
-                    .controlSize(.small)
+                    .controlSize(.mini)
                     .tint(foregroundColor)
-            } else if let systemImage {
+            }
+
+            if let systemImage {
                 Image(systemName: systemImage)
                     .font(.system(size: 17, weight: .semibold))
             }
@@ -1033,38 +1021,25 @@ private struct InstructionInfoRow: Identifiable {
     var url: URL?
 }
 
-private struct ArchiveOpeningOverlay: View {
-    var body: some View {
-        HStack(spacing: 10) {
-            ProgressView()
-                .controlSize(.small)
-
-            Text("Opening archive")
-                .font(.subheadline.weight(.medium))
-        }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 10)
-        .background(.regularMaterial, in: Capsule())
-        .shadow(radius: 8, y: 3)
-        .accessibilityElement(children: .combine)
-    }
-}
-
 private struct ChatRowView: View {
     let chat: ChatSummary
+    let avatarPriority: ProfileAvatarLoadPriority
+    let isSelected: Bool
+    @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
         HStack(spacing: 12) {
-            ChatAvatarView(chat: chat)
+            ChatAvatarView(chat: chat, priority: avatarPriority)
 
-            VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: 5) {
                 Text(chat.title)
-                    .font(.headline)
+                    .font(.system(size: 17, weight: .semibold))
+                    .foregroundStyle(.primary)
                     .lineLimit(1)
                     .truncationMode(.tail)
 
                 Text(chat.detailText)
-                    .font(.subheadline)
+                    .font(.system(size: 14))
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
             }
@@ -1074,16 +1049,39 @@ private struct ChatRowView: View {
             if let latestMessageDate = chat.latestMessageDate {
                 let dateText = ChatListDateFormatter.shared.displayString(for: latestMessageDate)
                 Text(dateText)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(isSelected ? .primary : .secondary)
                     .monospacedDigit()
                     .lineLimit(1)
                     .minimumScaleFactor(0.85)
                     .fixedSize(horizontal: true, vertical: false)
+                    .padding(.top, 2)
                     .accessibilityLabel(dateText)
             }
         }
-        .padding(.vertical, 4)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 9)
+        .frame(minHeight: 68)
+        .background(rowBackground, in: RoundedRectangle(cornerRadius: 17, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 17, style: .continuous)
+                .stroke(rowBorder, lineWidth: isSelected ? 1 : 0.5)
+        }
+        .contentShape(RoundedRectangle(cornerRadius: 17, style: .continuous))
+    }
+
+    private var rowBackground: Color {
+        if isSelected {
+            return Color.accentColor.opacity(colorScheme == .dark ? 0.28 : 0.14)
+        }
+        return Color(.secondarySystemGroupedBackground).opacity(colorScheme == .dark ? 0.82 : 0.95)
+    }
+
+    private var rowBorder: Color {
+        if isSelected {
+            return Color.accentColor.opacity(colorScheme == .dark ? 0.38 : 0.22)
+        }
+        return Color.primary.opacity(colorScheme == .dark ? 0.08 : 0.045)
     }
 }
 
@@ -1170,6 +1168,7 @@ private final class ChatListDateFormatter {
 
 private struct ChatAvatarView: View {
     let chat: ChatSummary
+    let priority: ProfileAvatarLoadPriority
     @EnvironmentObject private var store: ArchiveStore
     @State private var image: CGImage?
     @State private var loadedAvatarID: String?
@@ -1187,27 +1186,46 @@ private struct ChatAvatarView: View {
     }
 
     var body: some View {
-        ZStack {
-            Circle()
-                .fill(paletteColor.gradient)
+        ZStack(alignment: .bottomTrailing) {
+            ZStack {
+                Circle()
+                    .fill(paletteColor.gradient)
 
-            if let image {
-                Image(decorative: image, scale: 1, orientation: .up)
-                    .resizable()
-                    .scaledToFill()
-            } else if let initials {
-                Text(initials)
-                    .font(.system(size: 16, weight: .semibold))
+                if let image {
+                    Image(decorative: image, scale: 1, orientation: .up)
+                        .resizable()
+                        .scaledToFill()
+                } else if let initials {
+                    Text(initials)
+                        .font(.system(size: 18, weight: .semibold))
+                        .foregroundStyle(.white)
+                        .minimumScaleFactor(0.7)
+                } else {
+                    Image(systemName: "person.fill")
+                        .font(.system(size: 18, weight: .semibold))
+                        .foregroundStyle(.white)
+                }
+            }
+            .frame(width: 50, height: 50)
+            .clipShape(Circle())
+            .overlay {
+                Circle()
+                    .stroke(Color.white.opacity(0.20), lineWidth: 1)
+            }
+
+            if chat.isGroupChat {
+                Image(systemName: "person.2.fill")
+                    .font(.system(size: 9, weight: .bold))
                     .foregroundStyle(.white)
-                    .minimumScaleFactor(0.7)
-            } else {
-                Image(systemName: "person.fill")
-                    .font(.system(size: 16, weight: .semibold))
-                    .foregroundStyle(.white)
+                    .frame(width: 18, height: 18)
+                    .background(Color.accentColor, in: Circle())
+                    .overlay {
+                        Circle()
+                            .stroke(Color(.systemGroupedBackground), lineWidth: 2)
+                    }
             }
         }
-        .frame(width: 44, height: 44)
-        .clipShape(Circle())
+        .frame(width: 52, height: 52)
         .task(id: avatarID) {
             await loadImageIfNeeded()
         }
@@ -1221,7 +1239,10 @@ private struct ChatAvatarView: View {
         }
 
         guard image == nil else { return }
-        if let loadedImage = await store.profileAvatarImage(for: chat) {
+        try? await Task.sleep(for: priority.loadDelay)
+        guard !Task.isCancelled, image == nil else { return }
+
+        if let loadedImage = await store.profileAvatarImage(for: chat, priority: priority) {
             guard !Task.isCancelled else { return }
             image = loadedImage
         } else {

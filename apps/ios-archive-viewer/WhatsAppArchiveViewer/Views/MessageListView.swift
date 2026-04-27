@@ -314,6 +314,7 @@ private struct ChatWallpaperBackgroundView: View {
 
     private func loadWallpaperIfNeeded() async {
         let wallpaperURL = resolvedWallpaperURL
+        let cacheKey = wallpaperTaskID
         if loadedWallpaperURL != wallpaperURL {
             image = nil
             didFail = false
@@ -324,15 +325,44 @@ private struct ChatWallpaperBackgroundView: View {
             return
         }
 
+        if let cachedImage = ChatWallpaperImageCache.shared.image(for: cacheKey) {
+            image = cachedImage
+            return
+        }
+
         let loadedImage = await Task.detached(priority: .utility) {
-            downsampleImage(at: wallpaperURL, maxPixelSize: 1800)
+            downsampleImage(at: wallpaperURL, maxPixelSize: 1400)
         }.value
 
         if let loadedImage {
+            ChatWallpaperImageCache.shared.store(loadedImage, for: cacheKey)
             image = loadedImage
         } else {
             didFail = true
         }
+    }
+}
+
+private final class ChatWallpaperImageCache {
+    static let shared = ChatWallpaperImageCache()
+
+    private let lock = NSLock()
+    private var images: [String: CGImage] = [:]
+    private let maxCount = 4
+
+    func image(for key: String) -> CGImage? {
+        lock.lock()
+        defer { lock.unlock() }
+        return images[key]
+    }
+
+    func store(_ image: CGImage, for key: String) {
+        lock.lock()
+        defer { lock.unlock() }
+        if images.count >= maxCount, images[key] == nil {
+            images.removeAll(keepingCapacity: true)
+        }
+        images[key] = image
     }
 }
 
@@ -659,9 +689,21 @@ private struct ChatInfoView: View {
     @State private var selectionDragMode: MediaSelectionDragMode?
     @State private var selectionDragVisitedIDs = Set<String>()
     @State private var selectionDragIntent: MediaSelectionDragIntent?
+    @State private var mediaDisplayLimit = 120
+    @State private var isLoadingMedia = false
+    @State private var mediaBrowserSelection: MediaBrowserSelection?
+    @State private var mediaViewportHeight: CGFloat = 0
+    @State private var selectionAutoScrollDirection: MediaSelectionAutoScrollDirection?
+    @State private var selectionAutoScrollLocation: CGPoint?
+    @State private var lastSelectionDragLocation: CGPoint?
+
+    private let mediaPageSize = 120
+    private let selectionAutoScrollEdgeInset: CGFloat = 88
+    private let selectionAutoScrollStep = 6
+    private let selectionAutoScrollInterval: UInt64 = 90_000_000
 
     private var mediaTaskID: String {
-        "\(chat.id)-\(selectedFilter.rawValue)"
+        "\(chat.id)-\(selectedFilter.rawValue)-\(mediaDisplayLimit)"
     }
 
     private var exportableMediaItems: [ChatMediaItem] {
@@ -680,73 +722,31 @@ private struct ChatInfoView: View {
         }
     }
 
+    private var previewableMediaItems: [ChatMediaItem] {
+        mediaItems.filter(isPreviewableMediaItem)
+    }
+
     var body: some View {
         NavigationStack {
-            List {
-                Section {
-                    LabeledContent("Title", value: chat.title)
-                    LabeledContent("Messages", value: chat.messageCount.formatted())
-                    if chat.classification == .statusStoryFragment {
-                        LabeledContent("Type", value: "Stories")
+            GeometryReader { geometry in
+                ScrollViewReader { scrollProxy in
+                    ScrollView {
+                        VStack(alignment: .leading, spacing: 20) {
+                            chatDetailsSection
+                            mediaGallerySection(scrollProxy: scrollProxy)
+                        }
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 18)
                     }
-                }
-
-                Section("Media") {
-                    Picker("Media", selection: $selectedFilter) {
-                        ForEach(ChatMediaFilter.allCases) { filter in
-                            Text(filter.title).tag(filter)
-                        }
+                    .coordinateSpace(name: "chatInfoMediaGrid")
+                    .onAppear {
+                        mediaViewportHeight = geometry.size.height
                     }
-                    .pickerStyle(.segmented)
-
-                    if let mediaLoadError {
-                        Text(mediaLoadError)
-                            .font(.caption)
-                            .foregroundStyle(.red)
-                    } else if mediaItems.isEmpty {
-                        Text("No media")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    } else {
-                        if let summaryText {
-                            Text(summaryText)
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-
-                        mediaSelectionControls
-
-                        LazyVGrid(
-                            columns: [GridItem(.adaptive(minimum: 104), spacing: 8)],
-                            spacing: 8
-                        ) {
-                            ForEach(mediaItems) { item in
-                                ChatInfoMediaTile(
-                                    item: item,
-                                    isSelectionMode: isSelectingMedia,
-                                    isSelected: selectedMediaIDs.contains(item.id),
-                                    onToggleSelection: {
-                                        toggleMediaSelection(item)
-                                    }
-                                ) {
-                                    thumbnailFailureIDs.insert(item.id)
-                                }
-                                .background(
-                                    GeometryReader { proxy in
-                                        Color.clear.preference(
-                                            key: ChatInfoMediaTileFramePreferenceKey.self,
-                                            value: [item.id: proxy.frame(in: .named("chatInfoMediaGrid"))]
-                                        )
-                                    }
-                                )
-                            }
-                        }
-                        .padding(.vertical, 4)
-                        .coordinateSpace(name: "chatInfoMediaGrid")
-                        .onPreferenceChange(ChatInfoMediaTileFramePreferenceKey.self) { frames in
-                            mediaTileFrames = frames
-                        }
-                        .mediaSelectionDrag(isSelectingMedia, gesture: mediaSelectionDragGesture)
+                    .onChange(of: geometry.size.height) { _, newHeight in
+                        mediaViewportHeight = newHeight
+                    }
+                    .task(id: selectionAutoScrollDirection) {
+                        await runSelectionAutoScroll(scrollProxy: scrollProxy)
                     }
                 }
             }
@@ -756,30 +756,157 @@ private struct ChatInfoView: View {
             #endif
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Done") {
-                        dismiss()
+                    Button(isSelectingMedia ? "Cancel" : "Done") {
+                        if isSelectingMedia {
+                            setMediaSelectionMode(false)
+                        } else {
+                            dismiss()
+                        }
+                    }
+                }
+                ToolbarItem(placement: .principal) {
+                    if isSelectingMedia {
+                        Text(selectionSummaryText)
+                            .font(.headline)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.75)
+                    }
+                }
+                ToolbarItem(placement: .primaryAction) {
+                    if isSelectingMedia {
+                        Button {
+                            shareSelectedMedia()
+                        } label: {
+                            Image(systemName: "square.and.arrow.up")
+                        }
+                        .disabled(selectedExportURLs.isEmpty)
+                        .accessibilityLabel("Share selected media")
+                    } else {
+                        Button("Select") {
+                            setMediaSelectionMode(true)
+                        }
+                        .disabled(exportableMediaItems.isEmpty)
                     }
                 }
             }
             .task(id: mediaTaskID) {
                 loadMediaItems()
             }
+            .onChange(of: selectedFilter) { _, _ in
+                resetMediaPaging()
+            }
             #if os(iOS)
             .sheet(item: $mediaShareSelection) { selection in
                 ActivityView(activityItems: selection.urls)
             }
             #endif
+            .sheet(item: $mediaBrowserSelection) { selection in
+                ChatInfoMediaBrowserView(items: selection.items, initialItemID: selection.initialItemID)
+            }
+        }
+    }
+
+    private var chatDetailsSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            LabeledContent("Title", value: chat.title)
+            LabeledContent("Messages", value: chat.messageCount.formatted())
+            if chat.classification == .statusStoryFragment {
+                LabeledContent("Type", value: "Stories")
+            }
+        }
+        .font(.subheadline)
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.secondary.opacity(0.08), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+    }
+
+    private func mediaGallerySection(scrollProxy: ScrollViewProxy) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Media")
+                .font(.headline)
+
+            Picker("Media", selection: $selectedFilter) {
+                ForEach(ChatMediaFilter.allCases) { filter in
+                    Text(filter.title).tag(filter)
+                }
+            }
+            .pickerStyle(.segmented)
+
+            if let mediaLoadError {
+                Text(mediaLoadError)
+                    .font(.caption)
+                    .foregroundStyle(.red)
+            } else if mediaItems.isEmpty {
+                Text("No media")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.vertical, 12)
+            } else {
+                if let summaryText {
+                    Text(summaryText)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+
+                mediaSelectionControls
+
+                LazyVGrid(
+                    columns: [GridItem(.adaptive(minimum: 92), spacing: 6)],
+                    spacing: 6
+                ) {
+                    ForEach(mediaItems) { item in
+                        ChatInfoMediaTile(
+                            item: item,
+                            isSelectionMode: isSelectingMedia,
+                            isSelected: selectedMediaIDs.contains(item.id),
+                            onToggleSelection: {
+                                toggleMediaSelection(item)
+                            },
+                            onOpen: {
+                                presentMediaBrowser(startingAt: item)
+                            }
+                        ) {
+                            thumbnailFailureIDs.insert(item.id)
+                        }
+                        .id(item.id)
+                        .background(
+                            GeometryReader { proxy in
+                                Color.clear.preference(
+                                    key: ChatInfoMediaTileFramePreferenceKey.self,
+                                    value: [item.id: proxy.frame(in: .named("chatInfoMediaGrid"))]
+                                )
+                            }
+                        )
+                    }
+                }
+                .padding(.vertical, 4)
+                .onPreferenceChange(ChatInfoMediaTileFramePreferenceKey.self) { frames in
+                    mediaTileFrames = frames
+                }
+                .mediaSelectionDrag(
+                    isSelectingMedia,
+                    gesture: mediaSelectionDragGesture
+                )
+
+                if canLoadMoreMedia {
+                    mediaLoadingSentinel
+                }
+            }
         }
     }
 
     @ViewBuilder
     private var mediaSelectionControls: some View {
-        HStack(spacing: 8) {
-            Text(isSelectingMedia ? selectionSummaryText : exportableSummaryText)
-                .font(.caption)
+        HStack(spacing: 10) {
+            Label(isSelectingMedia ? selectionSummaryText : exportableSummaryText, systemImage: isSelectingMedia ? "checkmark.circle" : "photo.stack")
+                .font(.caption.weight(.medium))
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
                 .minimumScaleFactor(0.8)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .background(Color.secondary.opacity(0.10), in: Capsule())
 
             if isSelectingMedia {
                 Spacer(minLength: 4)
@@ -801,14 +928,6 @@ private struct ChatInfoView: View {
             } else {
                 Spacer(minLength: 4)
             }
-
-            compactMediaButton(systemImage: isSelectingMedia ? "checkmark.circle" : "checkmark.circle", title: isSelectingMedia ? "Done selecting" : "Select media") {
-                isSelectingMedia.toggle()
-                if !isSelectingMedia {
-                    selectedMediaIDs = []
-                    resetSelectionDrag()
-                }
-            }
         }
     }
 
@@ -816,8 +935,8 @@ private struct ChatInfoView: View {
         Button(action: action) {
             Image(systemName: systemImage)
                 .font(.headline)
-                .frame(width: 36, height: 32)
-                .background(Color.secondary.opacity(0.12), in: Capsule())
+                .frame(width: 38, height: 34)
+                .background(Color.secondary.opacity(0.12), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
         }
         .buttonStyle(.plain)
         .accessibilityLabel(title)
@@ -826,6 +945,9 @@ private struct ChatInfoView: View {
     private var summaryText: String? {
         guard let mediaSummary else { return nil }
         var parts = ["Showing \(mediaSummary.displayedRows.formatted()) items"]
+        if canLoadMoreMedia {
+            parts.append("more available")
+        }
         if mediaSummary.missingOrUnresolvedRows > 0 {
             parts.append("\(mediaSummary.missingOrUnresolvedRows.formatted()) unavailable")
         }
@@ -836,14 +958,18 @@ private struct ChatInfoView: View {
     }
 
     private func loadMediaItems() {
+        guard !isLoadingMedia else { return }
+        isLoadingMedia = true
+        defer { isLoadingMedia = false }
+
         do {
-            let page = try store.mediaLibraryPage(for: chat, filter: selectedFilter)
+            let page = try store.mediaLibraryPage(for: chat, filter: selectedFilter, limit: mediaDisplayLimit)
             mediaItems = page.items
             mediaSummary = page.summary
             thumbnailFailureIDs = []
             selectedMediaIDs = selectedMediaIDs.intersection(Set(page.items.map(\.id)))
             if page.items.isEmpty {
-                isSelectingMedia = false
+                setMediaSelectionMode(false)
             }
             mediaLoadError = nil
             logMediaSummary(page.summary)
@@ -852,9 +978,45 @@ private struct ChatInfoView: View {
             mediaSummary = nil
             thumbnailFailureIDs = []
             selectedMediaIDs = []
-            isSelectingMedia = false
+            setMediaSelectionMode(false)
             mediaLoadError = "Could not load media."
         }
+    }
+
+    private var canLoadMoreMedia: Bool {
+        guard let mediaSummary else { return false }
+        return mediaItems.count >= mediaDisplayLimit
+            || mediaSummary.queryCapMayHideRows
+            || mediaSummary.totalRowsMatchingFilter > mediaSummary.rowsScanned
+    }
+
+    private var mediaLoadingSentinel: some View {
+        HStack(spacing: 8) {
+            if isLoadingMedia {
+                ProgressView()
+                    .controlSize(.small)
+            }
+
+            Text(isLoadingMedia ? "Loading more media" : "More media")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 10)
+        .onAppear {
+            loadNextMediaPageIfNeeded()
+        }
+    }
+
+    private func loadNextMediaPageIfNeeded() {
+        guard canLoadMoreMedia, !isLoadingMedia else { return }
+        mediaDisplayLimit += mediaPageSize
+    }
+
+    private func resetMediaPaging() {
+        mediaDisplayLimit = mediaPageSize
+        mediaTileFrames = [:]
+        resetSelectionDrag()
     }
 
     private var selectionSummaryText: String {
@@ -895,11 +1057,20 @@ private struct ChatInfoView: View {
         mediaShareSelection = MediaShareSelection(urls: urls)
     }
 
+    private func setMediaSelectionMode(_ isEnabled: Bool) {
+        isSelectingMedia = isEnabled
+        resetSelectionDrag()
+        if !isEnabled {
+            selectedMediaIDs = []
+        }
+    }
+
     private var mediaSelectionDragGesture: some Gesture {
         DragGesture(minimumDistance: 12, coordinateSpace: .named("chatInfoMediaGrid"))
             .onChanged { value in
                 guard isSelectingMedia else { return }
                 guard shouldHandleSelectionDrag(value) else { return }
+                updateSelectionDrag(at: value.startLocation)
                 updateSelectionDrag(at: value.location)
             }
             .onEnded { _ in
@@ -909,45 +1080,151 @@ private struct ChatInfoView: View {
 
     private func shouldHandleSelectionDrag(_ value: DragGesture.Value) -> Bool {
         if selectionDragIntent == nil {
-            let horizontalDistance = abs(value.translation.width)
-            let verticalDistance = abs(value.translation.height)
-            selectionDragIntent = horizontalDistance > verticalDistance * 1.15 ? .selecting : .scrolling
+            selectionDragIntent = exportableItem(at: value.startLocation) == nil ? .scrolling : .selecting
         }
         return selectionDragIntent == .selecting
     }
 
     private func updateSelectionDrag(at location: CGPoint) {
-        guard let item = mediaItems.first(where: { item in
-            mediaTileFrames[item.id]?.contains(location) == true
-        }) else {
+        updateSelectionAutoScrollDirection(for: location)
+
+        let items = exportableItems(hitBy: location, previousLocation: lastSelectionDragLocation)
+        lastSelectionDragLocation = location
+
+        for item in items where !selectionDragVisitedIDs.contains(item.id) {
+            if selectionDragMode == nil {
+                selectionDragMode = selectedMediaIDs.contains(item.id) ? .remove : .add
+            }
+            selectionDragVisitedIDs.insert(item.id)
+
+            switch selectionDragMode {
+            case .add:
+                selectedMediaIDs.insert(item.id)
+            case .remove:
+                selectedMediaIDs.remove(item.id)
+            case nil:
+                break
+            }
+        }
+    }
+
+    private func updateSelectionAutoScrollDirection(for location: CGPoint) {
+        guard isSelectingMedia, mediaViewportHeight > 0 else {
+            selectionAutoScrollDirection = nil
+            selectionAutoScrollLocation = nil
             return
         }
+
+        selectionAutoScrollLocation = location
+
+        if location.y > mediaViewportHeight - selectionAutoScrollEdgeInset {
+            selectionAutoScrollDirection = .down
+        } else if location.y < selectionAutoScrollEdgeInset {
+            selectionAutoScrollDirection = .up
+        } else {
+            selectionAutoScrollDirection = nil
+        }
+    }
+
+    @MainActor
+    private func runSelectionAutoScroll(scrollProxy: ScrollViewProxy) async {
+        guard selectionAutoScrollDirection != nil else { return }
+
+        while !Task.isCancelled, let direction = selectionAutoScrollDirection {
+            try? await Task.sleep(nanoseconds: selectionAutoScrollInterval)
+            guard !Task.isCancelled, isSelectingMedia else { break }
+            scrollSelection(direction: direction, scrollProxy: scrollProxy)
+            if let location = selectionAutoScrollLocation {
+                updateSelectionDrag(at: location)
+            }
+        }
+    }
+
+    private func scrollSelection(
+        direction: MediaSelectionAutoScrollDirection,
+        scrollProxy: ScrollViewProxy
+    ) {
+        let indexedFrames = mediaItems.enumerated().compactMap { index, item -> (index: Int, item: ChatMediaItem, frame: CGRect)? in
+            guard let frame = mediaTileFrames[item.id] else { return nil }
+            return (index, item, frame)
+        }
+
+        guard !indexedFrames.isEmpty else { return }
+
+        let visibleFrames = indexedFrames.filter { entry in
+            entry.frame.maxY >= 0 && entry.frame.minY <= mediaViewportHeight
+        }
+        let referenceFrames = visibleFrames.isEmpty ? indexedFrames : visibleFrames
+
+        switch direction {
+        case .down:
+            guard let currentIndex = referenceFrames.max(by: { $0.frame.maxY < $1.frame.maxY })?.index else { return }
+            let targetIndex = min(currentIndex + selectionAutoScrollStep, mediaItems.count - 1)
+            scrollProxy.scrollTo(mediaItems[targetIndex].id, anchor: .bottom)
+            if targetIndex >= mediaItems.count - selectionAutoScrollStep {
+                loadNextMediaPageIfNeeded()
+            }
+        case .up:
+            guard let currentIndex = referenceFrames.min(by: { $0.frame.minY < $1.frame.minY })?.index else { return }
+            let targetIndex = max(currentIndex - selectionAutoScrollStep, 0)
+            scrollProxy.scrollTo(mediaItems[targetIndex].id, anchor: .top)
+        }
+    }
+
+    private func exportableItem(at location: CGPoint) -> ChatMediaItem? {
+        mediaItems.first { item in
+            item.media.fileURL != nil
+                && item.media.isFileAvailableInArchive
+                && mediaTileFrames[item.id]?.contains(location) == true
+        }
+    }
+
+    private func exportableItems(hitBy location: CGPoint, previousLocation: CGPoint?) -> [ChatMediaItem] {
+        let hitRect: CGRect
+        if let previousLocation {
+            hitRect = CGRect(
+                x: min(previousLocation.x, location.x),
+                y: min(previousLocation.y, location.y),
+                width: abs(previousLocation.x - location.x),
+                height: abs(previousLocation.y - location.y)
+            )
+            .insetBy(dx: -18, dy: -18)
+        } else {
+            hitRect = CGRect(x: location.x - 1, y: location.y - 1, width: 2, height: 2)
+        }
+
+        return mediaItems.filter { item in
+            item.media.fileURL != nil
+                && item.media.isFileAvailableInArchive
+                && mediaTileFrames[item.id]?.intersects(hitRect) == true
+        }
+    }
+
+    private func isPreviewableMediaItem(_ item: ChatMediaItem) -> Bool {
         guard item.media.fileURL != nil, item.media.isFileAvailableInArchive else {
-            return
-        }
-        guard !selectionDragVisitedIDs.contains(item.id) else {
-            return
+            return false
         }
 
-        if selectionDragMode == nil {
-            selectionDragMode = selectedMediaIDs.contains(item.id) ? .remove : .add
+        switch item.media.kind {
+        case .photo, .sticker, .video, .videoMessage, .document:
+            return true
+        default:
+            return false
         }
-        selectionDragVisitedIDs.insert(item.id)
+    }
 
-        switch selectionDragMode {
-        case .add:
-            selectedMediaIDs.insert(item.id)
-        case .remove:
-            selectedMediaIDs.remove(item.id)
-        case nil:
-            break
-        }
+    private func presentMediaBrowser(startingAt item: ChatMediaItem) {
+        guard isPreviewableMediaItem(item) else { return }
+        mediaBrowserSelection = MediaBrowserSelection(items: previewableMediaItems, initialItemID: item.id)
     }
 
     private func resetSelectionDrag() {
         selectionDragMode = nil
         selectionDragVisitedIDs = []
         selectionDragIntent = nil
+        lastSelectionDragLocation = nil
+        selectionAutoScrollDirection = nil
+        selectionAutoScrollLocation = nil
     }
 
     private func logMediaSummary(_ summary: ChatMediaLoadSummary) {
@@ -959,6 +1236,12 @@ private struct ChatInfoView: View {
         )
         #endif
     }
+}
+
+private struct MediaBrowserSelection: Identifiable {
+    let id = UUID()
+    let items: [ChatMediaItem]
+    let initialItemID: String
 }
 
 private struct MediaShareSelection: Identifiable {
@@ -974,6 +1257,11 @@ private enum MediaSelectionDragMode {
 private enum MediaSelectionDragIntent {
     case selecting
     case scrolling
+}
+
+private enum MediaSelectionAutoScrollDirection: Hashable {
+    case up
+    case down
 }
 
 private extension View {
@@ -1016,23 +1304,23 @@ private struct ChatInfoMediaTile: View {
     let isSelectionMode: Bool
     let isSelected: Bool
     let onToggleSelection: () -> Void
+    let onOpen: () -> Void
     let onThumbnailFailed: () -> Void
-    @StateObject private var playbackController = VideoPlaybackController()
     @State private var thumbnail: CGImage?
     @State private var didFailThumbnail = false
     @State private var didReportThumbnailFailure = false
-    @State private var photoPreviewItem: PhotoPreviewItem?
-    @State private var documentPreviewItem: DocumentPreviewItem?
-    @State private var isVideoPresented = false
 
     var body: some View {
         ZStack(alignment: .bottomTrailing) {
-            thumbnailContent
-                .frame(height: 104)
-                .frame(maxWidth: .infinity)
-                .background(Color.secondary.opacity(0.12))
-                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-                .overlay(selectionBorder)
+            GeometryReader { proxy in
+                thumbnailContent
+                    .frame(width: proxy.size.width, height: proxy.size.width)
+                    .clipped()
+                    .background(Color.secondary.opacity(0.12))
+                    .clipShape(tileShape)
+                    .overlay(selectionBorder)
+            }
+            .aspectRatio(1, contentMode: .fit)
 
             if item.media.source == .statusStory {
                 Image(systemName: "circle.dashed")
@@ -1048,7 +1336,8 @@ private struct ChatInfoMediaTile: View {
                     .padding(6)
             }
         }
-        .contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .frame(maxWidth: .infinity)
+        .contentShape(tileShape)
         .opacity(isSelectionMode && !isExportable ? 0.45 : 1)
         .onTapGesture {
             handleTap()
@@ -1062,24 +1351,14 @@ private struct ChatInfoMediaTile: View {
         .task(id: item.media.fileURL) {
             await loadThumbnailIfNeeded()
         }
-        .sheet(item: $photoPreviewItem) { item in
-            PhotoPreviewView(url: item.url)
-        }
-        #if os(iOS)
-        .sheet(item: $documentPreviewItem) { item in
-            DocumentPreviewView(url: item.url)
-                .ignoresSafeArea()
-        }
-        #endif
-        .sheet(isPresented: $isVideoPresented) {
-            if let url = item.media.fileURL {
-                VideoPlayerSheet(controller: playbackController, url: url)
-            }
-        }
     }
 
     private var isExportable: Bool {
         item.media.fileURL != nil && item.media.isFileAvailableInArchive
+    }
+
+    private var tileShape: RoundedRectangle {
+        RoundedRectangle(cornerRadius: 10, style: .continuous)
     }
 
     private var accessibilityLabel: String {
@@ -1089,8 +1368,11 @@ private struct ChatInfoMediaTile: View {
     @ViewBuilder
     private var selectionBorder: some View {
         if isSelectionMode && isSelected {
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
+            tileShape
                 .stroke(Color.accentColor, lineWidth: 3)
+        } else {
+            tileShape
+                .stroke(Color.primary.opacity(0.06), lineWidth: 0.5)
         }
     }
 
@@ -1112,6 +1394,7 @@ private struct ChatInfoMediaTile: View {
             Image(decorative: thumbnail, scale: 1, orientation: .up)
                 .resizable()
                 .scaledToFill()
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else if didFailThumbnail {
             Image(systemName: systemImageName)
                 .font(.title2)
@@ -1136,26 +1419,11 @@ private struct ChatInfoMediaTile: View {
         }
     }
 
-    private func openPreview() {
-        guard let url = item.media.fileURL else { return }
-        switch item.media.kind {
-        case .photo, .sticker:
-            photoPreviewItem = PhotoPreviewItem(url: url)
-        case .video, .videoMessage:
-            playbackController.load(url: url, restart: true)
-            isVideoPresented = true
-        case .document:
-            documentPreviewItem = DocumentPreviewItem(url: url)
-        default:
-            break
-        }
-    }
-
     private func handleTap() {
         if isSelectionMode {
             onToggleSelection()
-        } else if item.media.fileURL != nil {
-            openPreview()
+        } else if isExportable {
+            onOpen()
         }
     }
 
@@ -1168,10 +1436,10 @@ private struct ChatInfoMediaTile: View {
         switch item.media.kind {
         case .photo, .sticker:
             loadedThumbnail = await Task.detached(priority: .utility) {
-                downsampleImage(at: url, maxPixelSize: 360)
+                downsampleImage(at: url, maxPixelSize: 260)
             }.value
         case .video, .videoMessage:
-            loadedThumbnail = await videoThumbnail(at: url, maxPixelSize: 360)
+            loadedThumbnail = await videoThumbnail(at: url, maxPixelSize: 260)
         default:
             loadedThumbnail = nil
         }
@@ -1184,6 +1452,181 @@ private struct ChatInfoMediaTile: View {
                 didReportThumbnailFailure = true
                 onThumbnailFailed()
             }
+        }
+    }
+}
+
+private struct ChatInfoMediaBrowserView: View {
+    let items: [ChatMediaItem]
+    let initialItemID: String
+    @Environment(\.dismiss) private var dismiss
+    @State private var selectedItemID: String
+
+    init(items: [ChatMediaItem], initialItemID: String) {
+        self.items = items
+        self.initialItemID = initialItemID
+        _selectedItemID = State(initialValue: initialItemID)
+    }
+
+    private var selectedItem: ChatMediaItem? {
+        items.first { $0.id == selectedItemID } ?? items.first
+    }
+
+    var body: some View {
+        ZStack(alignment: .top) {
+            Color.black
+                .ignoresSafeArea()
+
+            TabView(selection: $selectedItemID) {
+                ForEach(items) { item in
+                    ChatInfoMediaBrowserPage(item: item)
+                        .tag(item.id)
+                }
+            }
+            #if os(iOS)
+            .tabViewStyle(.page(indexDisplayMode: .automatic))
+            #endif
+            .ignoresSafeArea()
+
+            HStack {
+                Button {
+                    dismiss()
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.system(size: 32))
+                        .foregroundStyle(.white, .black.opacity(0.35))
+                }
+                .accessibilityLabel("Close media")
+
+                Spacer()
+
+                if let url = selectedItem?.media.fileURL {
+                    ShareLink(item: url) {
+                        Image(systemName: "square.and.arrow.up.circle.fill")
+                            .font(.system(size: 32))
+                            .foregroundStyle(.white, .black.opacity(0.35))
+                    }
+                    .accessibilityLabel("Share media")
+                }
+            }
+            .padding()
+        }
+    }
+}
+
+private struct ChatInfoMediaBrowserPage: View {
+    let item: ChatMediaItem
+    @StateObject private var playbackController = VideoPlaybackController()
+    @State private var image: CGImage?
+    @State private var didFailImage = false
+    @State private var documentPreviewItem: DocumentPreviewItem?
+
+    var body: some View {
+        Group {
+            switch item.media.kind {
+            case .photo, .sticker:
+                photoPage
+            case .video, .videoMessage:
+                videoPage
+            case .document:
+                documentPage
+            default:
+                AttachmentPlaceholderView(title: item.media.kind.placeholderText, systemImage: "paperclip")
+                    .foregroundStyle(.white)
+                    .padding()
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    @ViewBuilder
+    private var photoPage: some View {
+        if let image {
+            #if os(iOS)
+            ZoomableImageView(image: image)
+                .ignoresSafeArea()
+                .accessibilityLabel("Photo attachment")
+            #else
+            Image(decorative: image, scale: 1, orientation: .up)
+                .resizable()
+                .scaledToFit()
+                .padding()
+                .accessibilityLabel("Photo attachment")
+            #endif
+        } else if didFailImage {
+            AttachmentPlaceholderView(title: "Photo unavailable", systemImage: "photo")
+                .foregroundStyle(.white)
+                .padding()
+        } else {
+            ProgressView()
+                .tint(.white)
+                .task(id: item.media.fileURL) {
+                    await loadImageIfNeeded()
+                }
+        }
+    }
+
+    @ViewBuilder
+    private var videoPage: some View {
+        if let url = item.media.fileURL {
+            VideoPlayer(player: playbackController.player)
+                .ignoresSafeArea()
+                .onAppear {
+                    playbackController.load(url: url, restart: true)
+                    playbackController.play()
+                }
+                .onDisappear {
+                    playbackController.pause()
+                }
+        } else {
+            AttachmentPlaceholderView(title: "Video unavailable", systemImage: "video")
+                .foregroundStyle(.white)
+                .padding()
+        }
+    }
+
+    private var documentPage: some View {
+        VStack(spacing: 14) {
+            Image(systemName: "doc")
+                .font(.system(size: 54, weight: .semibold))
+
+            Text(item.media.documentDisplayTitle)
+                .font(.headline)
+                .multilineTextAlignment(.center)
+                .lineLimit(3)
+
+            if let url = item.media.fileURL {
+                Button {
+                    documentPreviewItem = DocumentPreviewItem(url: url)
+                } label: {
+                    Label("Open", systemImage: "doc.text.magnifyingglass")
+                }
+                .buttonStyle(.borderedProminent)
+            }
+        }
+        .foregroundStyle(.white)
+        .padding(32)
+        #if os(iOS)
+        .sheet(item: $documentPreviewItem) { item in
+            DocumentPreviewView(url: item.url)
+                .ignoresSafeArea()
+        }
+        #endif
+    }
+
+    private func loadImageIfNeeded() async {
+        guard image == nil, !didFailImage, let url = item.media.fileURL else {
+            return
+        }
+
+        let loadedImage = await Task.detached(priority: .utility) {
+            downsampleImage(at: url, maxPixelSize: 2400)
+        }.value
+
+        if let loadedImage {
+            image = loadedImage
+        } else {
+            didFailImage = true
         }
     }
 }
@@ -1349,7 +1792,7 @@ private struct MessageBubbleView: View {
             }
 
             VStack(alignment: message.isFromMe ? .trailing : .leading, spacing: 2) {
-                VStack(alignment: message.isFromMe ? .trailing : .leading, spacing: 5) {
+                VStack(alignment: contentAlignment, spacing: 5) {
                     if let senderLabel {
                         Text(senderLabel)
                             .font(.caption.weight(.semibold))
@@ -1362,8 +1805,8 @@ private struct MessageBubbleView: View {
                         .foregroundStyle(bubblePalette.primaryText)
                         .tint(bubblePalette.linkText)
                 }
-                .padding(.horizontal, 12)
-                .padding(.vertical, 8)
+                .padding(.horizontal, bubbleContentPadding.horizontal)
+                .padding(.vertical, bubbleContentPadding.vertical)
                 .background(bubblePalette.background, in: bubbleShape)
                 .overlay {
                     bubbleShape
@@ -1408,12 +1851,24 @@ private struct MessageBubbleView: View {
             return bubblePalette.sentSenderNameText
         }
 
-        let seed = message.senderJID ?? message.friendlySenderName ?? message.safeSenderPhoneNumber ?? "unknown"
+        let seed = message.groupMemberJID
+            ?? message.senderJID
+            ?? message.friendlySenderName
+            ?? message.safeSenderPhoneNumber
+            ?? senderLabel
+            ?? "unknown"
         return bubblePalette.groupSenderNameText(seed: seed)
     }
 
     private var bubblePalette: ChatBubblePalette {
         ChatBubblePalette(isFromMe: message.isFromMe, colorScheme: colorScheme)
+    }
+
+    private var contentAlignment: HorizontalAlignment {
+        if isGroupChat, senderLabel != nil {
+            return .leading
+        }
+        return message.isFromMe ? .trailing : .leading
     }
 
     private var bubbleShape: UnevenRoundedRectangle {
@@ -1424,6 +1879,24 @@ private struct MessageBubbleView: View {
             topTrailingRadius: 18,
             style: .continuous
         )
+    }
+
+    private var bubbleContentPadding: (horizontal: CGFloat, vertical: CGFloat) {
+        guard isPhotoOnlyBubble else {
+            return (12, 8)
+        }
+
+        return (3, 3)
+    }
+
+    private var isPhotoOnlyBubble: Bool {
+        guard senderLabel == nil,
+              message.displayText == nil,
+              message.media?.kind == .photo
+        else {
+            return false
+        }
+        return true
     }
 
     private static let dateFormatter: DateFormatter = {
@@ -1483,6 +1956,9 @@ private struct ChatBubblePalette {
     }
 
     func groupSenderNameText(seed: String) -> Color {
+        let normalizedSeed = seed
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
         let palette: [Color]
         if colorScheme == .dark {
             palette = [
@@ -1490,7 +1966,14 @@ private struct ChatBubblePalette {
                 Color(red: 1.00, green: 0.74, blue: 0.42),
                 Color(red: 0.96, green: 0.62, blue: 0.84),
                 Color(red: 0.59, green: 0.88, blue: 0.70),
-                Color(red: 0.82, green: 0.73, blue: 1.00)
+                Color(red: 0.82, green: 0.73, blue: 1.00),
+                Color(red: 0.99, green: 0.63, blue: 0.58),
+                Color(red: 0.50, green: 0.90, blue: 0.86),
+                Color(red: 0.88, green: 0.82, blue: 0.46),
+                Color(red: 0.71, green: 0.84, blue: 1.00),
+                Color(red: 1.00, green: 0.68, blue: 0.78),
+                Color(red: 0.66, green: 0.93, blue: 0.55),
+                Color(red: 0.95, green: 0.72, blue: 1.00)
             ]
         } else {
             palette = [
@@ -1498,11 +1981,18 @@ private struct ChatBubblePalette {
                 Color(red: 0.64, green: 0.25, blue: 0.00),
                 Color(red: 0.62, green: 0.18, blue: 0.47),
                 Color(red: 0.08, green: 0.42, blue: 0.25),
-                Color(red: 0.42, green: 0.28, blue: 0.75)
+                Color(red: 0.42, green: 0.28, blue: 0.75),
+                Color(red: 0.74, green: 0.18, blue: 0.12),
+                Color(red: 0.00, green: 0.46, blue: 0.50),
+                Color(red: 0.52, green: 0.41, blue: 0.00),
+                Color(red: 0.18, green: 0.34, blue: 0.70),
+                Color(red: 0.66, green: 0.16, blue: 0.31),
+                Color(red: 0.24, green: 0.45, blue: 0.10),
+                Color(red: 0.55, green: 0.22, blue: 0.62)
             ]
         }
 
-        let hash = seed.unicodeScalars.reduce(UInt64(5381)) { partialHash, scalar in
+        let hash = normalizedSeed.unicodeScalars.reduce(UInt64(5381)) { partialHash, scalar in
             ((partialHash << 5) &+ partialHash) &+ UInt64(scalar.value)
         }
         let index = Int(hash % UInt64(palette.count))
@@ -2107,9 +2597,14 @@ private struct PhotoAttachmentView: View {
                 } label: {
                     Image(decorative: image, scale: 1, orientation: .up)
                         .resizable()
-                        .scaledToFit()
-                        .frame(maxWidth: 260, maxHeight: 320)
-                        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                        .scaledToFill()
+                        .frame(width: previewSize.width, height: previewSize.height)
+                        .clipped()
+                        .clipShape(previewShape)
+                        .overlay {
+                            previewShape
+                                .stroke(Color.primary.opacity(0.06), lineWidth: 0.5)
+                        }
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("Open photo attachment")
@@ -2141,6 +2636,29 @@ private struct PhotoAttachmentView: View {
         } else {
             didFail = true
         }
+    }
+
+    private var previewSize: CGSize {
+        guard let image else {
+            return CGSize(width: 260, height: 180)
+        }
+
+        let aspectRatio = CGFloat(image.width) / max(CGFloat(image.height), 1)
+        let maxWidth: CGFloat = 268
+        let maxHeight: CGFloat = 330
+        let minHeight: CGFloat = 118
+
+        if aspectRatio >= 1 {
+            let height = min(max(maxWidth / aspectRatio, minHeight), 220)
+            return CGSize(width: maxWidth, height: height)
+        }
+
+        let width = min(max(maxHeight * aspectRatio, 178), maxWidth)
+        return CGSize(width: width, height: maxHeight)
+    }
+
+    private var previewShape: RoundedRectangle {
+        RoundedRectangle(cornerRadius: 14, style: .continuous)
     }
 }
 
@@ -2419,7 +2937,7 @@ private struct VideoPlayerSheet: View {
 
 @MainActor
 private final class VideoPlaybackController: ObservableObject {
-    private(set) var player = AVPlayer()
+    @Published private(set) var player = AVPlayer()
     private var loadedURL: URL?
 
     func load(url: URL, restart: Bool) {

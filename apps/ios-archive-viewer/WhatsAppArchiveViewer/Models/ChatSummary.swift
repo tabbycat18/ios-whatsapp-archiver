@@ -1,6 +1,6 @@
 import Foundation
 
-enum ChatSessionClassification: String, Hashable {
+enum ChatSessionClassification: String, Hashable, Sendable {
     case normalConversation
     case separateConversation
     case statusStoryFragment
@@ -9,7 +9,7 @@ enum ChatSessionClassification: String, Hashable {
     case unknown
 }
 
-enum ChatWallpaperTheme: String, CaseIterable, Identifiable {
+enum ChatWallpaperTheme: String, CaseIterable, Identifiable, Sendable {
     case archiveDefault
     case classic
     case softPattern
@@ -49,7 +49,7 @@ enum ChatWallpaperTheme: String, CaseIterable, Identifiable {
     }
 }
 
-struct ChatSummary: Identifiable, Hashable {
+struct ChatSummary: Identifiable, Hashable, Sendable {
     let id: Int64
     let sessionIDs: [Int64]
     let contactJID: String?

@@ -89,7 +89,7 @@ come from the synthetic demo archive, not private chats.
   opens offline.
 - On the archive home screen, confirm `Try Demo Archive` opens synthetic chats
   and does not fill either real archive slot.
-- Test with a large chat and confirm the latest 500 messages appear first.
+- Test with a large chat and confirm the latest 250 messages appear first.
 - Search for a known chat title, then clear search and confirm all chats return.
 - Search for duplicate-title contacts and confirm real separate conversations
   remain visible while system-only fragments do not drive normal results.
