@@ -3357,6 +3357,12 @@ private struct VideoAttachmentView: View {
                             .fill(Color.black.opacity(0.72))
                     }
 
+                    if isVideoMessage && playbackController.shouldShowInlineVideo {
+                        VideoPlayer(player: playbackController.player)
+                            .scaledToFill()
+                            .allowsHitTesting(false)
+                    }
+
                     if !isVideoMessage {
                         Image(systemName: "play.circle.fill")
                             .font(.system(size: 48))
@@ -3523,8 +3529,17 @@ private struct VideoAttachmentView: View {
 
     private func handleInlinePlaybackTap(url: URL) {
         if inlineVideoPlaybackCoordinator.activeMessageID == messageID {
-            inlineVideoPlaybackCoordinator.setActiveMessageID(nil)
-            playbackController.pause()
+            if playbackController.loadingState == .failed {
+                playbackController.load(url: url, restart: false)
+                playbackController.play()
+                return
+            }
+            if playbackController.isActivePlayback {
+                inlineVideoPlaybackCoordinator.setActiveMessageID(nil)
+                playbackController.pause()
+                return
+            }
+            playbackController.play()
             return
         }
 
@@ -3627,6 +3642,7 @@ private final class VideoPlaybackController: ObservableObject {
     let player = AVPlayer()
     @Published private(set) var loadingState: VideoPlaybackLoadState = .idle
     @Published private(set) var isActivePlayback: Bool = false
+    @Published private(set) var shouldShowInlineVideo: Bool = false
     private var loadedURL: URL?
     private var currentItemIdentifier: ObjectIdentifier?
     private var statusObservation: NSKeyValueObservation?
@@ -3640,7 +3656,7 @@ private final class VideoPlaybackController: ObservableObject {
     }
 
     func load(url: URL, restart: Bool) {
-        guard loadedURL != url || loadingState == .failed else {
+        if loadedURL == url, loadingState != .failed {
             if restart {
                 player.seek(to: .zero)
             }
@@ -3649,6 +3665,7 @@ private final class VideoPlaybackController: ObservableObject {
 
         player.pause()
         isActivePlayback = false
+        shouldShowInlineVideo = false
         statusObservation?.invalidate()
         statusObservation = nil
 
@@ -3657,6 +3674,7 @@ private final class VideoPlaybackController: ObservableObject {
         loadedURL = url
         currentItemIdentifier = itemIdentifier
         loadingState = .loading
+        shouldShowInlineVideo = true
         observeStatus(for: item, itemIdentifier: itemIdentifier)
         observeTimeControlStatusIfNeeded()
         player.replaceCurrentItem(with: item)
@@ -3698,12 +3716,16 @@ private final class VideoPlaybackController: ObservableObject {
         switch status {
         case .unknown:
             loadingState = .loading
+            shouldShowInlineVideo = true
         case .readyToPlay:
             loadingState = .ready
+            shouldShowInlineVideo = true
         case .failed:
             loadingState = .failed
+            shouldShowInlineVideo = false
         @unknown default:
             loadingState = .failed
+            shouldShowInlineVideo = false
         }
     }
 
@@ -3718,7 +3740,6 @@ private final class VideoPlaybackController: ObservableObject {
     }
 
 }
-
 private struct AudioAttachmentView: View {
     let messageID: Int64
     let media: MediaMetadata
