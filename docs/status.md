@@ -107,8 +107,9 @@ does not upload media, and does not copy media files into Git.
 - Show initials immediately while avatar lookup runs in the background.
 - Support a local chat wallpaper selector: Archive Default, Classic, Soft
   Pattern, Demo, and Plain.
-- Use extracted `current_wallpaper.jpg` or `current_wallpaper_dark.jpg` files
-  from the archive root when present and Archive Default is selected.
+- Use extracted `current_wallpaper.jpg` from the archive root when present and
+  Archive Default is selected, with `current_wallpaper_dark.jpg` only as a
+  fallback when the light file is absent.
 - Generate the built-in wallpaper styles inside the app without modifying
   archive files.
 - Bundle a fully synthetic demo archive under `test-fixtures/demo-archive/`.

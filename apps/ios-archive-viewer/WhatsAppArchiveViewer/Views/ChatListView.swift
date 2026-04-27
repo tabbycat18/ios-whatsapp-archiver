@@ -3,6 +3,11 @@ import UniformTypeIdentifiers
 import ImageIO
 import UIKit
 
+private enum AppConfig {
+    static let repositoryURL = URL(string: "https://github.com/tabbycat18/ios-whatsapp-archiver")!
+    static let supportURL = URL(string: "https://www.buymeacoffee.com/tabbycat18")!
+}
+
 struct ChatListView: View {
     @EnvironmentObject private var store: ArchiveStore
     @State private var isImporterPresented = false
@@ -55,7 +60,7 @@ struct ChatListView: View {
         }
         .fileImporter(
             isPresented: $isImporterPresented,
-            allowedContentTypes: [.folder, .data],
+            allowedContentTypes: [.folder, .directory, .data],
             allowsMultipleSelection: false
         ) { result in
             switch result {
@@ -1078,7 +1083,32 @@ private struct ArchiveInstructionsView: View {
                             InstructionInfoRow(
                                 title: "Source code",
                                 text: "Read setup notes and extractor documentation in the GitHub repository.",
-                                url: URL(string: "https://github.com/tabbycat18/ios-whatsapp-archiver")
+                                linkLabel: "Open GitHub repository",
+                                url: AppConfig.repositoryURL
+                            )
+                        ]
+                    )
+
+                    InstructionInfoSection(
+                        title: "Support",
+                        systemImage: "heart",
+                        rows: [
+                            InstructionInfoRow(
+                                title: "Support the project",
+                                text: "WA Archiver is free and open-source. Optional support helps me pay for the Apple Developer Program so I can publish it on TestFlight/App Store, and helps with future maintenance. No paid features. No locked content.",
+                                linkLabel: "Support the project",
+                                url: AppConfig.supportURL
+                            )
+                        ]
+                    )
+
+                    InstructionInfoSection(
+                        title: "Project",
+                        systemImage: "checkmark.shield",
+                        rows: [
+                            InstructionInfoRow(
+                                title: "Independent project",
+                                text: "WA Archiver is an independent open-source project and is not affiliated with, endorsed by, or sponsored by WhatsApp LLC or Meta Platforms, Inc. WhatsApp is a trademark of its respective owner."
                             )
                         ]
                     )
@@ -1172,7 +1202,7 @@ private struct InstructionInfoSection: View {
                             .fixedSize(horizontal: false, vertical: true)
 
                         if let url = row.url {
-                            Link("Open GitHub repository", destination: url)
+                            Link(row.linkLabel ?? "Open link", destination: url)
                                 .font(.subheadline.weight(.semibold))
                         }
                     }
@@ -1194,7 +1224,8 @@ private struct InstructionInfoRow: Identifiable {
     var id: String { title }
     let title: String
     let text: String
-    var url: URL?
+    var linkLabel: String? = nil
+    var url: URL? = nil
 }
 
 private struct ChatRowView: View {

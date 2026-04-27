@@ -69,6 +69,7 @@ struct MessageListView: View {
                 wallpaperDarkURL: wallpaperDarkURL,
                 wallpaperTheme: wallpaperTheme
             )
+            .allowsHitTesting(false)
 
             ScrollViewReader { proxy in
                 List {
@@ -126,6 +127,7 @@ struct MessageListView: View {
                 }
             }
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .offset(x: edgeBackDragOffset)
         .animation(.interactiveSpring(response: 0.24, dampingFraction: 0.86), value: edgeBackDragOffset)
         .contentShape(Rectangle())
@@ -328,26 +330,12 @@ private struct ChatWallpaperBackgroundView: View {
     @State private var loadedWallpaperURL: URL?
 
     var body: some View {
-        ZStack {
-            switch wallpaperTheme {
-            case .archiveDefault:
-                Color(.systemBackground)
-
-                if let image {
-                    Image(decorative: image, scale: 1, orientation: .up)
-                        .resizable()
-                        .scaledToFill()
-                        .opacity(0.9)
-                }
-            case .plain:
-                Color(.systemBackground)
-            case .classic:
-                ClassicDoodleWallpaperView()
-            case .softPattern:
-                ProceduralChatWallpaperView(theme: wallpaperTheme)
-            case .demo:
-                AssetChatWallpaperView(assetName: "WallpaperDemoArchive")
+        GeometryReader { proxy in
+            ZStack {
+                wallpaperContent(size: proxy.size)
             }
+            .frame(width: proxy.size.width, height: proxy.size.height)
+            .clipped()
         }
         .ignoresSafeArea()
         .task(id: wallpaperTaskID) {
@@ -355,12 +343,37 @@ private struct ChatWallpaperBackgroundView: View {
         }
     }
 
+    @ViewBuilder
+    private func wallpaperContent(size: CGSize) -> some View {
+        switch wallpaperTheme {
+        case .archiveDefault:
+            Color(.systemBackground)
+
+            if let image {
+                Image(decorative: image, scale: 1, orientation: .up)
+                    .resizable()
+                    .scaledToFill()
+                    .frame(width: size.width, height: size.height)
+                    .clipped()
+                    .opacity(0.9)
+            }
+        case .plain:
+            Color(.systemBackground)
+        case .classic:
+            ClassicDoodleWallpaperView()
+                .frame(width: size.width, height: size.height)
+        case .softPattern:
+            ProceduralChatWallpaperView(theme: wallpaperTheme)
+                .frame(width: size.width, height: size.height)
+        case .demo:
+            AssetChatWallpaperView(assetName: "WallpaperDemoArchive")
+                .frame(width: size.width, height: size.height)
+        }
+    }
+
     private var resolvedWallpaperURL: URL? {
         guard wallpaperTheme == .archiveDefault else { return nil }
-        if colorScheme == .dark {
-            return wallpaperDarkURL ?? wallpaperURL
-        }
-        return wallpaperURL
+        return wallpaperURL ?? wallpaperDarkURL
     }
 
     private var wallpaperTaskID: String {

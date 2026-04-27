@@ -195,25 +195,27 @@ private final class ArchiveAccess {
 
         try self.init(
             savedArchiveID: savedArchive.id,
-            selectedURL: resolvedURL,
-            selectedResourceIsDirectory: savedArchive.selectedResourceIsDirectory
+            selectedURL: resolvedURL
         )
     }
 
-    init(savedArchiveID: UUID, selectedURL: URL, selectedResourceIsDirectory: Bool) throws {
+    init(savedArchiveID: UUID, selectedURL: URL) throws {
         self.savedArchiveID = savedArchiveID
         self.securityScopedURL = selectedURL
         self.didStartSecurityScope = selectedURL.startAccessingSecurityScopedResource()
+        let resolvedSelection: ResolvedArchiveSelection
 
-        if selectedResourceIsDirectory {
-            self.archiveRootURL = selectedURL.standardizedFileURL
-            self.databaseURL = selectedURL
-                .appendingPathComponent("ChatStorage.sqlite")
-                .standardizedFileURL
-        } else {
-            self.archiveRootURL = selectedURL.deletingLastPathComponent().standardizedFileURL
-            self.databaseURL = selectedURL.standardizedFileURL
+        do {
+            resolvedSelection = try ArchiveSelectionResolver.resolve(selectedURL)
+        } catch {
+            if didStartSecurityScope {
+                selectedURL.stopAccessingSecurityScopedResource()
+            }
+            throw error
         }
+
+        self.archiveRootURL = resolvedSelection.archiveRootURL
+        self.databaseURL = resolvedSelection.databaseURL
 
         guard FileManager.default.fileExists(atPath: databaseURL.path) else {
             if didStartSecurityScope {
@@ -725,18 +727,14 @@ final class ArchiveStore: ObservableObject {
         }
 
         do {
-            let selectedResourceIsDirectory = try isDirectory(url)
-            let databaseURL = try databaseURL(in: url)
-            guard FileManager.default.fileExists(atPath: databaseURL.path) else {
-                throw ArchiveImportError.missingDatabase(databaseURL)
-            }
+            let resolvedSelection = try ArchiveSelectionResolver.resolve(url)
 
             var savedArchive = SavedArchive(
                 id: UUID(),
                 displayName: kind.defaultDisplayName,
                 archiveKind: kind.rawValue,
                 bookmarkData: try Self.bookmarkData(for: url),
-                selectedResourceIsDirectory: selectedResourceIsDirectory,
+                selectedResourceIsDirectory: resolvedSelection.selectedResourceIsDirectory,
                 createdAt: Date(),
                 lastOpenedAt: nil,
                 chatCount: nil
@@ -744,8 +742,7 @@ final class ArchiveStore: ObservableObject {
 
             let access = try ArchiveAccess(
                 savedArchiveID: savedArchive.id,
-                selectedURL: url,
-                selectedResourceIsDirectory: selectedResourceIsDirectory
+                selectedURL: url
             )
             try await openArchive(savedArchive: &savedArchive, access: access, shouldSave: true)
         } catch {
@@ -814,8 +811,7 @@ final class ArchiveStore: ObservableObject {
             )
             let access = try ArchiveAccess(
                 savedArchiveID: demoArchive.id,
-                selectedURL: demoArchiveURL,
-                selectedResourceIsDirectory: true
+                selectedURL: demoArchiveURL
             )
             try await openArchive(savedArchive: &demoArchive, access: access, shouldSave: false)
         } catch {
@@ -848,15 +844,11 @@ final class ArchiveStore: ObservableObject {
         }
 
         do {
-            let selectedResourceIsDirectory = try isDirectory(url)
-            let databaseURL = try databaseURL(in: url)
-            guard FileManager.default.fileExists(atPath: databaseURL.path) else {
-                throw ArchiveImportError.missingDatabase(databaseURL)
-            }
+            let resolvedSelection = try ArchiveSelectionResolver.resolve(url)
 
             var savedArchive = savedArchives[index]
             savedArchive.bookmarkData = try Self.bookmarkData(for: url)
-            savedArchive.selectedResourceIsDirectory = selectedResourceIsDirectory
+            savedArchive.selectedResourceIsDirectory = resolvedSelection.selectedResourceIsDirectory
             if savedArchive.kind == nil {
                 let fallbackKind = availableKind(excluding: savedArchive.id) ?? .whatsApp
                 savedArchive.kind = fallbackKind
@@ -865,8 +857,7 @@ final class ArchiveStore: ObservableObject {
 
             let access = try ArchiveAccess(
                 savedArchiveID: savedArchive.id,
-                selectedURL: url,
-                selectedResourceIsDirectory: selectedResourceIsDirectory
+                selectedURL: url
             )
             try await openArchive(savedArchive: &savedArchive, access: access, shouldSave: true)
             archivesNeedingRelink.remove(id)
@@ -1149,10 +1140,8 @@ final class ArchiveStore: ObservableObject {
             timer.mark("fetchChats returned count=\(loadedChats.count)")
             #endif
 
-            let lightWallpaperURL = Self.wallpaperURL(in: archiveRootURL, filename: "current_wallpaper.jpg")
+            let archiveDefaultWallpaperURL = Self.wallpaperURL(in: archiveRootURL, filename: "current_wallpaper.jpg")
                 ?? Self.wallpaperURL(in: archiveRootURL, filename: "current_wallpaper_dark.jpg")
-            let darkWallpaperURL = Self.wallpaperURL(in: archiveRootURL, filename: "current_wallpaper_dark.jpg")
-                ?? lightWallpaperURL
             #if DEBUG
             timer.mark("wallpaper setup")
             #endif
@@ -1160,8 +1149,8 @@ final class ArchiveStore: ObservableObject {
             return OpenArchiveSnapshot(
                 database: openedDatabase,
                 chats: loadedChats,
-                wallpaperURL: lightWallpaperURL,
-                wallpaperDarkURL: darkWallpaperURL,
+                wallpaperURL: archiveDefaultWallpaperURL,
+                wallpaperDarkURL: archiveDefaultWallpaperURL,
                 openedAt: openedAt
             )
         }.value
@@ -1380,18 +1369,6 @@ final class ArchiveStore: ObservableObject {
 
     static let demoArchiveID = UUID(uuidString: "2A625145-C65F-43B8-AF6B-74E33AF8D20B")!
     private static var cachedDemoArchiveURL: URL?
-
-    private func databaseURL(in pickedURL: URL) throws -> URL {
-        if try isDirectory(pickedURL) {
-            return pickedURL.appendingPathComponent("ChatStorage.sqlite")
-        }
-        return pickedURL
-    }
-
-    private func isDirectory(_ url: URL) throws -> Bool {
-        let values = try url.resourceValues(forKeys: [.isDirectoryKey])
-        return values.isDirectory == true
-    }
 
     private func upsert(_ archive: SavedArchive) {
         if let index = savedArchives.firstIndex(where: { $0.id == archive.id }) {

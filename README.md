@@ -1,33 +1,99 @@
-# iOS WhatsApp Archiver
+# WA Archiver
 
-A local, read-only iPhone WhatsApp archive extractor and viewer.
+WA Archiver is a free and open-source tool for reading an extracted iPhone
+WhatsApp archive locally. It has two parts:
 
-This project is not affiliated with WhatsApp, Meta, or Apple.
+- a local Python extractor that reads your own encrypted iPhone backup on a Mac;
+- a native SwiftUI iPhone/iPad viewer that opens the extracted archive folder.
+
+The project is pre-release, but the current app can browse chats, load message
+history incrementally, show available local media, and open a bundled synthetic
+demo archive.
+
+WA Archiver is an independent open-source project and is not affiliated with,
+endorsed by, or sponsored by WhatsApp LLC or Meta Platforms, Inc. WhatsApp is a
+trademark of its respective owner.
 
 ## What It Does
 
-- Extracts WhatsApp data from your own local iPhone backup using a local script.
-- Opens the extracted archive in a SwiftUI iPhone/iPad viewer.
-- Lets you browse chats and available media locally.
-- Includes a synthetic demo archive for testing.
+- Extracts WhatsApp shared-container files from a local iPhone backup.
+- Opens an extracted archive folder containing `ChatStorage.sqlite`.
+- Reads the archive in place with read-only SQLite access.
+- Browses chats, text messages, available photos, videos, audio, and documents.
+- Remembers local archive shortcuts without copying or uploading archive data.
+- Includes a small synthetic demo archive for screenshots, testing, and public
+  examples.
+
+## Privacy Model
+
+WA Archiver is local-first by design:
+
+- No server is included in this project.
+- No archive upload is performed by this project.
+- The extractor reads local backup files and writes a local extracted archive.
+- The iOS viewer opens selected archive files read-only.
+- Saved archive records are local bookmark metadata, not copied chat content.
+- Optional iPhone Contacts matching is local, read-only, and user initiated.
+
+Your archive can contain private messages, contacts, account metadata, photos,
+videos, documents, and other sensitive files. Keep real archives under ignored
+local folders such as `data/` or `exports/`, and never commit private WhatsApp
+databases, media, generated exports, private screenshots, or iPhone backups.
+
+See [Privacy](PRIVACY.md), [Security](SECURITY.md), and the
+[user guide privacy notes](docs/user-guide.md#privacy-and-safety).
 
 ## Current Status
 
-- Pre-release and under active development.
-- Text browsing, media browsing, archive slots, and the bundled demo archive are
-  implemented.
-- Installation currently requires an Xcode/developer workflow unless another
-  distribution path is added later.
-- Some edge cases remain, especially around private WhatsApp schema details,
-  contact identity history, very large archives, and unsupported media types.
+This is an early public project for technical users and testers. It is useful
+today if you are comfortable with Xcode and local backup extraction, but it is
+not yet a polished one-tap consumer install.
 
-See [Status and capabilities](docs/status.md) for the full feature list,
-limitations, completed milestones, and known issues.
+Implemented highlights include:
 
-## Quick Start
+- local iPhone backup extraction;
+- native iOS archive viewer;
+- saved archive slots for WhatsApp and WhatsApp Business;
+- chat list and message browsing;
+- incremental loading for large chats;
+- conservative status/story separation;
+- lazy local media rendering;
+- optional local iPhone Contacts matching;
+- bundled offline Help / Instructions screen;
+- bundled synthetic demo archive.
 
-1. Create an encrypted local iPhone backup in Finder.
-2. Run the extractor:
+See [Status and capabilities](docs/status.md) for the detailed feature list,
+known issues, and current behavior.
+
+## Installation Status
+
+The current install path is an Xcode/developer install:
+
+```bash
+open apps/ios-archive-viewer/WhatsAppArchiveViewer.xcodeproj
+```
+
+Build and run the app from Xcode on an iPhone, iPad, or simulator. Full Xcode is
+required for normal iOS builds; Command Line Tools alone are not enough for
+simulator/device builds.
+
+There is no public TestFlight or App Store build yet. TestFlight/App Store
+distribution requires Apple Developer Program membership, signing, App Store
+Connect setup, review steps, and ongoing maintenance. Free Apple Account
+installs from Xcode can expire after 7 days and may need to be reinstalled from
+Xcode when the provisioning profile expires.
+
+GitHub is not a one-tap iPhone installation path. A random GitHub-hosted `.ipa`
+is not enough for most users because iOS still requires valid signing,
+provisioning, and an Apple-supported distribution path.
+
+See [installation and distribution](docs/distribution.md) for the longer
+breakdown.
+
+## Basic Archive Workflow
+
+1. Create an encrypted local iPhone backup on your Mac with Finder.
+2. Run the extractor from this repository:
 
    ```bash
    python3 tools/extract_ios_whatsapp_backup.py \
@@ -35,75 +101,91 @@ limitations, completed milestones, and known issues.
      "data/iphone-whatsapp-export"
    ```
 
-3. Build and run the viewer from Xcode:
+3. Transfer the extracted archive folder to your iPhone using Files, iCloud
+   Drive, AirDrop, Finder, or another user-managed local workflow.
+4. Open WA Archiver and add the extracted folder that contains
+   `ChatStorage.sqlite`.
 
-   ```bash
-   open apps/ios-archive-viewer/WhatsAppArchiveViewer.xcodeproj
-   ```
+Selecting the whole archive folder is preferred over selecting only
+`ChatStorage.sqlite` because media availability, previews, wallpaper lookup,
+and profile/avatar lookup use the archive root.
 
-4. Add the extracted folder that contains `ChatStorage.sqlite`.
-5. Browse chats and available media locally.
-
-For detailed steps, transfer notes, and troubleshooting, read the
-[user guide](docs/user-guide.md) and
-[iPhone backup extraction guide](docs/iphone-backup-extraction.md).
-
-## Install / Distribution Status
-
-Developers can build and install the app with Xcode. A stable personal install
-on your own iPhone requires Apple Developer Program signing; free Apple account
-builds can expire and require reinstalling. TestFlight is the realistic
-near-term path for early users and pre-release testers, but it is not currently
-published for this project. GitHub is not a one-tap iPhone install path.
-
-### Can I Install This Directly From GitHub?
-
-Not today. GitHub can host source code, documentation, demo fixtures, and even
-downloadable build artifacts such as an `.ipa`. iOS will only install builds
-that are properly signed, provisioned, and distributed through an
-Apple-supported path. A random GitHub-hosted `.ipa` download alone is not
-enough for most iPhone users.
-
-See [installation and distribution](docs/distribution.md) for details.
+Detailed extraction and transfer notes are in the
+[iPhone backup extraction guide](docs/iphone-backup-extraction.md) and
+[user guide](docs/user-guide.md).
 
 ## Demo Archive
 
-The app bundles a fully synthetic demo archive for testing. It contains no real
-WhatsApp data, real phone numbers, private messages, private media, or private
-screenshots.
-
-From the archive home screen, tap `Try Demo Archive`. Developers can also open
-the fixture manually from:
+The app bundles a fully synthetic demo archive:
 
 ```text
 test-fixtures/demo-archive/
 ```
 
+From the archive home screen, tap `Try Demo Archive`. The demo contains no real
+WhatsApp data, no real phone numbers, no private messages, no private media,
+and no private screenshots. Public screenshots and docs should use this demo
+fixture, not private chats.
+
 See the [demo archive README](test-fixtures/demo-archive/README.md) for fixture
-coverage and regeneration notes. Any screenshots used for demos or docs should
-come from this synthetic archive, not private chats.
+coverage and regeneration notes.
 
-## Privacy
+## Screenshots
 
-- Local-only: this project has no server.
-- No cloud upload is performed by this project.
-- The extractor reads a local iPhone backup and writes a local extracted archive.
-- The viewer opens local archive files read-only.
-- Do not commit private archives, WhatsApp databases, media folders, generated
-  exports, screenshots from private chats, or copied backup data.
-- Third-party transfer services are optional and user-managed.
+No public screenshots are committed yet. When screenshots are added, they should
+come only from the synthetic demo archive and can be placed here:
 
-For more detail, see [Privacy](PRIVACY.md), [Security](SECURITY.md), and the
-privacy section in the [user guide](docs/user-guide.md#privacy-and-safety).
+- Archive home
+- Chat list
+- Message view
+- Demo media view
+
+Do not use screenshots from real chats or real archives.
+
+## Known Limitations
+
+- Current installation requires Xcode or developer/test distribution.
+- No public TestFlight or App Store build is available yet.
+- Free Apple Account installs from Xcode can expire after 7 days.
+- Direct zip/package import is not implemented.
+- Very large raw archive folder transfers can be slow.
+- Media support is best effort and lazy; unsupported or missing files stay as
+  placeholders.
+- WhatsApp private database schema details are not fully mapped.
+- `@lid` identifiers and uncertain contact mappings remain conservative.
+
+## Roadmap
+
+Near-term work:
+
+- Continue validating private schema mappings with synthetic/public fixtures.
+- Improve non-developer installation and first-run guidance.
+- Add packaged archive import support.
+- Expand media browsing and attachment support.
+- Improve performance for very large archives.
+- Prepare a TestFlight/App Store path when signing, review, and maintenance are
+  ready.
+
+See [Roadmap](docs/roadmap.md) for the full project roadmap.
+
+## Optional Support
+
+WA Archiver is free and open-source. Optional support helps pay for the Apple
+Developer Program so the app can eventually be published on TestFlight/App
+Store, and helps with future maintenance.
+
+No paid features. No locked content.
+
+<!-- TODO: Add the maintainer's Buy Me a Coffee/support URL before public sharing if donations should be linked from the README. -->
 
 ## Documentation
 
 - [Full user guide](docs/user-guide.md)
 - [iPhone backup extraction](docs/iphone-backup-extraction.md)
 - [Installation and distribution](docs/distribution.md)
-- [Release checklist](docs/release-checklist.md)
 - [Status and capabilities](docs/status.md)
 - [Roadmap](docs/roadmap.md)
+- [Release checklist](docs/release-checklist.md)
 - [Large archive transfer experiments](docs/transfer-experiments.md)
 - [Development notes](docs/development.md)
 - [Archive format](docs/archive-format.md)
@@ -120,6 +202,15 @@ tools/                      Local backup extraction and export tools
 docs/                       User, status, architecture, and format notes
 test-fixtures/              Synthetic fixture policy and demo archive
 ```
+
+## Security Warning
+
+Before committing or sharing anything from this repository, check that you are
+not including real WhatsApp archives or private backups. Do not stage or commit
+`data/`, `exports/`, `ChatStorage.sqlite*`, `ContactsV2.sqlite*`, `Media/`,
+`Message/`, generated HTML exports, copied iPhone backups, or screenshots from
+private chats. The synthetic fixture under `test-fixtures/demo-archive/` is the
+only allowed demo archive data.
 
 ## Acknowledgement
 

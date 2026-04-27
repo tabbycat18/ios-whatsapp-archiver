@@ -1,8 +1,12 @@
-# iOS WhatsApp Archive Viewer
+# WA Archiver iOS Viewer
 
 This is a native SwiftUI iPhone and iPad app for local, read-only inspection of
 an extracted iOS WhatsApp archive. It is part of
-[iOS WhatsApp Archiver](../../README.md).
+[WA Archiver](../../README.md).
+
+WA Archiver is an independent open-source project and is not affiliated with,
+endorsed by, or sponsored by WhatsApp LLC or Meta Platforms, Inc. WhatsApp is a
+trademark of its respective owner.
 
 Private WhatsApp data must not be committed. Keep `ChatStorage.sqlite`,
 `ContactsV2.sqlite`, `Media/`, `Message/`, generated exports, and private
@@ -69,7 +73,12 @@ come from the synthetic demo archive, not private chats.
 The archive home screen includes a `How It Works` card and a Help toolbar
 button. The instructions screen is bundled in SwiftUI and works offline. It
 covers backup creation, extraction, transfer, archive adding, demo usage,
-privacy, and current installation status without loading remote GitHub docs.
+privacy, optional project support, trademark/affiliation notes, and current
+installation status without loading remote GitHub docs.
+
+The optional support row is intentionally low pressure and appears only in the
+Help / Instructions sheet, not in the main archive import or browsing flow. No
+features are paid, gated, or unlocked through support.
 
 ## Development Notes
 

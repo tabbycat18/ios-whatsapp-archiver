@@ -70,9 +70,11 @@ root:
 - `current_wallpaper_dark.jpg`
 
 If one is present, it is loaded lazily and used as the message-list background.
-The app also has a local wallpaper selector: Archive Default uses these archive
-files consistently, while built-in Classic, Soft Pattern, Demo, and Plain
-styles are app-generated and do not modify the archive.
+The app also has a local wallpaper selector: Archive Default prefers
+`current_wallpaper.jpg` and uses that same archive wallpaper in light and dark
+mode. `current_wallpaper_dark.jpg` is a fallback only when the light wallpaper
+file is absent. Built-in Classic, Soft Pattern, Demo, and Plain styles are
+app-generated and do not modify the archive.
 
 The viewer can also use local profile/avatar cache images when they are present
 in the selected archive. Resolution is best-effort and conservative: the app
@@ -208,11 +210,12 @@ directly from the chat attachment. The app does not upload media or copy media
 files into Git.
 
 Chat wallpaper rendering is also lazy. The viewer downscales
-`current_wallpaper.jpg` or `current_wallpaper_dark.jpg` from the archive root
-before using it as the message background. Wallpaper files are not copied into
-Git and full local paths are not shown in the normal UI. The demo fixture and
-built-in wallpaper styles use fully synthetic subtle patterns, not copied
-WhatsApp assets.
+`current_wallpaper.jpg` from the archive root before using it as the Archive
+Default message background in both light and dark mode, falling back to
+`current_wallpaper_dark.jpg` only if the light file is absent. Wallpaper files
+are not copied into Git and full local paths are not shown in the normal UI. The
+demo fixture and built-in wallpaper styles use fully synthetic subtle patterns,
+not copied WhatsApp assets.
 
 The viewer does not scan or preload all media globally. Missing or unavailable
 media stays as a placeholder, while unsupported metadata-only rows are kept out

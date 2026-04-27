@@ -20,6 +20,7 @@
 		6D3F20292C10000100A1B001 /* PhoneNumberNormalizer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6D3F20282C10000100A1B001 /* PhoneNumberNormalizer.swift */; };
 		6D3F202B2C10000100A1B001 /* DeviceContactsResolver.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6D3F202A2C10000100A1B001 /* DeviceContactsResolver.swift */; };
 		6D3F202D2C10000100A1B001 /* ContactNameResolver.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6D3F202C2C10000100A1B001 /* ContactNameResolver.swift */; };
+		6D3F20312C10000100A1B001 /* ArchiveSelectionResolver.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6D3F20302C10000100A1B001 /* ArchiveSelectionResolver.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -37,6 +38,7 @@
 		6D3F20282C10000100A1B001 /* PhoneNumberNormalizer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhoneNumberNormalizer.swift; sourceTree = "<group>"; };
 		6D3F202A2C10000100A1B001 /* DeviceContactsResolver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeviceContactsResolver.swift; sourceTree = "<group>"; };
 		6D3F202C2C10000100A1B001 /* ContactNameResolver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContactNameResolver.swift; sourceTree = "<group>"; };
+		6D3F20302C10000100A1B001 /* ArchiveSelectionResolver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArchiveSelectionResolver.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -72,6 +74,7 @@
 			isa = PBXGroup;
 			children = (
 				6D3F200A2C10000100A1B001 /* WhatsAppArchiveApp.swift */,
+				6D3F20302C10000100A1B001 /* ArchiveSelectionResolver.swift */,
 				6D3F20212C10000100A1B001 /* Assets.xcassets */,
 				6D3F20242C10000100A1B001 /* AppIcon.icon */,
 				6D3F20262C10000100A1B001 /* DemoArchive */,
@@ -155,7 +158,7 @@
 			attributes = {
 				BuildIndependentTargetsInParallel = 1;
 				LastSwiftUpdateCheck = 1530;
-				LastUpgradeCheck = 1530;
+				LastUpgradeCheck = 2630;
 				TargetAttributes = {
 					6D3F20052C10000100A1B001 = {
 						CreatedOnToolsVersion = 15.3;
@@ -199,6 +202,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				6D3F200B2C10000100A1B001 /* WhatsAppArchiveApp.swift in Sources */,
+				6D3F20312C10000100A1B001 /* ArchiveSelectionResolver.swift in Sources */,
 				6D3F200D2C10000100A1B001 /* ChatSummary.swift in Sources */,
 				6D3F200F2C10000100A1B001 /* MessageRow.swift in Sources */,
 				6D3F20112C10000100A1B001 /* WhatsAppDatabase.swift in Sources */,
@@ -341,10 +345,11 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = "WA Archiver";
 				INFOPLIST_KEY_CFBundleName = "WA Archiver";
-				INFOPLIST_KEY_NSContactsUsageDescription = "iOS WhatsApp Archiver can use your contacts locally to show saved names for archived chat participants.";
+				INFOPLIST_KEY_NSContactsUsageDescription = "WA Archiver can use your contacts locally to show saved names for archived chat participants.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UIRequiresFullScreen = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -374,10 +379,11 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = "WA Archiver";
 				INFOPLIST_KEY_CFBundleName = "WA Archiver";
-				INFOPLIST_KEY_NSContactsUsageDescription = "iOS WhatsApp Archiver can use your contacts locally to show saved names for archived chat participants.";
+				INFOPLIST_KEY_NSContactsUsageDescription = "WA Archiver can use your contacts locally to show saved names for archived chat participants.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UIRequiresFullScreen = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
