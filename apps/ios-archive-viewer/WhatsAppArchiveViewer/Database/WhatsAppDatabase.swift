@@ -147,10 +147,12 @@ private struct DatabaseOpenDebugTimer {
 
 final class ProfilePhotoResolver {
     private let archiveRootURL: URL
+    private let databaseURL: URL
     private let fileManager: FileManager
     private var resolvedURLsByCacheKey: [String: URL] = [:]
     private var unresolvedCacheKeys = Set<String>()
-    private var indexedProfilePhotos: [ProfilePhotoCandidate]?
+    private var database: OpaquePointer?
+    private var didDiscoverMissingProfilePictureTable = false
     private lazy var existingProfileDirectoryURLs: [URL] = Self.profileDirectories.compactMap { directory in
         let directoryURL = archiveRootURL.appendingPathComponent(directory, isDirectory: true)
         var isDirectory: ObjCBool = false
@@ -161,25 +163,36 @@ final class ProfilePhotoResolver {
         return directoryURL
     }
 
-    init(archiveRootURL: URL, fileManager: FileManager = .default) {
+    init(archiveRootURL: URL, databaseURL: URL? = nil, fileManager: FileManager = .default) {
         self.archiveRootURL = archiveRootURL.standardizedFileURL
+        self.databaseURL = (databaseURL ?? archiveRootURL.appendingPathComponent("ChatStorage.sqlite")).standardizedFileURL
         self.fileManager = fileManager
+    }
+
+    deinit {
+        if let database {
+            sqlite3_close(database)
+        }
     }
 
     func profilePhotoURL(
         contactJID: String?,
         contactIdentifier: String?,
-        additionalIdentifiers: [String] = [],
-        allowIndexedFallback: Bool = false
+        additionalIdentifiers: [String] = []
     ) -> URL? {
+        let lookupIdentifiers = profilePictureLookupIdentifiers(
+            contactJID: contactJID,
+            contactIdentifier: contactIdentifier,
+            additionalIdentifiers: additionalIdentifiers
+        )
         let candidateFileNames = candidateFileNames(
             contactJID: contactJID,
             contactIdentifier: contactIdentifier,
             additionalIdentifiers: additionalIdentifiers
         )
-        guard !candidateFileNames.isEmpty else { return nil }
+        guard !lookupIdentifiers.isEmpty || !candidateFileNames.isEmpty else { return nil }
 
-        let cacheKey = "\(allowIndexedFallback ? "indexed" : "direct")|\(candidateFileNames.joined(separator: "|"))"
+        let cacheKey = "\(lookupIdentifiers.joined(separator: "|"))|\(candidateFileNames.joined(separator: "|"))"
         if let cachedURL = resolvedURLsByCacheKey[cacheKey] {
             return cachedURL
         }
@@ -188,8 +201,8 @@ final class ProfilePhotoResolver {
         }
 
         let resolvedURL = resolveProfilePhotoURL(
-            candidateFileNames: candidateFileNames,
-            allowIndexedFallback: allowIndexedFallback
+            lookupIdentifiers: lookupIdentifiers,
+            candidateFileNames: candidateFileNames
         )
         if let resolvedURL {
             resolvedURLsByCacheKey[cacheKey] = resolvedURL
@@ -199,87 +212,165 @@ final class ProfilePhotoResolver {
         return resolvedURL
     }
 
-    private func resolveProfilePhotoURL(candidateFileNames: [String], allowIndexedFallback: Bool) -> URL? {
+    private func resolveProfilePhotoURL(lookupIdentifiers: [String], candidateFileNames: [String]) -> URL? {
+        if let profilePictureItemURL = resolveProfilePictureItemURL(lookupIdentifiers: lookupIdentifiers) {
+            return profilePictureItemURL
+        }
+
         for directoryURL in existingProfileDirectoryURLs {
             for fileName in candidateFileNames {
-                for fileExtension in Self.imageExtensions {
-                    let candidate = directoryURL
-                        .appendingPathComponent(fileName)
-                        .appendingPathExtension(fileExtension)
-                        .standardizedFileURL
+                for candidate in directCandidateURLs(directoryURL: directoryURL, fileName: fileName) {
                     if isReadableFile(candidate) {
                         return candidate
                     }
                 }
             }
         }
-        guard allowIndexedFallback else { return nil }
-        return resolveProfilePhotoURLFromIndex(candidateFileNames: candidateFileNames)
+        return nil
     }
 
-    private func resolveProfilePhotoURLFromIndex(candidateFileNames: [String]) -> URL? {
-        let indexedPhotos = indexedProfilePhotoCandidates()
-        guard !indexedPhotos.isEmpty else { return nil }
-
-        let candidateTokens = Set(candidateFileNames.map(normalizedToken).filter { !$0.isEmpty })
-        for photo in indexedPhotos where candidateTokens.contains(photo.normalizedFileName) {
-            return photo.url
+    private func resolveProfilePictureItemURL(lookupIdentifiers: [String]) -> URL? {
+        guard !lookupIdentifiers.isEmpty,
+              let database = profilePictureDatabase(),
+              !didDiscoverMissingProfilePictureTable,
+              (try? tableExists("ZWAPROFILEPICTUREITEM")) == true,
+              let columns = try? columns(in: "ZWAPROFILEPICTUREITEM"),
+              columns.contains("ZJID"),
+              columns.contains("ZPATH")
+        else {
+            return nil
         }
 
-        for token in candidateTokens.sorted(by: { $0.count > $1.count }) where token.count >= 6 {
-            if let photo = indexedPhotos.first(where: { $0.normalizedFileName.contains(token) }) {
-                return photo.url
+        let limitedIdentifiers = Array(lookupIdentifiers.prefix(Self.maxProfilePictureLookupIdentifiers))
+        let placeholders = Array(repeating: "?", count: limitedIdentifiers.count).joined(separator: ", ")
+        let orderSQL = columns.contains("ZREQUESTDATE")
+            ? "ORDER BY ZREQUESTDATE DESC, Z_PK DESC"
+            : "ORDER BY Z_PK DESC"
+        let sql = """
+            SELECT ZPATH
+            FROM ZWAPROFILEPICTUREITEM
+            WHERE lower(trim(ZJID)) IN (\(placeholders))
+                AND ZPATH IS NOT NULL
+                AND trim(ZPATH) != ''
+            \(orderSQL)
+            LIMIT \(Self.maxProfilePictureItemRowsPerLookup)
+            """
+        guard let statement = try? prepare(sql, database: database) else {
+            return nil
+        }
+        defer { sqlite3_finalize(statement) }
+
+        for (index, identifier) in limitedIdentifiers.enumerated() {
+            sqlite3_bind_text(statement, Int32(index + 1), identifier, -1, sqliteTransient)
+        }
+
+        var stepResult = sqlite3_step(statement)
+        while stepResult == SQLITE_ROW {
+            if let storedPath = string(statement, 0) {
+                for candidate in profilePictureItemCandidateURLs(storedPath: storedPath) {
+                    if isReadableFile(candidate) {
+                        return candidate
+                    }
+                }
             }
+            stepResult = sqlite3_step(statement)
         }
 
         return nil
     }
 
-    private func indexedProfilePhotoCandidates() -> [ProfilePhotoCandidate] {
-        if let indexedProfilePhotos {
-            return indexedProfilePhotos
+    private func profilePictureDatabase() -> OpaquePointer? {
+        if let database {
+            return database
+        }
+        guard fileManager.fileExists(atPath: databaseURL.path) else {
+            return nil
         }
 
-        let keys: Set<URLResourceKey> = [.isRegularFileKey, .isReadableKey, .isHiddenKey]
-        let options: FileManager.DirectoryEnumerationOptions = [.skipsHiddenFiles, .skipsPackageDescendants]
-        var candidates: [ProfilePhotoCandidate] = []
-        var seenPaths = Set<String>()
-
-        for directoryURL in existingProfileDirectoryURLs {
-            guard let enumerator = fileManager.enumerator(
-                at: directoryURL,
-                includingPropertiesForKeys: Array(keys),
-                options: options
-            )
-            else {
-                continue
+        var connection: OpaquePointer?
+        let result = sqlite3_open_v2(databaseURL.path, &connection, SQLITE_OPEN_READONLY | SQLITE_OPEN_FULLMUTEX, nil)
+        guard result == SQLITE_OK, let connection else {
+            if let connection {
+                sqlite3_close(connection)
             }
-
-            for case let fileURL as URL in enumerator {
-                guard seenPaths.insert(fileURL.path).inserted,
-                      isPotentialProfileImage(fileURL),
-                      let values = try? fileURL.resourceValues(forKeys: keys),
-                      values.isRegularFile == true,
-                      values.isReadable != false,
-                      values.isHidden != true
-                else {
-                    continue
-                }
-
-                let fileName = fileURL.deletingPathExtension().lastPathComponent
-                let normalizedFileName = normalizedToken(fileName)
-                guard normalizedFileName.count >= 5 else { continue }
-                candidates.append(ProfilePhotoCandidate(url: fileURL.standardizedFileURL, normalizedFileName: normalizedFileName))
-            }
+            return nil
         }
 
-        indexedProfilePhotos = candidates
-        return candidates
+        database = connection
+        do {
+            try execute("PRAGMA query_only = ON", database: connection)
+        } catch {
+            sqlite3_close(connection)
+            database = nil
+            return nil
+        }
+        return connection
     }
 
-    private func isPotentialProfileImage(_ url: URL) -> Bool {
-        let fileExtension = url.pathExtension.lowercased()
-        return fileExtension.isEmpty || Self.imageExtensions.contains(fileExtension) || Self.extraImageLikeExtensions.contains(fileExtension)
+    private func tableExists(_ table: String) throws -> Bool {
+        guard let database = profilePictureDatabase() else { return false }
+        let statement = try prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ? LIMIT 1", database: database)
+        defer { sqlite3_finalize(statement) }
+        sqlite3_bind_text(statement, 1, table, -1, sqliteTransient)
+        let result = sqlite3_step(statement)
+        if result == SQLITE_ROW {
+            return true
+        }
+        if result == SQLITE_DONE {
+            didDiscoverMissingProfilePictureTable = true
+            return false
+        }
+        throw WhatsAppDatabaseError.queryFailed(lastErrorMessage(database: database))
+    }
+
+    private func columns(in table: String) throws -> Set<String> {
+        guard let database = profilePictureDatabase() else { return [] }
+        let statement = try prepare("PRAGMA table_info(\(table))", database: database)
+        defer { sqlite3_finalize(statement) }
+
+        var columns = Set<String>()
+        var stepResult = sqlite3_step(statement)
+        while stepResult == SQLITE_ROW {
+            if let column = string(statement, 1) {
+                columns.insert(column)
+            }
+            stepResult = sqlite3_step(statement)
+        }
+        guard stepResult == SQLITE_DONE else {
+            throw WhatsAppDatabaseError.queryFailed(lastErrorMessage(database: database))
+        }
+        return columns
+    }
+
+    private func execute(_ sql: String, database: OpaquePointer) throws {
+        var errorMessage: UnsafeMutablePointer<Int8>?
+        let result = sqlite3_exec(database, sql, nil, nil, &errorMessage)
+        if result != SQLITE_OK {
+            let message = errorMessage.map { String(cString: $0) } ?? lastErrorMessage(database: database)
+            sqlite3_free(errorMessage)
+            throw WhatsAppDatabaseError.queryFailed(message)
+        }
+    }
+
+    private func prepare(_ sql: String, database: OpaquePointer) throws -> OpaquePointer {
+        var statement: OpaquePointer?
+        let result = sqlite3_prepare_v2(database, sql, -1, &statement, nil)
+        guard result == SQLITE_OK, let statement else {
+            throw WhatsAppDatabaseError.queryFailed(lastErrorMessage(database: database))
+        }
+        return statement
+    }
+
+    private func lastErrorMessage(database: OpaquePointer) -> String {
+        String(cString: sqlite3_errmsg(database))
+    }
+
+    private func string(_ statement: OpaquePointer, _ index: Int32) -> String? {
+        guard sqlite3_column_type(statement, index) != SQLITE_NULL,
+              let text = sqlite3_column_text(statement, index) else {
+            return nil
+        }
+        return String(cString: text)
     }
 
     private func isReadableFile(_ url: URL) -> Bool {
@@ -291,6 +382,137 @@ final class ProfilePhotoResolver {
             return false
         }
         return true
+    }
+
+    private func directCandidateURLs(directoryURL: URL, fileName: String) -> [URL] {
+        guard !fileName.contains("/") else { return [] }
+
+        var urls = [directoryURL.appendingPathComponent(fileName).standardizedFileURL]
+        let existingExtension = (fileName as NSString).pathExtension.lowercased()
+        for fileExtension in Self.imageExtensions where existingExtension != fileExtension {
+            urls.append(
+                directoryURL
+                    .appendingPathComponent(fileName)
+                    .appendingPathExtension(fileExtension)
+                    .standardizedFileURL
+            )
+        }
+        return deduplicatedURLs(urls)
+    }
+
+    private func profilePictureItemCandidateURLs(storedPath: String) -> [URL] {
+        let normalizedPath = storedPath
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .replacingOccurrences(of: "\\", with: "/")
+        guard !normalizedPath.isEmpty else { return [] }
+
+        var relativePaths: [String] = []
+        if let knownRelativePath = knownProfileRelativePath(from: normalizedPath) {
+            relativePaths.append(knownRelativePath)
+        }
+
+        if let basename = normalizedPath.split(separator: "/").last.map(String.init), !basename.isEmpty {
+            relativePaths.append("Media/Profile/\(basename)")
+        }
+
+        var urls: [URL] = []
+        for relativePath in relativePaths {
+            urls.append(contentsOf: archiveURLs(relativePath: relativePath))
+        }
+        return deduplicatedURLs(urls)
+    }
+
+    private func knownProfileRelativePath(from path: String) -> String? {
+        for directory in Self.profileDirectories {
+            if path.compare(directory, options: [.caseInsensitive]) == .orderedSame
+                || path.range(of: "\(directory)/", options: [.anchored, .caseInsensitive]) != nil {
+                return path
+            }
+            let marker = "/\(directory)/"
+            if let range = path.range(of: marker, options: [.caseInsensitive]) {
+                let suffixStart = path.index(range.lowerBound, offsetBy: 1)
+                return String(path[suffixStart...])
+            }
+        }
+        return nil
+    }
+
+    private func archiveURLs(relativePath: String) -> [URL] {
+        guard let baseURL = safeArchiveURL(relativePath: relativePath) else {
+            return []
+        }
+
+        var urls = [baseURL]
+        if baseURL.pathExtension.isEmpty {
+            urls.append(contentsOf: Self.imageExtensions.map { baseURL.appendingPathExtension($0) })
+        }
+        return deduplicatedURLs(urls)
+    }
+
+    private func safeArchiveURL(relativePath: String) -> URL? {
+        let components = relativePath
+            .split(separator: "/", omittingEmptySubsequences: true)
+            .map(String.init)
+        guard !components.isEmpty,
+              components.allSatisfy({ !$0.isEmpty && $0 != "." && $0 != ".." })
+        else {
+            return nil
+        }
+
+        var url = archiveRootURL
+        for component in components {
+            url.appendPathComponent(component)
+        }
+
+        let standardizedURL = url.standardizedFileURL
+        let rootPath = archiveRootURL.standardizedFileURL.path
+        guard standardizedURL.path == rootPath || standardizedURL.path.hasPrefix("\(rootPath)/") else {
+            return nil
+        }
+        return standardizedURL
+    }
+
+    private func deduplicatedURLs(_ urls: [URL]) -> [URL] {
+        var seen = Set<String>()
+        return urls.filter { url in
+            seen.insert(url.path).inserted
+        }
+    }
+
+    private func profilePictureLookupIdentifiers(
+        contactJID: String?,
+        contactIdentifier: String?,
+        additionalIdentifiers: [String]
+    ) -> [String] {
+        let values = [contactJID, contactIdentifier] + additionalIdentifiers.map(Optional.some)
+        var identifiers: [String] = []
+
+        for value in values {
+            let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() ?? ""
+            guard !trimmed.isEmpty, !trimmed.contains(";"), !trimmed.contains(",") else { continue }
+
+            identifiers.append(trimmed)
+            if let localPart = trimmed.split(separator: "@", maxSplits: 1).first.map(String.init), !localPart.isEmpty {
+                identifiers.append(localPart)
+                let digits = localPart.filter(\.isNumber)
+                if digits.count >= 6 {
+                    identifiers.append(String(digits))
+                    identifiers.append("\(digits)@s.whatsapp.net")
+                }
+            } else {
+                let digits = trimmed.filter(\.isNumber)
+                if digits.count >= 6 {
+                    identifiers.append(String(digits))
+                    identifiers.append("\(digits)@s.whatsapp.net")
+                }
+            }
+        }
+
+        var seen = Set<String>()
+        return identifiers
+            .filter { $0.count >= 5 }
+            .filter { seen.insert($0).inserted }
+            .sorted { $0.count > $1.count }
     }
 
     private func candidateFileNames(contactJID: String?, contactIdentifier: String?, additionalIdentifiers: [String]) -> [String] {
@@ -358,6 +580,7 @@ final class ProfilePhotoResolver {
     }
 
     private static let profileDirectories = [
+        "Media/Profile",
         "Profile Pictures",
         "ProfilePictures",
         "Profile Photos",
@@ -375,13 +598,9 @@ final class ProfilePhotoResolver {
         "Library/Caches/Profile",
         "Library/Caches/Avatars"
     ]
-    private static let imageExtensions = ["jpg", "jpeg", "png", "heic", "heif"]
-    private static let extraImageLikeExtensions = ["jpe", "jfif", "thumb"]
-}
-
-private struct ProfilePhotoCandidate {
-    let url: URL
-    let normalizedFileName: String
+    private static let imageExtensions = ["thumb", "jpg", "jpeg", "png", "heic", "heif", "j"]
+    private static let maxProfilePictureLookupIdentifiers = 48
+    private static let maxProfilePictureItemRowsPerLookup = 32
 }
 
 private extension Array {

@@ -119,11 +119,11 @@ struct ChatListView: View {
                         }
 
                         Section("Chats") {
-                            ForEach(Array(filteredNormalChats.enumerated()), id: \.element.id) { index, chat in
+                            ForEach(filteredNormalChats) { chat in
                                 NavigationLink(value: chat) {
                                     ChatRowView(
                                         chat: chat,
-                                        avatarPriority: index < 15 ? .initialBatch : .visible,
+                                        avatarPriority: .visible,
                                         isSelected: store.selectedChat?.id == chat.id
                                     )
                                 }
@@ -1286,7 +1286,7 @@ private struct ChatAvatarView: View {
             }
         }
         .frame(width: 52, height: 52)
-        .task(id: avatarID) {
+        .task(id: "\(avatarID)|\(store.profileAvatarLoadingEnabled)") {
             await loadImageIfNeeded()
         }
         .accessibilityHidden(true)
@@ -1299,7 +1299,7 @@ private struct ChatAvatarView: View {
         }
 
         guard image == nil else { return }
-        try? await Task.sleep(for: priority.loadDelay)
+        guard store.profileAvatarLoadingEnabled else { return }
         guard !Task.isCancelled, image == nil else { return }
 
         if let loadedImage = await store.profileAvatarImage(for: chat, priority: priority) {

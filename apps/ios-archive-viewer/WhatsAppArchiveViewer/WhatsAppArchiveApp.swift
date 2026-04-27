@@ -259,16 +259,15 @@ struct WhatsAppArchiveApp: App {
 private actor ProfilePhotoService {
     private let resolver: ProfilePhotoResolver
 
-    init(archiveRootURL: URL) {
-        resolver = ProfilePhotoResolver(archiveRootURL: archiveRootURL)
+    init(archiveRootURL: URL, databaseURL: URL) {
+        resolver = ProfilePhotoResolver(archiveRootURL: archiveRootURL, databaseURL: databaseURL)
     }
 
-    func profilePhotoURL(for chat: ChatSummary, allowIndexedFallback: Bool) -> URL? {
+    func profilePhotoURL(for chat: ChatSummary) -> URL? {
         resolver.profilePhotoURL(
             contactJID: chat.contactJID,
             contactIdentifier: chat.contactIdentifier,
-            additionalIdentifiers: chat.profilePhotoIdentifiers,
-            allowIndexedFallback: allowIndexedFallback
+            additionalIdentifiers: chat.profilePhotoIdentifiers
         )
     }
 }
@@ -307,29 +306,10 @@ private struct ProfileAvatarCacheEntry {
 }
 
 enum ProfileAvatarLoadPriority {
-    case initialBatch
     case visible
 
     var taskPriority: TaskPriority {
-        switch self {
-        case .initialBatch:
-            return .utility
-        case .visible:
-            return .background
-        }
-    }
-
-    var loadDelay: Duration {
-        switch self {
-        case .initialBatch:
-            return .milliseconds(350)
-        case .visible:
-            return .milliseconds(700)
-        }
-    }
-
-    var allowsIndexedProfilePhotoLookup: Bool {
-        true
+        .utility
     }
 }
 
@@ -370,15 +350,12 @@ private actor ProfileAvatarLoader {
 
         guard !Task.isCancelled else { return nil }
         inFlightKeys.insert(key)
-        guard await acquireLoadSlot(priority: priority) else {
+        guard await acquireLoadSlot() else {
             inFlightKeys.remove(key)
             return nil
         }
 
-        let imageURL = await service.profilePhotoURL(
-            for: chat,
-            allowIndexedFallback: priority.allowsIndexedProfilePhotoLookup
-        )
+        let imageURL = await service.profilePhotoURL(for: chat)
         guard !Task.isCancelled else {
             releaseLoadSlot()
             inFlightKeys.remove(key)
@@ -441,14 +418,8 @@ private actor ProfileAvatarLoader {
         return entries[key]?.image
     }
 
-    private func acquireLoadSlot(priority: ProfileAvatarLoadPriority) async -> Bool {
-        let waitDuration: Duration
-        switch priority {
-        case .initialBatch:
-            waitDuration = .milliseconds(35)
-        case .visible:
-            waitDuration = .milliseconds(60)
-        }
+    private func acquireLoadSlot() async -> Bool {
+        let waitDuration: Duration = .milliseconds(50)
         while activeLoadCount >= maxConcurrentLoads {
             if Task.isCancelled {
                 return false
@@ -507,6 +478,7 @@ final class ArchiveStore: ObservableObject {
     @Published var archiveName = "No Archive"
     @Published var wallpaperURL: URL?
     @Published var wallpaperDarkURL: URL?
+    @Published private(set) var profileAvatarLoadingEnabled = false
     @Published var wallpaperTheme: ChatWallpaperTheme {
         didSet {
             defaults.set(wallpaperTheme.rawValue, forKey: Self.wallpaperThemeDefaultsKey)
@@ -817,6 +789,7 @@ final class ArchiveStore: ObservableObject {
         archiveAccess = nil
         profilePhotoService = nil
         currentArchiveID = nil
+        profileAvatarLoadingEnabled = false
         baseChats = []
         baseMessages = []
         messageLoadRequestID = nil
@@ -972,10 +945,18 @@ final class ArchiveStore: ObservableObject {
             )
             guard openingArchiveID != nil else { return }
 
+            #if DEBUG
+            let avatarSetupStart = Date()
+            #endif
             database = snapshot.database
             archiveAccess = access
-            profilePhotoService = ProfilePhotoService(archiveRootURL: access.archiveRootURL)
+            profilePhotoService = ProfilePhotoService(archiveRootURL: access.archiveRootURL, databaseURL: access.databaseURL)
             currentArchiveID = savedArchive.id
+            profileAvatarLoadingEnabled = false
+            enableProfileAvatarLoading(after: .milliseconds(2_000), archiveID: savedArchive.id)
+            #if DEBUG
+            print("[ArchiveOpen] avatar/profile setup: \(ArchiveOpenDebugTimer.milliseconds(since: avatarSetupStart)) ms deferred=1")
+            #endif
             baseChats = snapshot.chats
             baseMessages = []
             messageLoadRequestID = nil
@@ -1002,6 +983,7 @@ final class ArchiveStore: ObservableObject {
             archiveAccess = nil
             profilePhotoService = nil
             currentArchiveID = nil
+            profileAvatarLoadingEnabled = false
             baseChats = []
             baseMessages = []
             messageLoadRequestID = nil
@@ -1088,7 +1070,8 @@ final class ArchiveStore: ObservableObject {
     }
 
     func profileAvatarImage(for chat: ChatSummary, priority: ProfileAvatarLoadPriority) async -> CGImage? {
-        guard let archiveID = currentArchiveID,
+        guard profileAvatarLoadingEnabled,
+              let archiveID = currentArchiveID,
               let profilePhotoService,
               chat.classification != .statusStoryFragment else {
             return nil
@@ -1100,6 +1083,19 @@ final class ArchiveStore: ObservableObject {
             service: profilePhotoService,
             priority: priority
         )
+    }
+
+    private func enableProfileAvatarLoading(after delay: Duration, archiveID: UUID) {
+        Task { @MainActor [weak self] in
+            try? await Task.sleep(for: delay)
+            guard let self,
+                  self.currentArchiveID == archiveID,
+                  self.database != nil
+            else {
+                return
+            }
+            self.profileAvatarLoadingEnabled = true
+        }
     }
 
     nonisolated private static func wallpaperURL(in archiveRootURL: URL, filename: String) -> URL? {
