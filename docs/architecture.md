@@ -121,7 +121,7 @@ The project itself does not upload archive data. iCloud Drive, AirDrop, Finder, 
 The current architecture is best tested incrementally:
 
 - database-only transfer for chat list, message loading, and full-history pagination;
-- small media subsets for media path discovery and future rendering work;
+- small media subsets for media path discovery and media rendering checks;
 - full raw archive transfer only when the complete media set is required.
 
 Packaged archive import is a likely future design direction. One archive file could be imported by the app, unpacked or indexed locally, and avoid pushing thousands of individual files through app document sharing. That workflow is not implemented yet.

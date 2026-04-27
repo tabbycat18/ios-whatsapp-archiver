@@ -116,10 +116,10 @@ open apps/ios-archive-viewer/WhatsAppArchiveViewer.xcodeproj
 Build and run the app in Xcode. Use Open Archive to select the extracted
 shared-container folder or `ChatStorage.sqlite` directly.
 
-The app copies `ChatStorage.sqlite` and any SQLite sidecars into its Application
-Support folder, opens the copied database with read-only SQLite flags, and sets
+The app opens the selected database with read-only SQLite flags and sets
 `PRAGMA query_only = ON`. The selected archive root is kept for safe media path
-resolution. Media rendering is not implemented yet.
+resolution, local media preview, document preview, audio/video playback,
+profile/avatar lookup, and wallpaper lookup.
 
 Do not delete the original iPhone backup or extracted archive until the viewer
 opens the archive and you have confirmed that the files you need are present.
@@ -154,7 +154,10 @@ ChatStorage.sqlite-shm
 ChatStorage.sqlite-journal
 ```
 
-Sidecars are only needed if present. This is enough to validate chat list loading, message loading, and full-history pagination. Add a small `Media/` or `Message/Media/` subset only when testing media path discovery or future media rendering.
+Sidecars are only needed if present. This is enough to validate chat list
+loading, message loading, and full-history pagination. Add a small `Media/` or
+`Message/Media/` subset only when testing media path discovery or media
+rendering.
 
 ### Raw Folder Transfer
 

@@ -1,87 +1,32 @@
-# WhatsApp Archiver
+# iOS WhatsApp Archiver
 
-WhatsApp Archiver is a local extractor and read-only archive viewer for
-your own iPhone WhatsApp backup.
+A local, read-only iPhone WhatsApp archive extractor and viewer.
 
 This project is not affiliated with WhatsApp, Meta, or Apple.
 
 ## What It Does
 
-This project helps you:
-
-1. make an encrypted local iPhone backup on your Mac,
-2. extract WhatsApp files from that backup,
-3. open the extracted archive in a read-only SwiftUI viewer.
-
-The app is currently a development tool. Xcode is required to build and install
-the viewer.
-
-## Privacy Summary
-
-- There is no server in this project.
-- This project does not upload data to any cloud service.
-- The extractor reads a local iPhone backup and writes a local extracted archive.
-- The viewer opens local SQLite files read-only.
-- The viewer can remember selected local archives using app-local bookmark metadata.
-- The viewer can optionally use iPhone Contacts locally to show saved names for
-  phone-based archived chat participants. Contacts are not uploaded and the app
-  still works if permission is denied.
-- Removing a saved archive from the viewer does not delete the archive files.
-- Any iCloud Drive, AirDrop, SwissTransfer, external-drive, or other transfer
-  workflow is optional and user-managed.
-
-WhatsApp archives can contain highly sensitive messages, contacts, photos,
-videos, audio, and data from other people. Never commit extracted backups,
-WhatsApp databases, media folders, generated exports, or private chat data.
+- Extracts WhatsApp data from your own local iPhone backup using a local script.
+- Opens the extracted archive in a SwiftUI iPhone/iPad viewer.
+- Lets you browse chats and available media locally.
+- Includes a synthetic demo archive for testing.
 
 ## Current Status
 
-Working now:
+- Pre-release and under active development.
+- Text browsing, media browsing, archive slots, and the bundled demo archive are
+  implemented.
+- Installation currently requires an Xcode/developer workflow unless another
+  distribution path is added later.
+- Some edge cases remain, especially around private WhatsApp schema details,
+  contact identity history, very large archives, and unsupported media types.
 
-- Extract WhatsApp shared-container files from a local iPhone backup.
-- Open an extracted archive folder or `ChatStorage.sqlite`.
-- Try a bundled, fully synthetic demo archive from the archive home screen.
-- Read offline in-app instructions from the archive home screen.
-- Remember selected archives locally so they can be reopened without selecting the folder again.
-- Manage two local saved archive slots: WhatsApp and WhatsApp Business.
-- Browse chats and text messages.
-- Show local profile pictures lazily in the chat list when profile/avatar cache files are present in the selected archive, while initials appear immediately.
-- Search chat titles in the loaded chat list.
-- Read large chats incrementally by scrolling upward to load older messages.
-- Render available photo attachments inline.
-- Open available video attachments in a tap-to-play video preview.
-- Treat instant video/video-message rows as video when video evidence is present, even if the raw row otherwise resembles a location placeholder.
-- Play available audio and voice attachments with a simple play/pause control and share them from the chat row.
-- Show PDF and common document attachments as document rows, with local preview and sharing when the file resolves.
-- Show captions/text attached to photo, video, audio, or document rows under the media in the same bubble.
-- Choose a local chat wallpaper style: Archive Default, Classic, Soft Pattern, Demo, or Plain. Archive Default uses an extracted `current_wallpaper.jpg` or `current_wallpaper_dark.jpg` file from the archive root when present; the built-in styles are synthetic app-rendered patterns.
-- Detect WhatsApp Status/Stories rows only from reliable message/session evidence such as `status@broadcast`, and keep them out of normal direct-chat browsing.
-- Show a lightweight Chat Info screen with per-chat filters for all previewable chat media, photos, videos, and documents, with available local media prioritized and selectable for grouped sharing/export; voice-message audio stays in chat rows instead of the media grid.
-- Share photos and videos from their local preview sheets without uploading them.
-- Keep missing or unsupported media as placeholders.
-- Show conservative system/call placeholders without exposing raw sender IDs.
-- Keep security-code/system notices from driving normal chat-list recency.
-- Use `ContactsV2.sqlite` when available for conservative contact-name and split-session resolution.
-- Optionally match phone-based WhatsApp JIDs to iPhone Contacts after the user
-  enables Contacts access from the app. Matching is local, read-only, and
-  in-memory for the app session.
-- Keep real duplicate-title conversations separate while hiding technical system-only or no-visible-message archive fragments from normal browsing.
-- Detect whether referenced media files appear available in the selected archive.
-
-Not implemented yet:
-
-- Full per-chat media library browsing beyond the first lightweight filtered view.
-- Complete `ContactsV2.sqlite` enrichment for every historical contact edge case.
-- Resolve more opaque `@lid` sender cases only when a safe phone mapping exists.
-- Direct zip/package import.
-- Non-Xcode installation or distribution.
-
-For zip or packaged archives, unpack the archive first, then select the
-extracted folder containing `ChatStorage.sqlite`.
+See [Status and capabilities](docs/status.md) for the full feature list,
+limitations, completed milestones, and known issues.
 
 ## Quick Start
 
-1. Create a local iPhone backup in Finder with "Encrypt local backup" enabled.
+1. Create an encrypted local iPhone backup in Finder.
 2. Run the extractor:
 
    ```bash
@@ -90,83 +35,70 @@ extracted folder containing `ChatStorage.sqlite`.
      "data/iphone-whatsapp-export"
    ```
 
-   For encrypted backups, the script prompts for the backup password if
-   `--password` is omitted.
-
-3. Open the viewer project in Xcode:
+3. Build and run the viewer from Xcode:
 
    ```bash
    open apps/ios-archive-viewer/WhatsAppArchiveViewer.xcodeproj
    ```
 
-4. Build and run the app, then choose the WhatsApp or WhatsApp Business slot
-   and add either:
-   - the extracted folder containing `ChatStorage.sqlite`, or
-   - `ChatStorage.sqlite` directly.
+4. Add the extracted folder that contains `ChatStorage.sqlite`.
+5. Browse chats and available media locally.
 
-   The viewer saves a local archive record with a local label so the archive
-   can be reopened later without selecting it again. Removing a saved archive
-   record does not delete files. If an external folder is moved or iOS marks
-   the saved file access stale, relink it from the archive slot.
-
-5. For large iPhone transfers, read the transfer guide before copying the full
-   archive.
+For detailed steps, transfer notes, and troubleshooting, read the
+[user guide](docs/user-guide.md) and
+[iPhone backup extraction guide](docs/iphone-backup-extraction.md).
 
 ## Demo Archive
 
-The app target bundles the public synthetic fixture from
-`test-fixtures/demo-archive/`. On the archive home screen, tap
-`Try Demo Archive` to open it without choosing files. The demo is labeled
-`Demo Archive`, does not use either real archive slot, and is not saved as a
-user archive record.
+The app bundles a fully synthetic demo archive for testing. It contains no real
+WhatsApp data, real phone numbers, private messages, private media, or private
+screenshots.
 
-Developers can also manually open the same fixture by adding a real archive
-slot and selecting:
+From the archive home screen, tap `Try Demo Archive`. Developers can also open
+the fixture manually from:
 
 ```text
 test-fixtures/demo-archive/
 ```
 
-Selecting the folder is preferred over selecting `ChatStorage.sqlite` directly
-because media availability checks and wallpaper lookup use the archive root.
-Regenerate the fixture with:
+See the [demo archive README](test-fixtures/demo-archive/README.md) for fixture
+coverage and regeneration notes. Any screenshots used for demos or docs should
+come from this synthetic archive, not private chats.
 
-```bash
-python3 tools/generate_demo_archive.py
-```
+## Privacy
 
-The fixture is fully synthetic and must remain under `test-fixtures/`. Normal
-non-Xcode distribution is still future work; this repository does not currently
-provide a one-tap iPhone install path from GitHub.
+- Local-only: this project has no server.
+- No cloud upload is performed by this project.
+- The extractor reads a local iPhone backup and writes a local extracted archive.
+- The viewer opens local archive files read-only.
+- Do not commit private archives, WhatsApp databases, media folders, generated
+  exports, screenshots from private chats, or copied backup data.
+- Third-party transfer services are optional and user-managed.
 
-## In-App Help
-
-The archive home screen includes a `How It Works` card and a Help toolbar
-button. The instructions are bundled in the app and work offline. They explain
-the backup, extraction, transfer, archive adding, demo archive, privacy, and
-current installation status without linking to remote GitHub docs.
-
-Current installation still requires Xcode or another developer/test
-distribution path. Future distribution options may include TestFlight, App
-Store, EU alternative distribution, or Web Distribution if requirements are met.
+For more detail, see [Privacy](PRIVACY.md), [Security](SECURITY.md), and the
+privacy section in the [user guide](docs/user-guide.md#privacy-and-safety).
 
 ## Documentation
 
+- [Full user guide](docs/user-guide.md)
 - [iPhone backup extraction](docs/iphone-backup-extraction.md)
+- [Status and capabilities](docs/status.md)
+- [Roadmap](docs/roadmap.md)
 - [Large archive transfer experiments](docs/transfer-experiments.md)
+- [Development notes](docs/development.md)
 - [Archive format](docs/archive-format.md)
 - [Architecture](docs/architecture.md)
-- [Roadmap](docs/roadmap.md)
+- [iOS viewer notes](apps/ios-archive-viewer/README.md)
 - [Privacy](PRIVACY.md)
 - [Security](SECURITY.md)
 
 ## Repository Layout
 
 ```text
-apps/ios-archive-viewer/    SwiftUI iOS archive viewer
-tools/                      Local iPhone backup and HTML export tools
-docs/                       Architecture, extraction, format, and roadmap notes
-test-fixtures/              Public fixture policy
+apps/ios-archive-viewer/    SwiftUI archive viewer
+tools/                      Local backup extraction and export tools
+docs/                       User, status, architecture, and format notes
+test-fixtures/              Synthetic fixture policy and demo archive
 ```
 
 ## Acknowledgement

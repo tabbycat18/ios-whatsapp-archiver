@@ -10,8 +10,10 @@
 - Per-chat message loading from `ZWAMESSAGE`.
 - Message dates, ordering, and sender direction validation.
 - Media metadata and path discovery merged on `main`.
-- Full-history pagination branch with latest 500 messages initially and older batches loaded on demand.
-- Chat title search, compact message UI, conservative system/call labels, and safer group sender fallbacks on the pagination branch.
+- Full-history pagination with latest 500 messages initially and older batches
+  loaded on demand.
+- Chat title search, compact message UI, conservative system/call labels, and
+  safer group sender fallbacks.
 - Duplicate-title archive entries are classified so real separate conversations stay visible while system-only or no-visible-message fragments are hidden from normal browsing.
 - First chat media rendering path with inline photos, tap-to-play video previews, and simple audio playback.
 - Chat wallpaper rendering from generic archive-root `current_wallpaper.jpg` and `current_wallpaper_dark.jpg` files, plus a local Archive Default/Classic/Soft Pattern/Demo/Plain selector.
