@@ -2,6 +2,17 @@ import SwiftUI
 import UniformTypeIdentifiers
 import Combine
 
+#if DEBUG
+private let appLaunchDebugStart = Date()
+
+enum AppLaunchDebugLog {
+    static func mark(_ phase: String) {
+        let milliseconds = Int(Date().timeIntervalSince(appLaunchDebugStart) * 1000)
+        print("[AppLaunch] \(phase): \(milliseconds) ms")
+    }
+}
+#endif
+
 enum ArchiveImportError: LocalizedError {
     case missingApplicationSupportDirectory
     case missingDatabase(URL)
@@ -230,6 +241,12 @@ private final class ArchiveAccess {
 @main
 struct WhatsAppArchiveApp: App {
     @StateObject private var archiveStore = ArchiveStore()
+
+    init() {
+        #if DEBUG
+        AppLaunchDebugLog.mark("app startup")
+        #endif
+    }
 
     var body: some Scene {
         WindowGroup {
@@ -527,6 +544,9 @@ final class ArchiveStore: ObservableObject {
 
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
+        #if DEBUG
+        AppLaunchDebugLog.mark("ArchiveStore init started")
+        #endif
         wallpaperTheme = ChatWallpaperTheme(rawValue: defaults.string(forKey: Self.wallpaperThemeDefaultsKey) ?? "")
             ?? .archiveDefault
         #if DEBUG
@@ -536,6 +556,7 @@ final class ArchiveStore: ObservableObject {
         savedArchives = loadedArchives
         #if DEBUG
         print("[ArchiveOpen] loading saved archive metadata: \(ArchiveOpenDebugTimer.milliseconds(since: savedMetadataStart)) ms count=\(loadedArchives.count)")
+        AppLaunchDebugLog.mark("saved archive metadata loaded")
         #endif
         contactNameResolverCancellable = contactNameResolver.$changeToken.sink { [weak self] _ in
             Task { @MainActor [weak self] in
@@ -688,7 +709,13 @@ final class ArchiveStore: ObservableObject {
         }
 
         do {
+            #if DEBUG
+            var timer = ArchiveOpenDebugTimer()
+            #endif
             let demoArchiveURL = try Self.bundledDemoArchiveURL()
+            #if DEBUG
+            timer.mark("demo archive preparation")
+            #endif
             var demoArchive = SavedArchive(
                 id: Self.demoArchiveID,
                 displayName: "Demo Archive",
@@ -1002,7 +1029,7 @@ final class ArchiveStore: ObservableObject {
                 securityScopedURL: nil
             )
             #if DEBUG
-            timer.mark("opening ChatStorage.sqlite")
+            timer.mark("opening ChatStorage.sqlite complete")
             #endif
 
             let loadedChats = try openedDatabase.fetchChats()
@@ -1015,7 +1042,7 @@ final class ArchiveStore: ObservableObject {
             let darkWallpaperURL = Self.wallpaperURL(in: archiveRootURL, filename: "current_wallpaper_dark.jpg")
                 ?? lightWallpaperURL
             #if DEBUG
-            timer.mark("wallpaper preparation")
+            timer.mark("wallpaper setup")
             #endif
 
             return OpenArchiveSnapshot(
@@ -1160,6 +1187,10 @@ final class ArchiveStore: ObservableObject {
     }
 
     private static func bundledDemoArchiveURL() throws -> URL {
+        if let cachedDemoArchiveURL {
+            return cachedDemoArchiveURL
+        }
+
         let bundle = Bundle.main
         let directoryCandidates = [
             bundle.url(forResource: "demo-archive", withExtension: nil),
@@ -1168,15 +1199,21 @@ final class ArchiveStore: ObservableObject {
 
         if let directoryURL = directoryCandidates.compactMap({ $0 }).first,
            FileManager.default.fileExists(atPath: directoryURL.appendingPathComponent("ChatStorage.sqlite").path) {
-            return directoryURL.standardizedFileURL
+            let preparedURL = directoryURL.standardizedFileURL
+            cachedDemoArchiveURL = preparedURL
+            return preparedURL
         }
 
         if let databaseURL = bundle.url(forResource: "ChatStorage", withExtension: "sqlite", subdirectory: "demo-archive") {
-            return databaseURL.deletingLastPathComponent().standardizedFileURL
+            let preparedURL = databaseURL.deletingLastPathComponent().standardizedFileURL
+            cachedDemoArchiveURL = preparedURL
+            return preparedURL
         }
 
         if let databaseURL = bundle.url(forResource: "ChatStorage", withExtension: "sqlite", subdirectory: "DemoArchive") {
-            return databaseURL.deletingLastPathComponent().standardizedFileURL
+            let preparedURL = databaseURL.deletingLastPathComponent().standardizedFileURL
+            cachedDemoArchiveURL = preparedURL
+            return preparedURL
         }
 
         throw ArchiveImportError.missingDemoArchive
@@ -1190,6 +1227,7 @@ final class ArchiveStore: ObservableObject {
     }
 
     static let demoArchiveID = UUID(uuidString: "2A625145-C65F-43B8-AF6B-74E33AF8D20B")!
+    private static var cachedDemoArchiveURL: URL?
 
     private func databaseURL(in pickedURL: URL) throws -> URL {
         if try isDirectory(pickedURL) {

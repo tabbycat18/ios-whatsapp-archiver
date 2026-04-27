@@ -130,6 +130,19 @@ private struct FetchChatsDebugTimer {
         Int(Date().timeIntervalSince(date) * 1000)
     }
 }
+
+private struct DatabaseOpenDebugTimer {
+    private let start = Date()
+    private var last = Date()
+
+    mutating func mark(_ phase: String) {
+        let now = Date()
+        let phaseMilliseconds = now.timeIntervalSince(last) * 1000
+        let totalMilliseconds = now.timeIntervalSince(start) * 1000
+        print("[ArchiveOpen] \(phase): \(Int(phaseMilliseconds)) ms (database open total \(Int(totalMilliseconds)) ms)")
+        last = now
+    }
+}
 #endif
 
 final class ProfilePhotoResolver {
@@ -371,9 +384,20 @@ private struct ProfilePhotoCandidate {
     let normalizedFileName: String
 }
 
+private extension Array {
+    func chunked(maxCount: Int) -> [[Element]] {
+        guard maxCount > 0, !isEmpty else { return [] }
+        return stride(from: 0, to: count, by: maxCount).map { startIndex in
+            Array(self[startIndex..<Swift.min(startIndex + maxCount, count)])
+        }
+    }
+}
+
 private final class ContactsV2Resolver {
     private var database: OpaquePointer?
     private var identitiesByJID: [String: ContactIdentity] = [:]
+    private var loadedJIDs = Set<String>()
+    private var didDiscoverMissingContactsTable = false
 
     init?(archiveRootURL: URL) {
         let contactsURL = archiveRootURL.appendingPathComponent("ContactsV2.sqlite")
@@ -393,7 +417,6 @@ private final class ContactsV2Resolver {
         database = connection
         do {
             try execute("PRAGMA query_only = ON")
-            try loadContacts()
         } catch {
             sqlite3_close(connection)
             database = nil
@@ -412,68 +435,147 @@ private final class ContactsV2Resolver {
         return identitiesByJID[key]
     }
 
-    private func loadContacts() throws {
-        guard try tableExists("ZWAADDRESSBOOKCONTACT") else { return }
-        let columns = try columns(in: "ZWAADDRESSBOOKCONTACT")
-        guard columns.contains("Z_PK") else { return }
-
-        let sql = """
-            SELECT
-                Z_PK,
-                \(select("ZWHATSAPPID", columns: columns)),
-                \(select("ZLID", columns: columns)),
-                \(select("ZIDENTIFIER", columns: columns)),
-                \(select("ZPHONENUMBER", columns: columns)),
-                \(select("ZLOCALIZEDPHONENUMBER", columns: columns)),
-                \(select("ZFULLNAME", columns: columns)),
-                \(select("ZGIVENNAME", columns: columns)),
-                \(select("ZLASTNAME", columns: columns)),
-                \(select("ZBUSINESSNAME", columns: columns)),
-                \(select("ZHIGHLIGHTEDNAME", columns: columns)),
-                \(select("ZUSERNAME", columns: columns))
-            FROM ZWAADDRESSBOOKCONTACT
-            """
-        let statement = try prepare(sql)
-        defer { sqlite3_finalize(statement) }
-
-        var candidatesByJID: [String: [ContactIdentity]] = [:]
-        var stepResult = sqlite3_step(statement)
-        while stepResult == SQLITE_ROW {
-            let profilePhotoIdentifiers = [
-                string(statement, 1),
-                string(statement, 2),
-                string(statement, 3),
-                string(statement, 4),
-                string(statement, 5)
-            ].compactMap { value -> String? in
-                let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines)
-                return trimmed?.isEmpty == false ? trimmed : nil
-            }
-            let identity = ContactIdentity(
-                key: "contactsV2:\(sqlite3_column_int64(statement, 0))",
-                displayName: displayName(
-                    fullName: string(statement, 6),
-                    givenName: string(statement, 7),
-                    lastName: string(statement, 8),
-                    businessName: string(statement, 9),
-                    highlightedName: string(statement, 10),
-                    username: string(statement, 11)
-                ),
-                profilePhotoIdentifiers: profilePhotoIdentifiers
-            )
-
-            for jid in profilePhotoIdentifiers.compactMap(normalizedJID) {
-                candidatesByJID[jid, default: []].append(identity)
-            }
-            stepResult = sqlite3_step(statement)
+    func loadIdentities(for jids: [String?]) throws {
+        let requestedJIDs = Set(jids.compactMap(normalizedJID))
+        let unloadedJIDs = requestedJIDs.subtracting(loadedJIDs)
+        guard !unloadedJIDs.isEmpty, !didDiscoverMissingContactsTable else { return }
+        guard let database else { return }
+        guard try tableExists("ZWAADDRESSBOOKCONTACT") else {
+            didDiscoverMissingContactsTable = true
+            loadedJIDs.formUnion(unloadedJIDs)
+            return
         }
-        try throwIfStatementFailed(stepResult)
 
-        identitiesByJID = candidatesByJID.compactMapValues { identities in
+        let columns = try columns(in: "ZWAADDRESSBOOKCONTACT")
+        guard columns.contains("Z_PK") else {
+            loadedJIDs.formUnion(unloadedJIDs)
+            return
+        }
+
+        let lookupColumns = [
+            "ZWHATSAPPID",
+            "ZLID",
+            "ZIDENTIFIER",
+            "ZPHONENUMBER",
+            "ZLOCALIZEDPHONENUMBER"
+        ].filter { columns.contains($0) }
+        guard !lookupColumns.isEmpty else {
+            loadedJIDs.formUnion(unloadedJIDs)
+            return
+        }
+
+        let lookupValues = Array(Set(unloadedJIDs.flatMap(contactLookupValues(for:)))).sorted()
+        guard !lookupValues.isEmpty else {
+            loadedJIDs.formUnion(unloadedJIDs)
+            return
+        }
+
+        #if DEBUG
+        let lookupStart = Date()
+        #endif
+        var fetchedContactKeys = Set<Int64>()
+        var candidatesByJID: [String: [ContactIdentity]] = [:]
+
+        let bindLimit = max(Int(sqlite3_limit(database, SQLITE_LIMIT_VARIABLE_NUMBER, -1)), 1)
+        let lookupChunkSize = max(1, min(600, bindLimit / max(lookupColumns.count, 1)))
+        let lookupChunks = lookupValues.chunked(maxCount: lookupChunkSize)
+
+        for chunk in lookupChunks {
+            let placeholders = Array(repeating: "?", count: chunk.count).joined(separator: ", ")
+            let whereSQL = lookupColumns
+                .map { "\($0) IN (\(placeholders))" }
+                .joined(separator: " OR ")
+            let sql = """
+                SELECT
+                    Z_PK,
+                    \(select("ZWHATSAPPID", columns: columns)),
+                    \(select("ZLID", columns: columns)),
+                    \(select("ZIDENTIFIER", columns: columns)),
+                    \(select("ZPHONENUMBER", columns: columns)),
+                    \(select("ZLOCALIZEDPHONENUMBER", columns: columns)),
+                    \(select("ZFULLNAME", columns: columns)),
+                    \(select("ZGIVENNAME", columns: columns)),
+                    \(select("ZLASTNAME", columns: columns)),
+                    \(select("ZBUSINESSNAME", columns: columns)),
+                    \(select("ZHIGHLIGHTEDNAME", columns: columns)),
+                    \(select("ZUSERNAME", columns: columns))
+                FROM ZWAADDRESSBOOKCONTACT
+                WHERE \(whereSQL)
+                """
+            let statement = try prepare(sql)
+            defer { sqlite3_finalize(statement) }
+
+            var bindIndex: Int32 = 1
+            for _ in lookupColumns {
+                for value in chunk {
+                    sqlite3_bind_text(statement, bindIndex, value, -1, sqliteTransient)
+                    bindIndex += 1
+                }
+            }
+
+            var stepResult = sqlite3_step(statement)
+            while stepResult == SQLITE_ROW {
+                let contactKey = sqlite3_column_int64(statement, 0)
+                guard fetchedContactKeys.insert(contactKey).inserted else {
+                    stepResult = sqlite3_step(statement)
+                    continue
+                }
+                let profilePhotoIdentifiers = [
+                    string(statement, 1),
+                    string(statement, 2),
+                    string(statement, 3),
+                    string(statement, 4),
+                    string(statement, 5)
+                ].compactMap { value -> String? in
+                    let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines)
+                    return trimmed?.isEmpty == false ? trimmed : nil
+                }
+                let identity = ContactIdentity(
+                    key: "contactsV2:\(contactKey)",
+                    displayName: displayName(
+                        fullName: string(statement, 6),
+                        givenName: string(statement, 7),
+                        lastName: string(statement, 8),
+                        businessName: string(statement, 9),
+                        highlightedName: string(statement, 10),
+                        username: string(statement, 11)
+                    ),
+                    profilePhotoIdentifiers: profilePhotoIdentifiers
+                )
+
+                for jid in profilePhotoIdentifiers.compactMap(normalizedJID) where unloadedJIDs.contains(jid) {
+                    candidatesByJID[jid, default: []].append(identity)
+                }
+                stepResult = sqlite3_step(statement)
+            }
+            try throwIfStatementFailed(stepResult)
+        }
+
+        let resolvedIdentities = candidatesByJID.compactMapValues { identities -> ContactIdentity? in
             let keys = Set(identities.map(\.key))
             guard keys.count == 1 else { return nil }
             return identities[0]
         }
+        identitiesByJID.merge(resolvedIdentities) { current, _ in current }
+        loadedJIDs.formUnion(unloadedJIDs)
+        #if DEBUG
+        print("[ArchiveOpen] ContactsV2 lookup: \(FetchChatsDebugTimer.milliseconds(since: lookupStart)) ms requested=\(requestedJIDs.count) values=\(lookupValues.count) chunks=\(lookupChunks.count) resolved=\(resolvedIdentities.count)")
+        #endif
+    }
+
+    private func contactLookupValues(for jid: String) -> [String] {
+        let trimmed = jid.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard !trimmed.isEmpty else { return [] }
+
+        var values = [trimmed]
+        if let localPart = trimmed.split(separator: "@", maxSplits: 1).first.map(String.init), !localPart.isEmpty {
+            values.append(localPart)
+            let digits = localPart.filter(\.isNumber)
+            if digits.count >= 6 {
+                values.append(String(digits))
+            }
+        }
+        return Array(Set(values))
     }
 
     private func displayName(
@@ -622,6 +724,9 @@ final class WhatsAppDatabase: @unchecked Sendable {
         self.archiveRootURL = archiveRootURL ?? databaseURL.deletingLastPathComponent()
         self.securityScopedURL = securityScopedURL
         self.didStartSecurityScope = securityScopedURL?.startAccessingSecurityScopedResource() ?? false
+        #if DEBUG
+        var openTimer = DatabaseOpenDebugTimer()
+        #endif
 
         do {
             guard FileManager.default.fileExists(atPath: databaseURL.path) else {
@@ -641,10 +746,16 @@ final class WhatsAppDatabase: @unchecked Sendable {
 
             database = connection
             try execute("PRAGMA query_only = ON")
+            #if DEBUG
+            openTimer.mark("opening ChatStorage.sqlite")
+            #endif
             try validateSchema()
             messageColumns = try columns(in: "ZWAMESSAGE")
             mediaSchema = try discoverMediaSchema()
             canJoinProfilePushNames = try discoverProfilePushNameJoin()
+            #if DEBUG
+            openTimer.mark("ChatStorage schema discovery")
+            #endif
             #if DEBUG
             let contactsStart = Date()
             #endif
@@ -701,6 +812,18 @@ final class WhatsAppDatabase: @unchecked Sendable {
                 FROM ZWAMESSAGE m
                 \(chatSessionJoinSQL(alias: "c_flag"))
                 \(mediaPresenceJoinSQL())
+            ),
+            message_aggregates AS (
+                SELECT
+                    chat_id,
+                    COUNT(message_id) AS total_message_count,
+                    COALESCE(SUM(is_user_visible), 0) AS user_visible_message_count,
+                    COALESCE(SUM(is_system), 0) AS system_message_count,
+                    COALESCE(SUM(is_status_story), 0) AS status_story_message_count,
+                    MAX(CASE WHEN is_user_visible = 1 THEN message_date ELSE NULL END) AS latest_user_visible_message_date,
+                    MAX(message_date) AS latest_any_message_date
+                FROM message_flags
+                GROUP BY chat_id
             )
             SELECT
                 c.Z_PK,
@@ -712,27 +835,21 @@ final class WhatsAppDatabase: @unchecked Sendable {
                     THEN c.ZLASTMESSAGEDATE
                     ELSE NULL
                 END AS sanitized_last_message_date,
-                COUNT(f.message_id) AS total_message_count,
-                COALESCE(SUM(f.is_user_visible), 0) AS user_visible_message_count,
-                COALESCE(SUM(f.is_system), 0) AS system_message_count,
-                COALESCE(SUM(f.is_status_story), 0) AS status_story_message_count,
-                MAX(CASE WHEN f.is_user_visible = 1 THEN f.message_date ELSE NULL END) AS latest_user_visible_message_date,
-                MAX(f.message_date) AS latest_any_message_date
+                COALESCE(a.total_message_count, 0) AS total_message_count,
+                COALESCE(a.user_visible_message_count, 0) AS user_visible_message_count,
+                COALESCE(a.system_message_count, 0) AS system_message_count,
+                COALESCE(a.status_story_message_count, 0) AS status_story_message_count,
+                a.latest_user_visible_message_date,
+                a.latest_any_message_date
             FROM ZWACHATSESSION c
-            LEFT JOIN message_flags f ON f.chat_id = c.Z_PK
-            GROUP BY
-                c.Z_PK,
-                c.ZCONTACTJID,
-                c.ZCONTACTIDENTIFIER,
-                c.ZPARTNERNAME,
-                c.ZLASTMESSAGEDATE
+            LEFT JOIN message_aggregates a ON a.chat_id = c.Z_PK
             ORDER BY COALESCE(latest_user_visible_message_date, latest_any_message_date, sanitized_last_message_date, 0) DESC, c.Z_PK ASC
             """
 
         let statement = try prepare(sql)
         defer { sqlite3_finalize(statement) }
         #if DEBUG
-        timer.mark("fetchChats prepare")
+        timer.mark("fetchChats prepare mediaPresenceJoin=\(shouldJoinMediaPresenceForChatSummary ? 1 : 0)")
         #endif
 
         var rawRows: [RawChatSummaryRow] = []
@@ -764,6 +881,13 @@ final class WhatsAppDatabase: @unchecked Sendable {
         timer.mark("stories/status fetch sessions=\(rawRows.count) messages=\(totalMessages) statusStoryMessages=\(statusStoryMessages)")
         let contactStart = Date()
         #endif
+        do {
+            try contactsResolver?.loadIdentities(for: rawRows.map(\.contactJID))
+        } catch {
+            #if DEBUG
+            print("[ArchiveOpen] ContactsV2 enrichment skipped after lookup failure")
+            #endif
+        }
 
         let rows = rawRows.map { row -> ChatSummaryRow in
             let contactIdentity = contactsResolver?.identity(for: row.contactJID)
@@ -857,7 +981,7 @@ final class WhatsAppDatabase: @unchecked Sendable {
 
     private func chatSummaryMediaEvidenceSQL(messageAlias: String, mediaPresenceAlias: String) -> String {
         var predicates: [String] = []
-        if mediaSchema?.canJoinMessages == true {
+        if shouldJoinMediaPresenceForChatSummary {
             predicates.append("\(mediaPresenceAlias).ZMESSAGE IS NOT NULL")
         }
         if messageColumns.contains("ZMEDIAITEM") {
@@ -870,6 +994,10 @@ final class WhatsAppDatabase: @unchecked Sendable {
             return "0"
         }
         return "(\(predicates.joined(separator: " OR ")))"
+    }
+
+    private var shouldJoinMediaPresenceForChatSummary: Bool {
+        mediaSchema?.canJoinMessages == true && !messageColumns.contains("ZMEDIAITEM")
     }
 
     private func photoMediaSQL() -> String {
@@ -1669,7 +1797,7 @@ final class WhatsAppDatabase: @unchecked Sendable {
     }
 
     private func mediaPresenceJoinSQL() -> String {
-        guard mediaSchema?.canJoinMessages == true else {
+        guard shouldJoinMediaPresenceForChatSummary else {
             return ""
         }
         return """

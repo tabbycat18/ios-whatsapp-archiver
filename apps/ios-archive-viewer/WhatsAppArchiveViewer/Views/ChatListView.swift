@@ -9,6 +9,9 @@ struct ChatListView: View {
     @State private var importMode: ArchiveImportMode = .add(.whatsApp)
     @State private var searchText = ""
     @State private var isWallpaperSettingsPresented = false
+    #if DEBUG
+    @State private var didLogFirstVisibleSurface = false
+    #endif
 
     private var filteredChats: [ChatSummary] {
         let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -73,6 +76,13 @@ struct ChatListView: View {
         .onChange(of: store.selectedChat?.id) { _, _ in
             guard let chat = store.selectedChat else { return }
             store.loadMessages(for: chat)
+        }
+        .onAppear {
+            #if DEBUG
+            guard !didLogFirstVisibleSurface else { return }
+            didLogFirstVisibleSurface = true
+            AppLaunchDebugLog.mark(store.isArchiveOpen ? "first chat list visible" : "first archive home visible")
+            #endif
         }
     }
 
