@@ -1916,6 +1916,7 @@ private extension MessageRow {
     func matchesSearch(_ query: String) -> Bool {
         guard !query.isEmpty else { return true }
         let labels = [
+            mediaCaptionText,
             displayText,
             nonTextPlaceholderText,
             friendlySenderName,
@@ -2332,7 +2333,7 @@ private struct MessageContentView: View {
     }
 
     private var displayText: String? {
-        message.displayText ?? message.media?.fallbackCaptionText
+        message.mediaCaptionText ?? message.displayText ?? message.media?.fallbackCaptionText
     }
 
     private var renderedDisplayText: String? {
@@ -2360,16 +2361,18 @@ private struct MessageContentView: View {
         switch media.kind {
         case .photo, .video, .videoMessage, .audio, .voiceMessage, .document, .linkPreview:
             return true
-        case .contact, .location, .sticker, .call, .callOrSystem, .system, .deleted, .media:
+        case .media:
+            return true
+        case .contact, .location, .sticker, .call, .callOrSystem, .system, .deleted:
             return displayText == nil
         }
     }
 
     private func isCaptionedAttachment(_ media: MediaMetadata) -> Bool {
         switch media.kind {
-        case .photo, .video, .videoMessage, .audio, .voiceMessage, .document:
+        case .photo, .video, .videoMessage, .audio, .voiceMessage, .document, .media:
             return true
-        case .contact, .location, .sticker, .linkPreview, .call, .callOrSystem, .system, .deleted, .media:
+        case .contact, .location, .sticker, .linkPreview, .call, .callOrSystem, .system, .deleted:
             return false
         }
     }
@@ -2419,7 +2422,6 @@ private struct VoiceCallAttachmentView: View {
 
             Text("Voice call")
                 .font(.subheadline.weight(.medium))
-                .foregroundStyle(.primary)
                 .lineLimit(1)
                 .minimumScaleFactor(0.85)
                 .textSelection(.enabled)

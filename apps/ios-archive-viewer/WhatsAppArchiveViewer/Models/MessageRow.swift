@@ -249,6 +249,11 @@ struct MessageRow: Identifiable, Hashable, Sendable {
         return trimmed
     }
 
+    var mediaCaptionText: String? {
+        guard media != nil else { return nil }
+        return displayText
+    }
+
     var nonTextPlaceholderText: String? {
         if let media {
             return media.kind.placeholderText
