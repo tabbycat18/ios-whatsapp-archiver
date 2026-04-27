@@ -462,11 +462,18 @@ private struct ArchiveOpenDebugTimer {
 }
 #endif
 
+private enum ArchiveOpenMode {
+    case manual
+    case startupRestore
+}
+
 @MainActor
 final class ArchiveStore: ObservableObject {
     @Published var savedArchives: [SavedArchive]
     @Published var archivesNeedingRelink = Set<UUID>()
     @Published var openingArchiveID: UUID?
+    @Published private(set) var openingMode: ArchiveOpenMode = .manual
+    @Published private(set) var openingArchiveName: String?
     @Published var chats: [ChatSummary] = []
     @Published var selectedChat: ChatSummary?
     @Published var messages: [MessageRow] = []
@@ -494,6 +501,10 @@ final class ArchiveStore: ObservableObject {
 
     var isOpeningArchive: Bool {
         openingArchiveID != nil
+    }
+
+    var isStartupOpening: Bool {
+        isOpeningArchive && openingMode == .startupRestore
     }
 
     let messageLimit = 250
@@ -538,10 +549,34 @@ final class ArchiveStore: ObservableObject {
         if libraryStore.didTrimArchivesDuringLastLoad {
             errorMessage = "Only the WhatsApp and WhatsApp Business slots are kept. Extra saved archive records were removed from this app, but archive files were not deleted."
         }
+
+        loadDefaultArchiveIfAvailable()
     }
 
     func loadDefaultArchiveIfAvailable() {
-        // Archive selection is now explicit through the saved archive library.
+        #if DEBUG
+        AppLaunchDebugLog.mark("loading startup restore")
+        #endif
+
+        guard openingArchiveID == nil else { return }
+        guard let archive = savedArchives.first(where: { $0.lastOpenedAt != nil }) else {
+            #if DEBUG
+            print("[ArchiveOpen] startup restore skipped: no recently opened archive")
+            #endif
+            return
+        }
+
+        openingArchiveID = archive.id
+        openingArchiveName = archive.displayName
+        openingMode = .startupRestore
+        #if DEBUG
+        print("[ArchiveOpen] startup restore candidate count=1")
+        #endif
+
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            await self.openSavedArchiveImmediately(archive)
+        }
     }
 
     func savedArchive(for kind: ArchiveKind) -> SavedArchive? {
@@ -561,6 +596,8 @@ final class ArchiveStore: ObservableObject {
 
         let openingID = UUID()
         openingArchiveID = openingID
+        openingMode = .manual
+        openingArchiveName = kind.defaultDisplayName
         Task { @MainActor [weak self] in
             await Task.yield()
             await self?.openPickedURLImmediately(url, kind: kind, openingID: openingID)
@@ -570,6 +607,8 @@ final class ArchiveStore: ObservableObject {
     func openSavedArchive(_ archive: SavedArchive) {
         guard openingArchiveID == nil else { return }
         openingArchiveID = archive.id
+        openingMode = .manual
+        openingArchiveName = archive.displayName
         Task { @MainActor [weak self] in
             await Task.yield()
             await self?.openSavedArchiveImmediately(archive)
@@ -579,6 +618,8 @@ final class ArchiveStore: ObservableObject {
     func openDemoArchive() {
         guard openingArchiveID == nil else { return }
         openingArchiveID = Self.demoArchiveID
+        openingMode = .manual
+        openingArchiveName = "Demo Archive"
         Task { @MainActor [weak self] in
             await Task.yield()
             await self?.openDemoArchiveImmediately()
@@ -588,6 +629,10 @@ final class ArchiveStore: ObservableObject {
     func relinkArchive(id: UUID, with url: URL) {
         guard openingArchiveID == nil else { return }
         openingArchiveID = id
+        openingMode = .manual
+        if let archive = savedArchives.first(where: { $0.id == id }) {
+            openingArchiveName = archive.displayName
+        }
         Task { @MainActor [weak self] in
             await Task.yield()
             await self?.relinkArchiveImmediately(id: id, with: url)
@@ -598,6 +643,8 @@ final class ArchiveStore: ObservableObject {
         defer {
             if openingArchiveID == openingID {
                 openingArchiveID = nil
+                openingMode = .manual
+                openingArchiveName = nil
             }
         }
 
@@ -648,6 +695,8 @@ final class ArchiveStore: ObservableObject {
         defer {
             if openingArchiveID == archive.id {
                 openingArchiveID = nil
+                openingMode = .manual
+                openingArchiveName = nil
             }
         }
 
@@ -677,6 +726,8 @@ final class ArchiveStore: ObservableObject {
         defer {
             if openingArchiveID == Self.demoArchiveID {
                 openingArchiveID = nil
+                openingMode = .manual
+                openingArchiveName = nil
             }
         }
 
@@ -714,6 +765,8 @@ final class ArchiveStore: ObservableObject {
         defer {
             if openingArchiveID == id {
                 openingArchiveID = nil
+                openingMode = .manual
+                openingArchiveName = nil
             }
         }
 
@@ -785,6 +838,8 @@ final class ArchiveStore: ObservableObject {
     }
 
     func closeArchive() {
+        openingMode = .manual
+        openingArchiveName = nil
         database = nil
         archiveAccess = nil
         profilePhotoService = nil
@@ -939,11 +994,18 @@ final class ArchiveStore: ObservableObject {
 
     private func openArchive(savedArchive: inout SavedArchive, access: ArchiveAccess, shouldSave: Bool) async throws {
         do {
+            #if DEBUG
+            var openTimer = ArchiveOpenDebugTimer()
+            openTimer.mark("open flow start")
+            #endif
             let snapshot = try await Self.loadArchiveSnapshot(
                 databaseURL: access.databaseURL,
                 archiveRootURL: access.archiveRootURL
             )
             guard openingArchiveID != nil else { return }
+            #if DEBUG
+            openTimer.mark("fetch snapshot complete chats=\(snapshot.chats.count)")
+            #endif
 
             #if DEBUG
             let avatarSetupStart = Date()
@@ -956,6 +1018,7 @@ final class ArchiveStore: ObservableObject {
             enableProfileAvatarLoading(after: .milliseconds(2_000), archiveID: savedArchive.id)
             #if DEBUG
             print("[ArchiveOpen] avatar/profile setup: \(ArchiveOpenDebugTimer.milliseconds(since: avatarSetupStart)) ms deferred=1")
+            openTimer.mark("avatar/profile setup")
             #endif
             baseChats = snapshot.chats
             baseMessages = []
@@ -963,6 +1026,7 @@ final class ArchiveStore: ObservableObject {
             chats = enrichedChats(snapshot.chats)
             #if DEBUG
             print("[ArchiveOpen] first chat list render handoff: \(ArchiveOpenDebugTimer.milliseconds(since: snapshot.openedAt)) ms chats=\(snapshot.chats.count)")
+            openTimer.mark("chat list ready")
             #endif
             selectedChat = nil
             messages = []
@@ -978,6 +1042,9 @@ final class ArchiveStore: ObservableObject {
             if shouldSave {
                 upsert(savedArchive)
             }
+            #if DEBUG
+            print("[ArchiveOpen] open flow complete: chats=\(snapshot.chats.count)")
+            #endif
         } catch {
             database = nil
             archiveAccess = nil

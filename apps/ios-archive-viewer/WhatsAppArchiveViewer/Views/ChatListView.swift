@@ -9,9 +9,6 @@ struct ChatListView: View {
     @State private var importMode: ArchiveImportMode = .add(.whatsApp)
     @State private var searchText = ""
     @State private var isWallpaperSettingsPresented = false
-    #if DEBUG
-    @State private var didLogFirstVisibleSurface = false
-    #endif
 
     private var filteredChats: [ChatSummary] {
         let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -37,11 +34,23 @@ struct ChatListView: View {
         Group {
             if store.isArchiveOpen {
                 chatNavigation
+                    .onAppear {
+                        #if DEBUG
+                        AppLaunchDebugLog.mark("first chat list visible")
+                        #endif
+                    }
+            } else if store.isStartupOpening {
+                StartupArchiveOpeningView(archiveName: store.openingArchiveName)
             } else {
                 ArchiveLibraryView(
                     onAddArchive: presentAddArchive,
                     onRelinkArchive: presentRelinkArchive
                 )
+                .onAppear {
+                    #if DEBUG
+                    AppLaunchDebugLog.mark("first archive home visible")
+                    #endif
+                }
             }
         }
         .fileImporter(
@@ -76,13 +85,6 @@ struct ChatListView: View {
         .onChange(of: store.selectedChat?.id) { _, _ in
             guard let chat = store.selectedChat else { return }
             store.loadMessages(for: chat)
-        }
-        .onAppear {
-            #if DEBUG
-            guard !didLogFirstVisibleSurface else { return }
-            didLogFirstVisibleSurface = true
-            AppLaunchDebugLog.mark(store.isArchiveOpen ? "first chat list visible" : "first archive home visible")
-            #endif
         }
     }
 
@@ -232,6 +234,84 @@ private struct ChatListSectionHeader: View {
             .padding(.horizontal, 16)
             .background(Color(.systemGroupedBackground))
             .accessibilityAddTraits(.isHeader)
+    }
+}
+
+private struct StartupArchiveOpeningView: View {
+    let archiveName: String?
+    @State private var didLogStartupLoadingSurface = false
+
+    private var displayName: String {
+        let trimmedArchiveName = archiveName?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return trimmedArchiveName.isEmpty ? "Archive" : trimmedArchiveName
+    }
+
+    var body: some View {
+        VStack {
+            Spacer()
+
+            VStack(alignment: .leading, spacing: 12) {
+                HStack(alignment: .top, spacing: 12) {
+                    ZStack {
+                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                            .fill(Color.accentColor.opacity(0.12))
+
+                        Image(systemName: "archivebox.fill")
+                            .font(.system(size: 18, weight: .semibold))
+                            .foregroundStyle(.accentColor)
+                    }
+                    .frame(width: 38, height: 38)
+
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("WA Archiver")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.secondary)
+
+                        Text(displayName)
+                            .font(.headline)
+                            .foregroundStyle(.primary)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.9)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                }
+
+                Text("Opening archive…")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.primary)
+
+                Text("Loading chats and media index locally")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                ProgressView()
+                    .controlSize(.small)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .padding(14)
+            .frame(maxWidth: 360)
+            .background(
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .fill(Color(.secondarySystemGroupedBackground))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .stroke(.quaternary)
+            )
+            .onAppear {
+                #if DEBUG
+                guard !didLogStartupLoadingSurface else { return }
+                didLogStartupLoadingSurface = true
+                AppLaunchDebugLog.mark("first startup loading visible")
+                #endif
+            }
+
+            Spacer()
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Color(.systemGroupedBackground))
     }
 }
 
@@ -487,7 +567,7 @@ private struct ArchiveLibraryView: View {
             }
             .navigationTitle("WA Archiver")
             .overlay(alignment: .bottom) {
-                if store.isOpeningArchive {
+                if store.isOpeningArchive && !store.isStartupOpening {
                     OpeningArchiveBadge()
                         .padding(.bottom, 16)
                         .transition(.move(edge: .bottom).combined(with: .opacity))
