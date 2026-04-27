@@ -689,12 +689,14 @@ private struct ChatInfoView: View {
     @State private var selectionDragMode: MediaSelectionDragMode?
     @State private var selectionDragVisitedIDs = Set<String>()
     @State private var selectionDragIntent: MediaSelectionDragIntent?
+    @State private var selectionDragAnchorID: String?
     @State private var mediaDisplayLimit = 120
     @State private var isLoadingMedia = false
     @State private var mediaBrowserSelection: MediaBrowserSelection?
     @State private var mediaViewportHeight: CGFloat = 0
     @State private var selectionAutoScrollDirection: MediaSelectionAutoScrollDirection?
     @State private var selectionAutoScrollLocation: CGPoint?
+    @State private var selectionAutoScrollTask: Task<Void, Never>?
     @State private var lastSelectionDragLocation: CGPoint?
     #if os(iOS)
     @State private var mediaScrollView: UIScrollView?
@@ -703,17 +705,16 @@ private struct ChatInfoView: View {
     private let mediaPageSize = 120
     private let selectionAutoScrollEdgeInset: CGFloat = 76
     private let selectionAutoScrollStep = 1
-    private let selectionAutoScrollInterval: UInt64 = 33_000_000
-    private let selectionAutoScrollMaxPointsPerTick: CGFloat = 9
+    private let selectionAutoScrollInterval: UInt64 = 16_666_667
+    private let selectionAutoScrollMaxPointsPerTick: CGFloat = 12
+    private let selectionDragHitRadius: CGFloat = 14
 
     private var mediaTaskID: String {
         "\(chat.id)-\(selectedFilter.rawValue)-\(mediaDisplayLimit)"
     }
 
     private var exportableMediaItems: [ChatMediaItem] {
-        mediaItems.filter { item in
-            item.media.fileURL != nil && item.media.isFileAvailableInArchive
-        }
+        mediaItems.filter(isExportableMediaItem)
     }
 
     private var selectedExportURLs: [URL] {
@@ -746,6 +747,9 @@ private struct ChatInfoView: View {
                     .background(
                         MediaScrollViewAccessor { scrollView in
                             mediaScrollView = scrollView
+                            if selectionDragIntent == .selecting {
+                                scrollView?.isScrollEnabled = false
+                            }
                         }
                     )
                     #endif
@@ -755,9 +759,6 @@ private struct ChatInfoView: View {
                     }
                     .onChange(of: geometry.size.height) { _, newHeight in
                         mediaViewportHeight = newHeight
-                    }
-                    .task(id: selectionAutoScrollDirection) {
-                        await runSelectionAutoScroll(scrollProxy: scrollProxy)
                     }
                 }
             }
@@ -900,7 +901,7 @@ private struct ChatInfoView: View {
                 }
                 .mediaSelectionDrag(
                     isSelectingMedia,
-                    gesture: mediaSelectionDragGesture
+                    gesture: mediaSelectionDragGesture(scrollProxy: scrollProxy)
                 )
 
                 if canLoadMoreMedia {
@@ -1051,7 +1052,7 @@ private struct ChatInfoView: View {
     }
 
     private func toggleMediaSelection(_ item: ChatMediaItem) {
-        guard item.media.fileURL != nil, item.media.isFileAvailableInArchive else {
+        guard isExportableMediaItem(item) else {
             return
         }
         if selectedMediaIDs.contains(item.id) {
@@ -1079,36 +1080,46 @@ private struct ChatInfoView: View {
         }
     }
 
-    private var mediaSelectionDragGesture: some Gesture {
+    private func mediaSelectionDragGesture(scrollProxy: ScrollViewProxy) -> some Gesture {
         DragGesture(minimumDistance: 12, coordinateSpace: .named("chatInfoMediaGrid"))
             .onChanged { value in
                 guard isSelectingMedia else { return }
-                guard shouldHandleSelectionDrag(value) else { return }
-                updateSelectionDrag(at: value.startLocation)
-                updateSelectionDrag(at: value.location)
+                guard beginSelectionDragIfNeeded(value) else { return }
+                if lastSelectionDragLocation == nil {
+                    updateSelectionDrag(at: value.startLocation, scrollProxy: scrollProxy)
+                }
+                updateSelectionDrag(at: value.location, scrollProxy: scrollProxy)
             }
             .onEnded { _ in
                 resetSelectionDrag()
             }
     }
 
-    private func shouldHandleSelectionDrag(_ value: DragGesture.Value) -> Bool {
-        if selectionDragIntent == nil {
-            selectionDragIntent = exportableItem(at: value.startLocation) == nil ? .scrolling : .selecting
+    private func beginSelectionDragIfNeeded(_ value: DragGesture.Value) -> Bool {
+        if let selectionDragIntent {
+            return selectionDragIntent == .selecting
         }
-        return selectionDragIntent == .selecting
+
+        guard let startItem = exportableItem(at: value.startLocation) else {
+            selectionDragIntent = .scrolling
+            setMediaScrollEnabled(true)
+            return false
+        }
+
+        selectionDragIntent = .selecting
+        selectionDragAnchorID = startItem.id
+        selectionDragMode = selectedMediaIDs.contains(startItem.id) ? .remove : .add
+        setMediaScrollEnabled(false)
+        return true
     }
 
-    private func updateSelectionDrag(at location: CGPoint) {
-        updateSelectionAutoScrollDirection(for: location)
+    private func updateSelectionDrag(at location: CGPoint, scrollProxy: ScrollViewProxy) {
+        updateSelectionAutoScrollDirection(for: location, scrollProxy: scrollProxy)
 
-        let items = exportableItems(hitBy: location, previousLocation: lastSelectionDragLocation)
+        let items = selectionItems(hitBy: location, previousLocation: lastSelectionDragLocation)
         lastSelectionDragLocation = location
 
         for item in items where !selectionDragVisitedIDs.contains(item.id) {
-            if selectionDragMode == nil {
-                selectionDragMode = selectedMediaIDs.contains(item.id) ? .remove : .add
-            }
             selectionDragVisitedIDs.insert(item.id)
 
             switch selectionDragMode {
@@ -1122,36 +1133,68 @@ private struct ChatInfoView: View {
         }
     }
 
-    private func updateSelectionAutoScrollDirection(for location: CGPoint) {
-        guard isSelectingMedia, mediaViewportHeight > 0 else {
+    private func updateSelectionAutoScrollDirection(for location: CGPoint, scrollProxy: ScrollViewProxy) {
+        let viewportHeight = currentMediaViewportHeight
+        guard isSelectingMedia, viewportHeight > 0 else {
             selectionAutoScrollDirection = nil
             selectionAutoScrollLocation = nil
+            stopSelectionAutoScroll()
             return
         }
 
         selectionAutoScrollLocation = location
 
-        if location.y > mediaViewportHeight - selectionAutoScrollEdgeInset {
-            selectionAutoScrollDirection = .down
+        let newDirection: MediaSelectionAutoScrollDirection?
+        if location.y > viewportHeight - selectionAutoScrollEdgeInset {
+            newDirection = .down
         } else if location.y < selectionAutoScrollEdgeInset {
-            selectionAutoScrollDirection = .up
+            newDirection = .up
         } else {
-            selectionAutoScrollDirection = nil
+            newDirection = nil
+        }
+
+        guard newDirection != selectionAutoScrollDirection else {
+            if newDirection != nil, selectionAutoScrollTask == nil {
+                startSelectionAutoScroll(scrollProxy: scrollProxy)
+            }
+            return
+        }
+        selectionAutoScrollDirection = newDirection
+
+        if newDirection == nil {
+            stopSelectionAutoScroll()
+        } else {
+            startSelectionAutoScroll(scrollProxy: scrollProxy)
         }
     }
 
-    @MainActor
-    private func runSelectionAutoScroll(scrollProxy: ScrollViewProxy) async {
-        guard selectionAutoScrollDirection != nil else { return }
+    private var currentMediaViewportHeight: CGFloat {
+        #if os(iOS)
+        if let mediaScrollView, mediaScrollView.bounds.height > 0 {
+            return mediaScrollView.bounds.height
+        }
+        #endif
+        return mediaViewportHeight
+    }
 
-        while !Task.isCancelled, let direction = selectionAutoScrollDirection {
-            try? await Task.sleep(nanoseconds: selectionAutoScrollInterval)
-            guard !Task.isCancelled, isSelectingMedia, selectionAutoScrollDirection != nil else { break }
-            scrollSelection(direction: direction, scrollProxy: scrollProxy)
-            if let location = selectionAutoScrollLocation {
-                updateSelectionDrag(at: location)
+    private func startSelectionAutoScroll(scrollProxy: ScrollViewProxy) {
+        guard selectionAutoScrollTask == nil else { return }
+        selectionAutoScrollTask = Task { @MainActor in
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: selectionAutoScrollInterval)
+                guard !Task.isCancelled, isSelectingMedia, let direction = selectionAutoScrollDirection else { break }
+
+                scrollSelection(direction: direction, scrollProxy: scrollProxy)
+                if let location = selectionAutoScrollLocation {
+                    updateSelectionDrag(at: location, scrollProxy: scrollProxy)
+                }
             }
         }
+    }
+
+    private func stopSelectionAutoScroll() {
+        selectionAutoScrollTask?.cancel()
+        selectionAutoScrollTask = nil
     }
 
     private func scrollSelection(
@@ -1220,7 +1263,12 @@ private struct ChatInfoView: View {
             proposedY = max(currentOffset.y - delta, -scrollView.adjustedContentInset.top)
         }
 
-        guard abs(proposedY - currentOffset.y) >= 0.5 else { return }
+        guard abs(proposedY - currentOffset.y) >= 0.5 else {
+            if direction == .down {
+                loadNextMediaPageIfNeeded()
+            }
+            return
+        }
         scrollView.setContentOffset(CGPoint(x: currentOffset.x, y: proposedY), animated: false)
 
         if direction == .down,
@@ -1232,58 +1280,113 @@ private struct ChatInfoView: View {
 
     private func exportableItem(at location: CGPoint) -> ChatMediaItem? {
         mediaItems.first { item in
-            item.media.fileURL != nil
-                && item.media.isFileAvailableInArchive
+            isExportableMediaItem(item)
                 && mediaTileFrames[item.id]?.contains(location) == true
         }
     }
 
-    private func exportableItems(hitBy location: CGPoint, previousLocation: CGPoint?) -> [ChatMediaItem] {
-        let expandedLocationRect = CGRect(x: location.x - 10, y: location.y - 10, width: 20, height: 20)
-        let hitRect: CGRect
-        if let previousLocation {
-            hitRect = CGRect(
-                x: min(previousLocation.x, location.x),
-                y: min(previousLocation.y, location.y),
-                width: abs(previousLocation.x - location.x),
-                height: abs(previousLocation.y - location.y)
-            )
-            .insetBy(dx: -14, dy: -14)
-        } else {
-            hitRect = expandedLocationRect
+    private func selectionItems(hitBy location: CGPoint, previousLocation: CGPoint?) -> [ChatMediaItem] {
+        var hitItems = exportableItems(hitBy: location, previousLocation: previousLocation)
+        if hitItems.isEmpty, let direction = selectionAutoScrollDirection, let edgeItem = edgeSelectionItem(for: direction) {
+            hitItems = [edgeItem]
         }
 
+        guard let anchorID = selectionDragAnchorID else {
+            return hitItems
+        }
+
+        var items: [ChatMediaItem] = []
+        var itemIDs = Set<String>()
+        for hitItem in hitItems {
+            for item in selectionRangeItems(from: anchorID, to: hitItem.id) where itemIDs.insert(item.id).inserted {
+                items.append(item)
+            }
+        }
+        return items
+    }
+
+    private func exportableItems(hitBy location: CGPoint, previousLocation: CGPoint?) -> [ChatMediaItem] {
+        let previousLocation = previousLocation ?? location
+        let segmentBounds = CGRect(
+            x: min(previousLocation.x, location.x),
+            y: min(previousLocation.y, location.y),
+            width: abs(previousLocation.x - location.x),
+            height: abs(previousLocation.y - location.y)
+        )
+        .standardized
+        .insetBy(dx: -selectionDragHitRadius, dy: -selectionDragHitRadius)
+
         return mediaItems.filter { item in
-            guard item.media.fileURL != nil,
-                  item.media.isFileAvailableInArchive,
+            guard isExportableMediaItem(item),
                   let frame = mediaTileFrames[item.id]
             else {
                 return false
             }
-            let expandedFrame = frame.insetBy(dx: -6, dy: -6)
-            if expandedFrame.intersects(expandedLocationRect) {
-                return true
-            }
-            guard expandedFrame.intersects(hitRect) else {
+            guard frame.intersects(segmentBounds)
+                || frame.insetBy(dx: -selectionDragHitRadius, dy: -selectionDragHitRadius).contains(location)
+            else {
                 return false
             }
-            guard let previousLocation else {
-                return expandedFrame.contains(location)
-            }
-            return dragSegment(from: previousLocation, to: location, intersects: expandedFrame)
+            return dragSegment(from: previousLocation, to: location, intersects: frame, radius: selectionDragHitRadius)
         }
     }
 
-    private func dragSegment(from start: CGPoint, to end: CGPoint, intersects rect: CGRect) -> Bool {
-        if rect.contains(start) || rect.contains(end) {
+    private func selectionRangeItems(from startID: String, to endID: String) -> [ChatMediaItem] {
+        guard let startIndex = mediaItems.firstIndex(where: { $0.id == startID }),
+              let endIndex = mediaItems.firstIndex(where: { $0.id == endID }) else {
+            return []
+        }
+
+        let lowerBound = min(startIndex, endIndex)
+        let upperBound = max(startIndex, endIndex)
+        return mediaItems[lowerBound...upperBound].filter(isExportableMediaItem)
+    }
+
+    private func edgeSelectionItem(for direction: MediaSelectionAutoScrollDirection) -> ChatMediaItem? {
+        let viewportHeight = currentMediaViewportHeight
+        let visibleItems = mediaItems.enumerated().compactMap { index, item -> (index: Int, item: ChatMediaItem, frame: CGRect)? in
+            guard isExportableMediaItem(item),
+                  let frame = mediaTileFrames[item.id],
+                  frame.maxY >= 0,
+                  frame.minY <= viewportHeight else {
+                return nil
+            }
+            return (index, item, frame)
+        }
+
+        switch direction {
+        case .down:
+            return visibleItems.max { lhs, rhs in
+                if lhs.frame.maxY == rhs.frame.maxY {
+                    return lhs.index < rhs.index
+                }
+                return lhs.frame.maxY < rhs.frame.maxY
+            }?.item
+        case .up:
+            return visibleItems.min { lhs, rhs in
+                if lhs.frame.minY == rhs.frame.minY {
+                    return lhs.index < rhs.index
+                }
+                return lhs.frame.minY < rhs.frame.minY
+            }?.item
+        }
+    }
+
+    private func isExportableMediaItem(_ item: ChatMediaItem) -> Bool {
+        item.media.fileURL != nil && item.media.isFileAvailableInArchive
+    }
+
+    private func dragSegment(from start: CGPoint, to end: CGPoint, intersects rect: CGRect, radius: CGFloat) -> Bool {
+        let expandedRect = rect.insetBy(dx: -radius, dy: -radius)
+        if expandedRect.contains(start) || expandedRect.contains(end) {
             return true
         }
 
         let corners = [
-            CGPoint(x: rect.minX, y: rect.minY),
-            CGPoint(x: rect.maxX, y: rect.minY),
-            CGPoint(x: rect.maxX, y: rect.maxY),
-            CGPoint(x: rect.minX, y: rect.maxY)
+            CGPoint(x: expandedRect.minX, y: expandedRect.minY),
+            CGPoint(x: expandedRect.maxX, y: expandedRect.minY),
+            CGPoint(x: expandedRect.maxX, y: expandedRect.maxY),
+            CGPoint(x: expandedRect.minX, y: expandedRect.maxY)
         ]
 
         let edges = [
@@ -1299,8 +1402,8 @@ private struct ChatInfoView: View {
     }
 
     private func lineSegmentsIntersect(_ p1: CGPoint, _ p2: CGPoint, _ q1: CGPoint, _ q2: CGPoint) -> Bool {
-        func orientation(_ a: CGPoint, _ b: CGPoint, _ c: CGPoint) -> CGFloat {
-            (b.y - a.y) * (c.x - b.x) - (b.x - a.x) * (c.y - b.y)
+        func crossProduct(_ a: CGPoint, _ b: CGPoint, _ c: CGPoint) -> CGFloat {
+            (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x)
         }
 
         func contains(_ point: CGPoint, onSegmentFrom start: CGPoint, to end: CGPoint) -> Bool {
@@ -1310,10 +1413,10 @@ private struct ChatInfoView: View {
                 && point.y <= max(start.y, end.y) + 0.5
         }
 
-        let o1 = orientation(p1, p2, q1)
-        let o2 = orientation(p1, p2, q2)
-        let o3 = orientation(q1, q2, p1)
-        let o4 = orientation(q1, q2, p2)
+        let o1 = crossProduct(p1, p2, q1)
+        let o2 = crossProduct(p1, p2, q2)
+        let o3 = crossProduct(q1, q2, p1)
+        let o4 = crossProduct(q1, q2, p2)
         let epsilon: CGFloat = 0.001
 
         if abs(o1) < epsilon, contains(q1, onSegmentFrom: p1, to: p2) { return true }
@@ -1346,9 +1449,18 @@ private struct ChatInfoView: View {
         selectionDragMode = nil
         selectionDragVisitedIDs = []
         selectionDragIntent = nil
+        selectionDragAnchorID = nil
         lastSelectionDragLocation = nil
         selectionAutoScrollDirection = nil
         selectionAutoScrollLocation = nil
+        stopSelectionAutoScroll()
+        setMediaScrollEnabled(true)
+    }
+
+    private func setMediaScrollEnabled(_ isEnabled: Bool) {
+        #if os(iOS)
+        mediaScrollView?.isScrollEnabled = isEnabled
+        #endif
     }
 
     private func logMediaSummary(_ summary: ChatMediaLoadSummary) {
