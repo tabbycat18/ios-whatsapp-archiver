@@ -102,25 +102,34 @@ struct ChatListView: View {
                 } else {
                     List(selection: $store.selectedChat) {
                         if !filteredStatusStoryChats.isEmpty {
-                            Section("Stories") {
-                                ForEach(filteredStatusStoryChats) { chat in
-                                    NavigationLink(value: chat) {
-                                        ChatRowView(
-                                            chat: chat,
-                                            titleOverride: "Stories",
-                                            avatarPriority: .visible,
-                                            isSelected: store.selectedChat?.id == chat.id
-                                        )
-                                    }
-                                    .buttonStyle(.plain)
-                                    .listRowSeparator(.hidden)
-                                    .listRowInsets(chatRowInsets)
-                                    .listRowBackground(Color.clear)
+                            ChatListSectionHeader(title: "Stories")
+                                .listRowSeparator(.hidden)
+                                .listRowInsets(chatRowInsets)
+                                .listRowBackground(Color(.systemGroupedBackground))
+
+                            ForEach(filteredStatusStoryChats) { chat in
+                                NavigationLink(value: chat) {
+                                    ChatRowView(
+                                        chat: chat,
+                                        titleOverride: "Stories",
+                                        subtitleOverride: storiesSubtitle(for: chat),
+                                        avatarPriority: .visible,
+                                        isSelected: store.selectedChat?.id == chat.id
+                                    )
                                 }
+                                .buttonStyle(.plain)
+                                .listRowSeparator(.hidden)
+                                .listRowInsets(chatRowInsets)
+                                .listRowBackground(Color(.secondarySystemGroupedBackground))
                             }
                         }
 
-                        Section("Chats") {
+                        if !filteredNormalChats.isEmpty {
+                            ChatListSectionHeader(title: "Chats")
+                                .listRowSeparator(.hidden)
+                                .listRowInsets(chatRowInsets)
+                                .listRowBackground(Color(.systemGroupedBackground))
+
                             ForEach(filteredNormalChats) { chat in
                                 NavigationLink(value: chat) {
                                     ChatRowView(
@@ -132,12 +141,12 @@ struct ChatListView: View {
                                 .buttonStyle(.plain)
                                 .listRowSeparator(.hidden)
                                 .listRowInsets(chatRowInsets)
-                                .listRowBackground(Color.clear)
+                                .listRowBackground(Color(.secondarySystemGroupedBackground))
                             }
                         }
                     }
                     .listStyle(.plain)
-                    .safeAreaPadding(.bottom, 18)
+                    .safeAreaPadding(.bottom, 28)
                     .scrollContentBackground(.hidden)
                     .background(Color(.systemGroupedBackground))
                 }
@@ -203,6 +212,26 @@ struct ChatListView: View {
 
     private var chatRowInsets: EdgeInsets {
         EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0)
+    }
+
+    private func storiesSubtitle(for chat: ChatSummary) -> String {
+        chat.messageCount == 1 ? "1 item" : "\(chat.messageCount.formatted()) items"
+    }
+}
+
+private struct ChatListSectionHeader: View {
+    let title: String
+
+    var body: some View {
+        Text(title)
+            .font(.subheadline.weight(.semibold))
+            .foregroundStyle(.secondary)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.top, 14)
+            .padding(.bottom, 6)
+            .padding(.horizontal, 16)
+            .background(Color(.systemGroupedBackground))
+            .accessibilityAddTraits(.isHeader)
     }
 }
 
@@ -1088,23 +1117,24 @@ private struct InstructionInfoRow: Identifiable {
 private struct ChatRowView: View {
     let chat: ChatSummary
     var titleOverride: String? = nil
+    var subtitleOverride: String? = nil
     let avatarPriority: ProfileAvatarLoadPriority
     let isSelected: Bool
     @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
         VStack(spacing: 0) {
-            HStack(spacing: 12) {
+            HStack(spacing: 13) {
                 ChatAvatarView(chat: chat, priority: avatarPriority)
 
-                VStack(alignment: .leading, spacing: 4) {
+                VStack(alignment: .leading, spacing: 5) {
                     Text(titleOverride ?? chat.title)
                         .font(.body.weight(.semibold))
                         .foregroundStyle(.primary)
                         .lineLimit(1)
                         .truncationMode(.tail)
 
-                    Text(chat.detailText)
+                    Text(subtitleOverride ?? chat.detailText)
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
@@ -1113,54 +1143,43 @@ private struct ChatRowView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .layoutPriority(1)
 
-                HStack(spacing: 6) {
-                    if let latestMessageDate = chat.latestMessageDate {
-                        let dateText = ChatListDateFormatter.shared.displayString(for: latestMessageDate)
-                        Text(dateText)
-                            .font(.caption.weight(.medium))
-                            .foregroundStyle(isSelected ? .primary : .secondary)
-                            .monospacedDigit()
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.85)
-                            .fixedSize(horizontal: true, vertical: false)
-                            .accessibilityLabel(dateText)
-                    }
-
-                    Image(systemName: "chevron.right")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(.tertiary)
-                        .accessibilityHidden(true)
+                if let latestMessageDate = chat.latestMessageDate {
+                    let dateText = ChatListDateFormatter.shared.displayString(for: latestMessageDate)
+                    Text(dateText)
+                        .font(.caption.weight(.medium))
+                        .foregroundStyle(isSelected ? .primary : .secondary)
+                        .monospacedDigit()
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.85)
+                        .fixedSize(horizontal: true, vertical: false)
+                        .accessibilityLabel(dateText)
                 }
-                .padding(.top, 1)
             }
             .padding(.leading, 16)
-            .padding(.trailing, 12)
-            .padding(.vertical, 7)
-            .frame(minHeight: 70)
-            .background {
-                if isSelected {
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .fill(selectionBackground)
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 3)
-                }
-            }
+            .padding(.trailing, 8)
+            .padding(.vertical, 10)
+            .frame(maxWidth: .infinity, minHeight: 82, alignment: .leading)
 
-            Divider()
-                .padding(.leading, 84)
-                .opacity(isSelected ? 0 : separatorOpacity)
+            Rectangle()
+                .fill(separatorColor)
+                .frame(height: 1 / UIScreen.main.scale)
+                .padding(.leading, 91)
                 .accessibilityHidden(true)
         }
-        .background(Color(.systemBackground))
+        .background(isSelected ? selectionBackground : rowBackground)
         .contentShape(Rectangle())
+    }
+
+    private var rowBackground: Color {
+        colorScheme == .dark ? Color(.secondarySystemGroupedBackground) : Color(.systemBackground)
     }
 
     private var selectionBackground: Color {
         Color.accentColor.opacity(colorScheme == .dark ? 0.24 : 0.11)
     }
 
-    private var separatorOpacity: Double {
-        colorScheme == .dark ? 0.28 : 0.55
+    private var separatorColor: Color {
+        Color(.separator).opacity(colorScheme == .dark ? 0.36 : 0.48)
     }
 }
 
@@ -1285,7 +1304,7 @@ private struct ChatAvatarView: View {
                         .foregroundStyle(.white)
                 }
             }
-            .frame(width: 54, height: 54)
+            .frame(width: 60, height: 60)
             .clipShape(Circle())
             .overlay {
                 Circle()
@@ -1296,7 +1315,7 @@ private struct ChatAvatarView: View {
                 Image(systemName: "person.2.fill")
                     .font(.system(size: 9, weight: .bold))
                     .foregroundStyle(.white)
-                    .frame(width: 18, height: 18)
+                    .frame(width: 19, height: 19)
                     .background(Color.accentColor, in: Circle())
                     .overlay {
                         Circle()
@@ -1304,7 +1323,7 @@ private struct ChatAvatarView: View {
                     }
             }
         }
-        .frame(width: 56, height: 56)
+        .frame(width: 62, height: 62)
         .task(id: "\(avatarID)|\(store.profileAvatarLoadingEnabled)") {
             await loadImageIfNeeded()
         }
