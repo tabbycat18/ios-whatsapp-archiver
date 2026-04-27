@@ -58,6 +58,10 @@ struct MessageListView: View {
         }
     }
 
+    private var usesGroupSenderLayout: Bool {
+        chat.isGroupChat || messages.contains { !$0.isFromMe && $0.hasGroupSenderEvidence }
+    }
+
     var body: some View {
         ZStack {
             ChatWallpaperBackgroundView(
@@ -76,7 +80,7 @@ struct MessageListView: View {
                         ForEach(displayedMessages, id: \.element.id) { index, message in
                             MessageBubbleView(
                                 message: message,
-                                isGroupChat: chat.isGroupChat,
+                                isGroupChat: usesGroupSenderLayout,
                                 showSenderAvatar: shouldShowSenderAvatar(at: index)
                             )
                                 .environmentObject(audioPlayback)
@@ -129,6 +133,11 @@ struct MessageListView: View {
         .navigationTitle(chat.title)
         .searchable(text: $messageSearchText, prompt: "Search messages")
         .toolbar {
+            ToolbarItem(placement: .principal) {
+                ChatTitleAvatarView(chat: chat, showsAvatar: !usesGroupSenderLayout)
+                    .environmentObject(store)
+            }
+
             ToolbarItem(placement: .primaryAction) {
                 Button {
                     isChatInfoPresented = true
@@ -248,7 +257,7 @@ struct MessageListView: View {
     }
 
     private func shouldShowSenderAvatar(at index: Int) -> Bool {
-        guard chat.isGroupChat else { return false }
+        guard usesGroupSenderLayout else { return false }
 
         let currentMessage = displayedMessages[index].element
         guard !currentMessage.isFromMe else { return false }
@@ -2142,6 +2151,109 @@ private final class AudioPlaybackController: ObservableObject {
     }
 }
 
+private struct ChatTitleAvatarView: View {
+    let chat: ChatSummary
+    let showsAvatar: Bool
+    @EnvironmentObject private var store: ArchiveStore
+    @State private var image: CGImage?
+    @State private var loadedAvatarID: String?
+
+    private var avatarID: String {
+        "\(chat.id)|\(chat.contactJID ?? "")|\(chat.contactIdentifier ?? "")|\(chat.profilePhotoIdentifiers.joined(separator: ","))"
+    }
+
+    var body: some View {
+        HStack(spacing: 8) {
+            if showsAvatar {
+                ChatTitleAvatarImageView(image: image, initials: initials)
+            }
+
+            Text(chat.title)
+                .font(.headline.weight(.semibold))
+                .lineLimit(1)
+                .minimumScaleFactor(0.85)
+        }
+        .accessibilityElement(children: .combine)
+        .task(id: "\(avatarID)|\(store.profileAvatarLoadingEnabled)") {
+            await loadImageIfNeeded()
+        }
+    }
+
+    private var initials: String? {
+        let chunks = chat.title
+            .split(whereSeparator: { !$0.isLetter && !$0.isNumber })
+            .compactMap { chunk -> String? in
+                for scalar in chunk.unicodeScalars {
+                    if CharacterSet.letters.contains(scalar) || CharacterSet.decimalDigits.contains(scalar) {
+                        return String(scalar)
+                            .folding(options: [.diacriticInsensitive, .caseInsensitive], locale: .current)
+                            .uppercased()
+                    }
+                }
+                return nil
+            }
+
+        if let first = chunks.first, chunks.count == 1 {
+            return first
+        }
+        let combined = chunks.prefix(2).joined()
+        return combined.isEmpty ? nil : combined
+    }
+
+    private func loadImageIfNeeded() async {
+        if loadedAvatarID != avatarID {
+            image = nil
+            loadedAvatarID = avatarID
+        }
+
+        guard showsAvatar else { return }
+        guard image == nil else { return }
+        guard store.profileAvatarLoadingEnabled else { return }
+        guard !Task.isCancelled else { return }
+
+        if let loadedImage = await store.profileAvatarImage(for: chat, priority: .visible) {
+            guard !Task.isCancelled else { return }
+            image = loadedImage
+        }
+    }
+}
+
+private struct ChatTitleAvatarImageView: View {
+    let image: CGImage?
+    let initials: String?
+
+    var body: some View {
+        ZStack {
+            Circle()
+                .fill(background)
+
+            if let image {
+                Image(decorative: image, scale: 1, orientation: .up)
+                    .resizable()
+                    .scaledToFill()
+            } else if let initials, !initials.isEmpty {
+                Text(initials)
+                    .font(.system(size: 10.5, weight: .semibold))
+                    .foregroundStyle(.white)
+            } else {
+                Image(systemName: "person.fill")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(Color.secondary)
+            }
+        }
+        .frame(width: 28, height: 28)
+        .clipShape(Circle())
+        .accessibilityHidden(true)
+    }
+
+    private var background: AnyShapeStyle {
+        if image != nil || initials?.isEmpty == false {
+            return AnyShapeStyle(Color.accentColor.gradient)
+        }
+        return AnyShapeStyle(Color.secondary.opacity(0.16))
+    }
+}
+
 private struct MessageBubbleView: View {
     let message: MessageRow
     let isGroupChat: Bool
@@ -2159,12 +2271,19 @@ private struct MessageBubbleView: View {
             }
 
             HStack(alignment: .top, spacing: 7) {
-                if shouldShowAvatar {
-                    MessageSenderAvatarView(
-                        image: avatarImage,
-                        initials: message.senderInitials,
-                        seed: message.senderAvatarGroupingKey
-                    )
+                if shouldReserveAvatarSlot {
+                    Group {
+                        if shouldShowAvatar {
+                            MessageSenderAvatarView(
+                                image: avatarImage,
+                                initials: message.senderInitials,
+                                seed: message.senderAvatarGroupingKey
+                            )
+                        } else {
+                            Color.clear
+                        }
+                    }
+                    .frame(width: MessageSenderAvatarView.size, height: MessageSenderAvatarView.size)
                 }
 
                 VStack(alignment: message.isFromMe ? .trailing : .leading, spacing: 2) {
@@ -2228,6 +2347,10 @@ private struct MessageBubbleView: View {
 
     private var shouldShowAvatar: Bool {
         isGroupChat && !message.isFromMe && showSenderAvatar
+    }
+
+    private var shouldReserveAvatarSlot: Bool {
+        isGroupChat && !message.isFromMe
     }
 
     private var avatarTaskID: String {
@@ -2344,10 +2467,15 @@ private struct MessageSenderAvatarView: View {
     let image: CGImage?
     let initials: String?
     let seed: String
+    static let size: CGFloat = 28
 
     private var fallbackInitials: String {
         let cleanedInitials = initials?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         return cleanedInitials.isEmpty ? "?" : cleanedInitials
+    }
+
+    private var hasInitials: Bool {
+        initials?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
     }
 
     private var seedIndex: Int {
@@ -2358,24 +2486,31 @@ private struct MessageSenderAvatarView: View {
     var body: some View {
         ZStack {
             Circle()
-                .fill(senderAvatarPalette[seedIndex].gradient)
+                .fill(avatarBackground)
 
             if let image {
                 Image(decorative: image, scale: 1, orientation: .up)
                     .resizable()
                     .scaledToFill()
-            } else if initials != nil {
+            } else if hasInitials {
                 Text(fallbackInitials)
                     .font(.system(size: 10.5, weight: .semibold))
                     .foregroundStyle(.white)
             } else {
                 Image(systemName: "person.fill")
                     .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(.white)
+                    .foregroundStyle(Color.secondary)
             }
         }
-        .frame(width: 28, height: 28)
+        .frame(width: Self.size, height: Self.size)
         .clipShape(Circle())
+    }
+
+    private var avatarBackground: AnyShapeStyle {
+        guard image == nil, !hasInitials else {
+            return AnyShapeStyle(senderAvatarPalette[seedIndex].gradient)
+        }
+        return AnyShapeStyle(Color.secondary.opacity(0.16))
     }
 
     private static let senderAvatarPalette: [Color] = [

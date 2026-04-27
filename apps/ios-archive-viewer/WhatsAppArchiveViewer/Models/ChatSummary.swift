@@ -65,6 +65,11 @@ struct ChatSummary: Identifiable, Hashable, Sendable {
     var profilePhotoURL: URL?
 
     var isGroupChat: Bool {
-        contactJID?.contains("@g.us") == true
+        [contactJID, contactIdentifier]
+            .compactMap { $0?.lowercased() }
+            .contains { $0.contains("@g.us") }
+            || profilePhotoIdentifiers
+                .map { $0.lowercased() }
+                .contains { $0.contains("@g.us") }
     }
 }

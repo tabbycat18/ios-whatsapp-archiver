@@ -272,6 +272,13 @@ struct MessageRow: Identifiable, Hashable, Sendable {
         return "unknown sender"
     }
 
+    var hasGroupSenderEvidence: Bool {
+        groupMemberJID?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
+            || groupMemberContactName?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
+            || groupMemberFirstName?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
+            || profilePushName?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
+    }
+
     var senderInitials: String? {
         guard let senderDisplayName else { return nil }
         return Self.senderInitials(from: senderDisplayName)
